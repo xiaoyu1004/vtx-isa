@@ -1,0 +1,116 @@
+; Row-major FP16 x FP16 -> FP32 GEMM using the warp-matrix instruction.
+; Recommended launch: M=N=K=4096, NTID=(256,1,1), NCTA=(256,32,1).
+; Eight warps per CTA compute a 128x16 output strip. Each warp computes a
+; 16x16 tile as two adjacent M16N8K16 operations.
+;
+; This example requires M % 128 == 0, N % 16 == 0 and K % 16 == 0.
+; There are no partial-tile paths because MMA requires all 32 lanes live and
+; active at the same dynamic PC.
+;
+; Parameter ABI:
+;   s0:s1 = a  GLOBAL_PTR to row-major F16, byte offset 0
+;   s2:s3 = b  GLOBAL_PTR to row-major F16, byte offset 8
+;   s4:s5 = c  GLOBAL_PTR to row-major F32, byte offset 16
+;   s6     = m  U32, byte offset 24
+;   s7     = n  U32, byte offset 28
+;   s8     = k  U32, byte offset 32
+;
+; Descriptor resources: sgpr_count=16, vgpr_count=32, vp_count=1,
+; reconv_stack_depth=1, static_shared_size=0.
+;
+; Fragment allocation, all bases satisfying the required alignment:
+;   v8..v11   A fragment, 4 packed-F16 VGPR per lane
+;   v12..v13  B fragment for output columns 0..7
+;   v14..v15  B fragment for output columns 8..15
+;   v16..v19  C/D fragment for output columns 0..7
+;   v20..v23  C/D fragment for output columns 8..15
+;
+; For lane l, the loads below implement the ISA matrix contract exactly:
+;   A row=l>>1, A k-base=(l&1)*8
+;   B k=l>>1, B n-base=(l&1)*4
+; Each U32 load supplies two adjacent packed F16 elements.
+
+hgemm_mma:
+    V_GETREG.LANE.U32 v0, LSR_LANE_ID
+    V_GETREG.UNIFORM.U32 v3, USR_CTA_ID_X
+    V_GETREG.UNIFORM.U32 v4, USR_CTA_ID_Y
+    V_GETREG.UNIFORM.U32 v5, USR_WARP_ID
+    V_BCAST.B32 v6, s6
+    V_BCAST.B32 v7, s7
+    V_BCAST.B32 v24, s8
+
+    V_SHR.B32 v1, v0, 1
+    V_MOV.B32 v31, 1
+    V_AND.B32 v2, v0, v31
+
+    ; tile_row = (cta_y*8 + warp_id)*16; row = tile_row + lane/2
+    V_MUL.U32 v25, v4, 128
+    V_MUL.U32 v31, v5, 16
+    V_ADD.U32 v25, v25, v31
+    V_ADD.U32 v26, v25, v1
+    V_MUL.U32 v27, v3, 16
+    V_MOV.B32 v28, 0
+
+    ; FP32 accumulator fragments start at +0.0 and are updated in place.
+    V_MOV.B32 v16, 0x00000000
+    V_MOV.B32 v17, 0x00000000
+    V_MOV.B32 v18, 0x00000000
+    V_MOV.B32 v19, 0x00000000
+    V_MOV.B32 v20, 0x00000000
+    V_MOV.B32 v21, 0x00000000
+    V_MOV.B32 v22, 0x00000000
+    V_MOV.B32 v23, 0x00000000
+
+    ; tile_k is uniform and K is a multiple of 16, so all 32 lanes execute
+    ; both MMA instructions at every iteration.
+    SSY hgemm_mma_done
+hgemm_mma_k_loop:
+    V_CMP.LT.U32 vp0, v28, v24
+    BRA.P !vp0, hgemm_mma_done
+
+    ; Load A[row][tile_k + (lane&1)*8 + 0..7].
+    V_MUL.U32 v31, v2, 8
+    V_ADD.U32 v31, v28, v31
+    V_MAD.U32 v29, v26, v24, v31
+    V_SHL.B32 v30, v29, 1
+    V_LD.GLOBAL.U32 v8, [s0:s1 + v30 + 0]
+    V_LD.GLOBAL.U32 v9, [s0:s1 + v30 + 4]
+    V_LD.GLOBAL.U32 v10, [s0:s1 + v30 + 8]
+    V_LD.GLOBAL.U32 v11, [s0:s1 + v30 + 12]
+
+    ; Load B[tile_k + lane/2][tile_col + (lane&1)*4 + 0..3].
+    V_MUL.U32 v30, v2, 4
+    V_ADD.U32 v30, v27, v30
+    V_ADD.U32 v31, v28, v1
+    V_MAD.U32 v29, v31, v7, v30
+    V_SHL.B32 v30, v29, 1
+    V_LD.GLOBAL.U32 v12, [s2:s3 + v30 + 0]
+    V_LD.GLOBAL.U32 v13, [s2:s3 + v30 + 4]
+
+    ; The second B fragment is the adjacent 8-column half of the 16x16 tile.
+    V_LD.GLOBAL.U32 v14, [s2:s3 + v30 + 16]
+    V_LD.GLOBAL.U32 v15, [s2:s3 + v30 + 20]
+
+    MMA.M16N8K16.F16.F16.F32 v16, v8, v12, v16
+    MMA.M16N8K16.F16.F16.F32 v20, v8, v14, v20
+
+    V_ADD.U32 v28, v28, 16
+    BRA hgemm_mma_k_loop
+
+hgemm_mma_done:
+    JOIN
+
+    ; Store the two four-F32 per-lane D fragments to adjacent N8 tiles.
+    V_MUL.U32 v30, v2, 4
+    V_ADD.U32 v30, v27, v30
+    V_MAD.U32 v29, v26, v7, v30
+    V_SHL.B32 v30, v29, 2
+    V_ST.GLOBAL.U32 [s4:s5 + v30 + 0], v16
+    V_ST.GLOBAL.U32 [s4:s5 + v30 + 4], v17
+    V_ST.GLOBAL.U32 [s4:s5 + v30 + 8], v18
+    V_ST.GLOBAL.U32 [s4:s5 + v30 + 12], v19
+    V_ST.GLOBAL.U32 [s4:s5 + v30 + 32], v20
+    V_ST.GLOBAL.U32 [s4:s5 + v30 + 36], v21
+    V_ST.GLOBAL.U32 [s4:s5 + v30 + 40], v22
+    V_ST.GLOBAL.U32 [s4:s5 + v30 + 44], v23
+    EXIT PT

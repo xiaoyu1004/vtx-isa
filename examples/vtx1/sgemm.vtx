@@ -1,0 +1,139 @@
+; Row-major FP32 SGEMM: C[M,N] = A[M,K] * B[K,N].
+; Recommended launch: M=N=K=4096, NTID=(16,16,1), NCTA=(256,256,1).
+; Each 256-thread CTA computes one 16x16 C tile with 8 warps.
+;
+; Parameter ABI:
+;   s0:s1 = a  GLOBAL_PTR, byte offset 0
+;   s2:s3 = b  GLOBAL_PTR, byte offset 8
+;   s4:s5 = c  GLOBAL_PTR, byte offset 16
+;   s6     = m  U32,        byte offset 24
+;   s7     = n  U32,        byte offset 28
+;   s8     = k  U32,        byte offset 32
+;
+; Descriptor resources: sgpr_count=16, vgpr_count=24, vp_count=4,
+; reconv_stack_depth=1, static_shared_size=2048.
+;
+; Shared layout:
+;   byte 0..1023    a_tile[16][16]
+;   byte 1024..2047 b_tile[16][16]
+;
+; The ISA's only MMA form consumes F16 A/B fragments. This is genuine SGEMM,
+; so the inner product deliberately uses V_FFMA.F32.
+
+sgemm:
+    V_GETREG.LANE.U32 v0, LSR_TID_X
+    V_GETREG.LANE.U32 v1, LSR_TID_Y
+    V_GETREG.UNIFORM.U32 v2, USR_CTA_ID_X
+    V_GETREG.UNIFORM.U32 v3, USR_CTA_ID_Y
+    V_BCAST.B32 v4, s6
+    V_BCAST.B32 v5, s7
+    V_BCAST.B32 v6, s8
+    V_MOV.B32 v18, 16
+
+    V_MUL.U32 v7, v3, 16
+    V_ADD.U32 v7, v7, v1
+    V_MUL.U32 v8, v2, 16
+    V_ADD.U32 v8, v8, v0
+    V_MOV.B32 v9, 0
+    V_MOV.B32 v14, 0x00000000
+
+    ; tile_k is uniform across each warp, so BRA.P never divides a warp.
+    SSY sgemm_done
+sgemm_k_loop:
+    V_CMP.LT.U32 vp0, v9, v6
+    BRA.P !vp0, sgemm_done
+
+    ; a_tile[ty][tx] = in_bounds ? A[row][tile_k + tx] : 0
+    V_ADD.U32 v19, v9, v0
+    V_CMP.LT.U32 vp1, v7, v4
+    V_CMP.LT.U32 vp2, v19, v6
+    V_PAND vp3, vp1, vp2
+    V_MOV.B32 v12, 0x00000000
+    V_MAD.U32 v10, v7, v6, v19
+    V_SHL.B32 v11, v10, 2
+    @vp3 V_LD.GLOBAL.U32 v12, [s0:s1 + v11 + 0]
+    V_MAD.U32 v15, v1, v18, v0
+    V_SHL.B32 v15, v15, 2
+    V_ST.SHARED.U32 [v15 + 0], v12
+
+    ; b_tile[ty][tx] = in_bounds ? B[tile_k + ty][col] : 0
+    V_ADD.U32 v20, v9, v1
+    V_CMP.LT.U32 vp1, v20, v6
+    V_CMP.LT.U32 vp2, v8, v5
+    V_PAND vp3, vp1, vp2
+    V_MOV.B32 v13, 0x00000000
+    V_MAD.U32 v10, v20, v5, v8
+    V_SHL.B32 v11, v10, 2
+    @vp3 V_LD.GLOBAL.U32 v13, [s2:s3 + v11 + 0]
+    V_ADD.U32 v15, v15, 1024
+    V_ST.SHARED.U32 [v15 + 0], v13
+
+    BAR.SYNC.CTA 0
+
+    ; A row starts at ty*64 bytes; B column starts at 1024+tx*4 bytes.
+    V_SHL.B32 v16, v1, 6
+    V_SHL.B32 v17, v0, 2
+
+    V_LD.SHARED.U32 v12, [v16 + 0]
+    V_LD.SHARED.U32 v13, [v17 + 1024]
+    V_FFMA.F32 v14, v12, v13, v14
+    V_LD.SHARED.U32 v12, [v16 + 4]
+    V_LD.SHARED.U32 v13, [v17 + 1088]
+    V_FFMA.F32 v14, v12, v13, v14
+    V_LD.SHARED.U32 v12, [v16 + 8]
+    V_LD.SHARED.U32 v13, [v17 + 1152]
+    V_FFMA.F32 v14, v12, v13, v14
+    V_LD.SHARED.U32 v12, [v16 + 12]
+    V_LD.SHARED.U32 v13, [v17 + 1216]
+    V_FFMA.F32 v14, v12, v13, v14
+    V_LD.SHARED.U32 v12, [v16 + 16]
+    V_LD.SHARED.U32 v13, [v17 + 1280]
+    V_FFMA.F32 v14, v12, v13, v14
+    V_LD.SHARED.U32 v12, [v16 + 20]
+    V_LD.SHARED.U32 v13, [v17 + 1344]
+    V_FFMA.F32 v14, v12, v13, v14
+    V_LD.SHARED.U32 v12, [v16 + 24]
+    V_LD.SHARED.U32 v13, [v17 + 1408]
+    V_FFMA.F32 v14, v12, v13, v14
+    V_LD.SHARED.U32 v12, [v16 + 28]
+    V_LD.SHARED.U32 v13, [v17 + 1472]
+    V_FFMA.F32 v14, v12, v13, v14
+    V_LD.SHARED.U32 v12, [v16 + 32]
+    V_LD.SHARED.U32 v13, [v17 + 1536]
+    V_FFMA.F32 v14, v12, v13, v14
+    V_LD.SHARED.U32 v12, [v16 + 36]
+    V_LD.SHARED.U32 v13, [v17 + 1600]
+    V_FFMA.F32 v14, v12, v13, v14
+    V_LD.SHARED.U32 v12, [v16 + 40]
+    V_LD.SHARED.U32 v13, [v17 + 1664]
+    V_FFMA.F32 v14, v12, v13, v14
+    V_LD.SHARED.U32 v12, [v16 + 44]
+    V_LD.SHARED.U32 v13, [v17 + 1728]
+    V_FFMA.F32 v14, v12, v13, v14
+    V_LD.SHARED.U32 v12, [v16 + 48]
+    V_LD.SHARED.U32 v13, [v17 + 1792]
+    V_FFMA.F32 v14, v12, v13, v14
+    V_LD.SHARED.U32 v12, [v16 + 52]
+    V_LD.SHARED.U32 v13, [v17 + 1856]
+    V_FFMA.F32 v14, v12, v13, v14
+    V_LD.SHARED.U32 v12, [v16 + 56]
+    V_LD.SHARED.U32 v13, [v17 + 1920]
+    V_FFMA.F32 v14, v12, v13, v14
+    V_LD.SHARED.U32 v12, [v16 + 60]
+    V_LD.SHARED.U32 v13, [v17 + 1984]
+    V_FFMA.F32 v14, v12, v13, v14
+
+    ; Every CTA owner reaches this barrier before the shared tiles are reused.
+    BAR.SYNC.CTA 0
+    V_ADD.U32 v9, v9, 16
+    BRA sgemm_k_loop
+
+sgemm_done:
+    JOIN
+    V_CMP.LT.U32 vp1, v7, v4
+    V_CMP.LT.U32 vp2, v8, v5
+    V_PAND vp3, vp1, vp2
+    V_MAD.U32 v10, v7, v5, v8
+    V_SHL.B32 v11, v10, 2
+    @vp3 V_ST.GLOBAL.U32 [s4:s5 + v11 + 0], v14
+    EXIT PT

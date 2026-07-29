@@ -1,0 +1,3528 @@
+{
+  "schema_version": "1.0-draft",
+  "word_bits": 64,
+  "counts": {
+    "forms": 391
+  },
+  "forms": [
+    {
+      "key": "F001/base",
+      "family_id": "F001",
+      "form_id": "base",
+      "class": "SYS",
+      "format": 0,
+      "opcode": 0,
+      "machine_word": "0x0000000000000000"
+    },
+    {
+      "key": "F002/reason",
+      "family_id": "F002",
+      "form_id": "reason",
+      "class": "SYS",
+      "format": 0,
+      "opcode": 1,
+      "machine_word": "0x0000000000000080"
+    },
+    {
+      "key": "F003/u32",
+      "family_id": "F003",
+      "form_id": "u32",
+      "class": "SYS",
+      "format": 0,
+      "opcode": 2,
+      "machine_word": "0x0000000000000100"
+    },
+    {
+      "key": "F003/u64",
+      "family_id": "F003",
+      "form_id": "u64",
+      "class": "SYS",
+      "format": 0,
+      "opcode": 3,
+      "machine_word": "0x0000000000000180"
+    },
+    {
+      "key": "F004/lane.u32",
+      "family_id": "F004",
+      "form_id": "lane.u32",
+      "class": "SYS",
+      "format": 0,
+      "opcode": 4,
+      "machine_word": "0x0000000000000200"
+    },
+    {
+      "key": "F004/uniform.u32",
+      "family_id": "F004",
+      "form_id": "uniform.u32",
+      "class": "SYS",
+      "format": 0,
+      "opcode": 5,
+      "machine_word": "0x0000000000000280"
+    },
+    {
+      "key": "F004/lane.u64",
+      "family_id": "F004",
+      "form_id": "lane.u64",
+      "class": "SYS",
+      "format": 0,
+      "opcode": 6,
+      "machine_word": "0x0000000000000300"
+    },
+    {
+      "key": "F004/uniform.u64",
+      "family_id": "F004",
+      "form_id": "uniform.u64",
+      "class": "SYS",
+      "format": 0,
+      "opcode": 7,
+      "machine_word": "0x0000000000000380"
+    },
+    {
+      "key": "F005/u32",
+      "family_id": "F005",
+      "form_id": "u32",
+      "class": "SYS",
+      "format": 0,
+      "opcode": 8,
+      "machine_word": "0x0000000000000400"
+    },
+    {
+      "key": "F006/u32",
+      "family_id": "F006",
+      "form_id": "u32",
+      "class": "SYS",
+      "format": 0,
+      "opcode": 9,
+      "machine_word": "0x0000000000000480"
+    },
+    {
+      "key": "F007/b32.reg",
+      "family_id": "F007",
+      "form_id": "b32.reg",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 0,
+      "machine_word": "0x0000000000000001"
+    },
+    {
+      "key": "F007/b32.imm",
+      "family_id": "F007",
+      "form_id": "b32.imm",
+      "class": "SALU",
+      "format": 4,
+      "opcode": 0,
+      "machine_word": "0x0000000000000041"
+    },
+    {
+      "key": "F007/b64.reg",
+      "family_id": "F007",
+      "form_id": "b64.reg",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 1,
+      "machine_word": "0x0000000000000081"
+    },
+    {
+      "key": "F007/b64.imm",
+      "family_id": "F007",
+      "form_id": "b64.imm",
+      "class": "SALU",
+      "format": 4,
+      "opcode": 1,
+      "machine_word": "0x00000000000000C1"
+    },
+    {
+      "key": "F008/u32.reg",
+      "family_id": "F008",
+      "form_id": "u32.reg",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 0,
+      "machine_word": "0x0000000000000011"
+    },
+    {
+      "key": "F008/u32.imm",
+      "family_id": "F008",
+      "form_id": "u32.imm",
+      "class": "SALU",
+      "format": 4,
+      "opcode": 2,
+      "machine_word": "0x0000000000000141"
+    },
+    {
+      "key": "F008/u64.reg",
+      "family_id": "F008",
+      "form_id": "u64.reg",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 1,
+      "machine_word": "0x0000000000000091"
+    },
+    {
+      "key": "F008/u64.imm",
+      "family_id": "F008",
+      "form_id": "u64.imm",
+      "class": "SALU",
+      "format": 4,
+      "opcode": 3,
+      "machine_word": "0x00000000000001C1"
+    },
+    {
+      "key": "F009/u32.reg",
+      "family_id": "F009",
+      "form_id": "u32.reg",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 2,
+      "machine_word": "0x0000000000000111"
+    },
+    {
+      "key": "F009/u32.imm",
+      "family_id": "F009",
+      "form_id": "u32.imm",
+      "class": "SALU",
+      "format": 4,
+      "opcode": 4,
+      "machine_word": "0x0000000000000241"
+    },
+    {
+      "key": "F009/u64.reg",
+      "family_id": "F009",
+      "form_id": "u64.reg",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 3,
+      "machine_word": "0x0000000000000191"
+    },
+    {
+      "key": "F009/u64.imm",
+      "family_id": "F009",
+      "form_id": "u64.imm",
+      "class": "SALU",
+      "format": 4,
+      "opcode": 5,
+      "machine_word": "0x00000000000002C1"
+    },
+    {
+      "key": "F010/u32.reg",
+      "family_id": "F010",
+      "form_id": "u32.reg",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 4,
+      "machine_word": "0x0000000000000211"
+    },
+    {
+      "key": "F010/u32.imm",
+      "family_id": "F010",
+      "form_id": "u32.imm",
+      "class": "SALU",
+      "format": 4,
+      "opcode": 6,
+      "machine_word": "0x0000000000000341"
+    },
+    {
+      "key": "F010/u64.reg",
+      "family_id": "F010",
+      "form_id": "u64.reg",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 5,
+      "machine_word": "0x0000000000000291"
+    },
+    {
+      "key": "F010/u64.imm",
+      "family_id": "F010",
+      "form_id": "u64.imm",
+      "class": "SALU",
+      "format": 4,
+      "opcode": 7,
+      "machine_word": "0x00000000000003C1"
+    },
+    {
+      "key": "F011/u32",
+      "family_id": "F011",
+      "form_id": "u32",
+      "class": "SALU",
+      "format": 2,
+      "opcode": 0,
+      "machine_word": "0x0000000000000021"
+    },
+    {
+      "key": "F012/u32",
+      "family_id": "F012",
+      "form_id": "u32",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 6,
+      "machine_word": "0x0000000000000311"
+    },
+    {
+      "key": "F012/s32",
+      "family_id": "F012",
+      "form_id": "s32",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 7,
+      "machine_word": "0x0000000000000391"
+    },
+    {
+      "key": "F013/u32",
+      "family_id": "F013",
+      "form_id": "u32",
+      "class": "SALU",
+      "format": 2,
+      "opcode": 1,
+      "machine_word": "0x00000000000000A1"
+    },
+    {
+      "key": "F013/s32",
+      "family_id": "F013",
+      "form_id": "s32",
+      "class": "SALU",
+      "format": 2,
+      "opcode": 2,
+      "machine_word": "0x0000000000000121"
+    },
+    {
+      "key": "F014/min.s32",
+      "family_id": "F014",
+      "form_id": "min.s32",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 8,
+      "machine_word": "0x0000000000000411"
+    },
+    {
+      "key": "F014/min.u32",
+      "family_id": "F014",
+      "form_id": "min.u32",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 9,
+      "machine_word": "0x0000000000000491"
+    },
+    {
+      "key": "F014/max.s32",
+      "family_id": "F014",
+      "form_id": "max.s32",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 10,
+      "machine_word": "0x0000000000000511"
+    },
+    {
+      "key": "F014/max.u32",
+      "family_id": "F014",
+      "form_id": "max.u32",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 11,
+      "machine_word": "0x0000000000000591"
+    },
+    {
+      "key": "F014/abs.s32",
+      "family_id": "F014",
+      "form_id": "abs.s32",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 2,
+      "machine_word": "0x0000000000000101"
+    },
+    {
+      "key": "F014/neg.s32",
+      "family_id": "F014",
+      "form_id": "neg.s32",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 3,
+      "machine_word": "0x0000000000000181"
+    },
+    {
+      "key": "F015/div.u",
+      "family_id": "F015",
+      "form_id": "div.u",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 12,
+      "machine_word": "0x0000000000000611"
+    },
+    {
+      "key": "F015/div.s",
+      "family_id": "F015",
+      "form_id": "div.s",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 13,
+      "machine_word": "0x0000000000000691"
+    },
+    {
+      "key": "F015/rem.u",
+      "family_id": "F015",
+      "form_id": "rem.u",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 14,
+      "machine_word": "0x0000000000000711"
+    },
+    {
+      "key": "F015/rem.s",
+      "family_id": "F015",
+      "form_id": "rem.s",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 15,
+      "machine_word": "0x0000000000000791"
+    },
+    {
+      "key": "F016/and",
+      "family_id": "F016",
+      "form_id": "and",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 16,
+      "machine_word": "0x0000000000000811"
+    },
+    {
+      "key": "F016/or",
+      "family_id": "F016",
+      "form_id": "or",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 17,
+      "machine_word": "0x0000000000000891"
+    },
+    {
+      "key": "F016/xor",
+      "family_id": "F016",
+      "form_id": "xor",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 18,
+      "machine_word": "0x0000000000000911"
+    },
+    {
+      "key": "F016/not",
+      "family_id": "F016",
+      "form_id": "not",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 4,
+      "machine_word": "0x0000000000000201"
+    },
+    {
+      "key": "F016/brev.b32",
+      "family_id": "F016",
+      "form_id": "brev.b32",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 5,
+      "machine_word": "0x0000000000000281"
+    },
+    {
+      "key": "F016/bfe.b32",
+      "family_id": "F016",
+      "form_id": "bfe.b32",
+      "class": "SALU",
+      "format": 2,
+      "opcode": 3,
+      "machine_word": "0x00000000000001A1"
+    },
+    {
+      "key": "F016/bfi.b32",
+      "family_id": "F016",
+      "form_id": "bfi.b32",
+      "class": "SALU",
+      "format": 2,
+      "opcode": 4,
+      "machine_word": "0x0000000000000221"
+    },
+    {
+      "key": "F017/shl",
+      "family_id": "F017",
+      "form_id": "shl",
+      "class": "SALU",
+      "format": 4,
+      "opcode": 8,
+      "machine_word": "0x0000000000000441"
+    },
+    {
+      "key": "F017/shr",
+      "family_id": "F017",
+      "form_id": "shr",
+      "class": "SALU",
+      "format": 4,
+      "opcode": 9,
+      "machine_word": "0x00000000000004C1"
+    },
+    {
+      "key": "F017/sar",
+      "family_id": "F017",
+      "form_id": "sar",
+      "class": "SALU",
+      "format": 4,
+      "opcode": 10,
+      "machine_word": "0x0000000000000541"
+    },
+    {
+      "key": "F017/rotl",
+      "family_id": "F017",
+      "form_id": "rotl",
+      "class": "SALU",
+      "format": 4,
+      "opcode": 11,
+      "machine_word": "0x00000000000005C1"
+    },
+    {
+      "key": "F017/rotr",
+      "family_id": "F017",
+      "form_id": "rotr",
+      "class": "SALU",
+      "format": 4,
+      "opcode": 12,
+      "machine_word": "0x0000000000000641"
+    },
+    {
+      "key": "F018/clz",
+      "family_id": "F018",
+      "form_id": "clz",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 6,
+      "machine_word": "0x0000000000000301"
+    },
+    {
+      "key": "F018/ctz",
+      "family_id": "F018",
+      "form_id": "ctz",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 7,
+      "machine_word": "0x0000000000000381"
+    },
+    {
+      "key": "F018/popc",
+      "family_id": "F018",
+      "form_id": "popc",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 8,
+      "machine_word": "0x0000000000000401"
+    },
+    {
+      "key": "F019/pack.u16x2",
+      "family_id": "F019",
+      "form_id": "pack.u16x2",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 19,
+      "machine_word": "0x0000000000000991"
+    },
+    {
+      "key": "F019/unpack.lo16",
+      "family_id": "F019",
+      "form_id": "unpack.lo16",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 9,
+      "machine_word": "0x0000000000000481"
+    },
+    {
+      "key": "F019/unpack.hi16",
+      "family_id": "F019",
+      "form_id": "unpack.hi16",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 10,
+      "machine_word": "0x0000000000000501"
+    },
+    {
+      "key": "F020/equal",
+      "family_id": "F020",
+      "form_id": "equal",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 0,
+      "machine_word": "0x0000000000000031"
+    },
+    {
+      "key": "F020/not-equal",
+      "family_id": "F020",
+      "form_id": "not-equal",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 1,
+      "machine_word": "0x00000000000000B1"
+    },
+    {
+      "key": "F020/signed-less",
+      "family_id": "F020",
+      "form_id": "signed-less",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 2,
+      "machine_word": "0x0000000000000131"
+    },
+    {
+      "key": "F020/signed-less-or-equal",
+      "family_id": "F020",
+      "form_id": "signed-less-or-equal",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 3,
+      "machine_word": "0x00000000000001B1"
+    },
+    {
+      "key": "F020/signed-greater",
+      "family_id": "F020",
+      "form_id": "signed-greater",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 4,
+      "machine_word": "0x0000000000000231"
+    },
+    {
+      "key": "F020/signed-greater-or-equal",
+      "family_id": "F020",
+      "form_id": "signed-greater-or-equal",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 5,
+      "machine_word": "0x00000000000002B1"
+    },
+    {
+      "key": "F020/unsigned-less",
+      "family_id": "F020",
+      "form_id": "unsigned-less",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 6,
+      "machine_word": "0x0000000000000331"
+    },
+    {
+      "key": "F020/unsigned-less-or-equal",
+      "family_id": "F020",
+      "form_id": "unsigned-less-or-equal",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 7,
+      "machine_word": "0x00000000000003B1"
+    },
+    {
+      "key": "F020/unsigned-greater",
+      "family_id": "F020",
+      "form_id": "unsigned-greater",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 8,
+      "machine_word": "0x0000000000000431"
+    },
+    {
+      "key": "F020/unsigned-greater-or-equal",
+      "family_id": "F020",
+      "form_id": "unsigned-greater-or-equal",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 9,
+      "machine_word": "0x00000000000004B1"
+    },
+    {
+      "key": "F020/f32.eq",
+      "family_id": "F020",
+      "form_id": "f32.eq",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 10,
+      "machine_word": "0x0000000000000531"
+    },
+    {
+      "key": "F020/f32.ne",
+      "family_id": "F020",
+      "form_id": "f32.ne",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 11,
+      "machine_word": "0x00000000000005B1"
+    },
+    {
+      "key": "F020/f32.lt",
+      "family_id": "F020",
+      "form_id": "f32.lt",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 12,
+      "machine_word": "0x0000000000000631"
+    },
+    {
+      "key": "F020/f32.le",
+      "family_id": "F020",
+      "form_id": "f32.le",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 13,
+      "machine_word": "0x00000000000006B1"
+    },
+    {
+      "key": "F020/f32.gt",
+      "family_id": "F020",
+      "form_id": "f32.gt",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 14,
+      "machine_word": "0x0000000000000731"
+    },
+    {
+      "key": "F020/f32.ge",
+      "family_id": "F020",
+      "form_id": "f32.ge",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 15,
+      "machine_word": "0x00000000000007B1"
+    },
+    {
+      "key": "F020/f32.ord",
+      "family_id": "F020",
+      "form_id": "f32.ord",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 16,
+      "machine_word": "0x0000000000000831"
+    },
+    {
+      "key": "F020/f32.uno",
+      "family_id": "F020",
+      "form_id": "f32.uno",
+      "class": "SALU",
+      "format": 3,
+      "opcode": 17,
+      "machine_word": "0x00000000000008B1"
+    },
+    {
+      "key": "F021/b32",
+      "family_id": "F021",
+      "form_id": "b32",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 20,
+      "machine_word": "0x0000000000000A11"
+    },
+    {
+      "key": "F021/b64",
+      "family_id": "F021",
+      "form_id": "b64",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 21,
+      "machine_word": "0x0000000000000A91"
+    },
+    {
+      "key": "F022/s32.f32",
+      "family_id": "F022",
+      "form_id": "s32.f32",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 11,
+      "machine_word": "0x0000000000000581"
+    },
+    {
+      "key": "F022/u32.f32",
+      "family_id": "F022",
+      "form_id": "u32.f32",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 12,
+      "machine_word": "0x0000000000000601"
+    },
+    {
+      "key": "F022/f32.s32",
+      "family_id": "F022",
+      "form_id": "f32.s32",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 13,
+      "machine_word": "0x0000000000000681"
+    },
+    {
+      "key": "F022/f32.u32",
+      "family_id": "F022",
+      "form_id": "f32.u32",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 14,
+      "machine_word": "0x0000000000000701"
+    },
+    {
+      "key": "F022/u16.u32",
+      "family_id": "F022",
+      "form_id": "u16.u32",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 15,
+      "machine_word": "0x0000000000000781"
+    },
+    {
+      "key": "F022/s16.s32",
+      "family_id": "F022",
+      "form_id": "s16.s32",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 16,
+      "machine_word": "0x0000000000000801"
+    },
+    {
+      "key": "F023/add",
+      "family_id": "F023",
+      "form_id": "add",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 22,
+      "machine_word": "0x0000000000000B11"
+    },
+    {
+      "key": "F023/sub",
+      "family_id": "F023",
+      "form_id": "sub",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 23,
+      "machine_word": "0x0000000000000B91"
+    },
+    {
+      "key": "F023/mul",
+      "family_id": "F023",
+      "form_id": "mul",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 24,
+      "machine_word": "0x0000000000000C11"
+    },
+    {
+      "key": "F023/fma",
+      "family_id": "F023",
+      "form_id": "fma",
+      "class": "SALU",
+      "format": 2,
+      "opcode": 5,
+      "machine_word": "0x00000000000002A1"
+    },
+    {
+      "key": "F023/min",
+      "family_id": "F023",
+      "form_id": "min",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 25,
+      "machine_word": "0x0000000000000C91"
+    },
+    {
+      "key": "F023/max",
+      "family_id": "F023",
+      "form_id": "max",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 26,
+      "machine_word": "0x0000000000000D11"
+    },
+    {
+      "key": "F023/sqrt",
+      "family_id": "F023",
+      "form_id": "sqrt",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 17,
+      "machine_word": "0x0000000000000881"
+    },
+    {
+      "key": "F023/abs.f32",
+      "family_id": "F023",
+      "form_id": "abs.f32",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 18,
+      "machine_word": "0x0000000000000901"
+    },
+    {
+      "key": "F023/neg.f32",
+      "family_id": "F023",
+      "form_id": "neg.f32",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 19,
+      "machine_word": "0x0000000000000981"
+    },
+    {
+      "key": "F024/div",
+      "family_id": "F024",
+      "form_id": "div",
+      "class": "SALU",
+      "format": 1,
+      "opcode": 27,
+      "machine_word": "0x0000000000000D91"
+    },
+    {
+      "key": "F024/rcp",
+      "family_id": "F024",
+      "form_id": "rcp",
+      "class": "SALU",
+      "format": 0,
+      "opcode": 20,
+      "machine_word": "0x0000000000000A01"
+    },
+    {
+      "key": "F025/b32.reg",
+      "family_id": "F025",
+      "form_id": "b32.reg",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 0,
+      "machine_word": "0x0000000000000002"
+    },
+    {
+      "key": "F025/b32.imm",
+      "family_id": "F025",
+      "form_id": "b32.imm",
+      "class": "VALU",
+      "format": 4,
+      "opcode": 0,
+      "machine_word": "0x0000000000000042"
+    },
+    {
+      "key": "F025/b64.reg",
+      "family_id": "F025",
+      "form_id": "b64.reg",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 1,
+      "machine_word": "0x0000000000000082"
+    },
+    {
+      "key": "F025/b64.imm",
+      "family_id": "F025",
+      "form_id": "b64.imm",
+      "class": "VALU",
+      "format": 4,
+      "opcode": 1,
+      "machine_word": "0x00000000000000C2"
+    },
+    {
+      "key": "F026/u32.reg",
+      "family_id": "F026",
+      "form_id": "u32.reg",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 0,
+      "machine_word": "0x0000000000000012"
+    },
+    {
+      "key": "F026/u32.imm",
+      "family_id": "F026",
+      "form_id": "u32.imm",
+      "class": "VALU",
+      "format": 4,
+      "opcode": 2,
+      "machine_word": "0x0000000000000142"
+    },
+    {
+      "key": "F026/u64.reg",
+      "family_id": "F026",
+      "form_id": "u64.reg",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 1,
+      "machine_word": "0x0000000000000092"
+    },
+    {
+      "key": "F026/u64.imm",
+      "family_id": "F026",
+      "form_id": "u64.imm",
+      "class": "VALU",
+      "format": 4,
+      "opcode": 3,
+      "machine_word": "0x00000000000001C2"
+    },
+    {
+      "key": "F027/u32.reg",
+      "family_id": "F027",
+      "form_id": "u32.reg",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 2,
+      "machine_word": "0x0000000000000112"
+    },
+    {
+      "key": "F027/u32.imm",
+      "family_id": "F027",
+      "form_id": "u32.imm",
+      "class": "VALU",
+      "format": 4,
+      "opcode": 4,
+      "machine_word": "0x0000000000000242"
+    },
+    {
+      "key": "F027/u64.reg",
+      "family_id": "F027",
+      "form_id": "u64.reg",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 3,
+      "machine_word": "0x0000000000000192"
+    },
+    {
+      "key": "F027/u64.imm",
+      "family_id": "F027",
+      "form_id": "u64.imm",
+      "class": "VALU",
+      "format": 4,
+      "opcode": 5,
+      "machine_word": "0x00000000000002C2"
+    },
+    {
+      "key": "F028/u32.reg",
+      "family_id": "F028",
+      "form_id": "u32.reg",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 4,
+      "machine_word": "0x0000000000000212"
+    },
+    {
+      "key": "F028/u32.imm",
+      "family_id": "F028",
+      "form_id": "u32.imm",
+      "class": "VALU",
+      "format": 4,
+      "opcode": 6,
+      "machine_word": "0x0000000000000342"
+    },
+    {
+      "key": "F028/u64.reg",
+      "family_id": "F028",
+      "form_id": "u64.reg",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 5,
+      "machine_word": "0x0000000000000292"
+    },
+    {
+      "key": "F028/u64.imm",
+      "family_id": "F028",
+      "form_id": "u64.imm",
+      "class": "VALU",
+      "format": 4,
+      "opcode": 7,
+      "machine_word": "0x00000000000003C2"
+    },
+    {
+      "key": "F029/u32",
+      "family_id": "F029",
+      "form_id": "u32",
+      "class": "VALU",
+      "format": 2,
+      "opcode": 0,
+      "machine_word": "0x0000000000000022"
+    },
+    {
+      "key": "F030/u32",
+      "family_id": "F030",
+      "form_id": "u32",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 6,
+      "machine_word": "0x0000000000000312"
+    },
+    {
+      "key": "F030/s32",
+      "family_id": "F030",
+      "form_id": "s32",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 7,
+      "machine_word": "0x0000000000000392"
+    },
+    {
+      "key": "F031/u32",
+      "family_id": "F031",
+      "form_id": "u32",
+      "class": "VALU",
+      "format": 2,
+      "opcode": 1,
+      "machine_word": "0x00000000000000A2"
+    },
+    {
+      "key": "F031/s32",
+      "family_id": "F031",
+      "form_id": "s32",
+      "class": "VALU",
+      "format": 2,
+      "opcode": 2,
+      "machine_word": "0x0000000000000122"
+    },
+    {
+      "key": "F032/min.s32",
+      "family_id": "F032",
+      "form_id": "min.s32",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 8,
+      "machine_word": "0x0000000000000412"
+    },
+    {
+      "key": "F032/min.u32",
+      "family_id": "F032",
+      "form_id": "min.u32",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 9,
+      "machine_word": "0x0000000000000492"
+    },
+    {
+      "key": "F032/max.s32",
+      "family_id": "F032",
+      "form_id": "max.s32",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 10,
+      "machine_word": "0x0000000000000512"
+    },
+    {
+      "key": "F032/max.u32",
+      "family_id": "F032",
+      "form_id": "max.u32",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 11,
+      "machine_word": "0x0000000000000592"
+    },
+    {
+      "key": "F032/abs.s32",
+      "family_id": "F032",
+      "form_id": "abs.s32",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 2,
+      "machine_word": "0x0000000000000102"
+    },
+    {
+      "key": "F032/neg.s32",
+      "family_id": "F032",
+      "form_id": "neg.s32",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 3,
+      "machine_word": "0x0000000000000182"
+    },
+    {
+      "key": "F033/div.u",
+      "family_id": "F033",
+      "form_id": "div.u",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 12,
+      "machine_word": "0x0000000000000612"
+    },
+    {
+      "key": "F033/div.s",
+      "family_id": "F033",
+      "form_id": "div.s",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 13,
+      "machine_word": "0x0000000000000692"
+    },
+    {
+      "key": "F033/rem.u",
+      "family_id": "F033",
+      "form_id": "rem.u",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 14,
+      "machine_word": "0x0000000000000712"
+    },
+    {
+      "key": "F033/rem.s",
+      "family_id": "F033",
+      "form_id": "rem.s",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 15,
+      "machine_word": "0x0000000000000792"
+    },
+    {
+      "key": "F034/and",
+      "family_id": "F034",
+      "form_id": "and",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 16,
+      "machine_word": "0x0000000000000812"
+    },
+    {
+      "key": "F034/or",
+      "family_id": "F034",
+      "form_id": "or",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 17,
+      "machine_word": "0x0000000000000892"
+    },
+    {
+      "key": "F034/xor",
+      "family_id": "F034",
+      "form_id": "xor",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 18,
+      "machine_word": "0x0000000000000912"
+    },
+    {
+      "key": "F034/not",
+      "family_id": "F034",
+      "form_id": "not",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 4,
+      "machine_word": "0x0000000000000202"
+    },
+    {
+      "key": "F034/brev.b32",
+      "family_id": "F034",
+      "form_id": "brev.b32",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 5,
+      "machine_word": "0x0000000000000282"
+    },
+    {
+      "key": "F034/bfe.b32",
+      "family_id": "F034",
+      "form_id": "bfe.b32",
+      "class": "VALU",
+      "format": 2,
+      "opcode": 3,
+      "machine_word": "0x00000000000001A2"
+    },
+    {
+      "key": "F034/bfi.b32",
+      "family_id": "F034",
+      "form_id": "bfi.b32",
+      "class": "VALU",
+      "format": 2,
+      "opcode": 4,
+      "machine_word": "0x0000000000000222"
+    },
+    {
+      "key": "F035/shl",
+      "family_id": "F035",
+      "form_id": "shl",
+      "class": "VALU",
+      "format": 4,
+      "opcode": 8,
+      "machine_word": "0x0000000000000442"
+    },
+    {
+      "key": "F035/shr",
+      "family_id": "F035",
+      "form_id": "shr",
+      "class": "VALU",
+      "format": 4,
+      "opcode": 9,
+      "machine_word": "0x00000000000004C2"
+    },
+    {
+      "key": "F035/sar",
+      "family_id": "F035",
+      "form_id": "sar",
+      "class": "VALU",
+      "format": 4,
+      "opcode": 10,
+      "machine_word": "0x0000000000000542"
+    },
+    {
+      "key": "F035/rotl",
+      "family_id": "F035",
+      "form_id": "rotl",
+      "class": "VALU",
+      "format": 4,
+      "opcode": 11,
+      "machine_word": "0x00000000000005C2"
+    },
+    {
+      "key": "F035/rotr",
+      "family_id": "F035",
+      "form_id": "rotr",
+      "class": "VALU",
+      "format": 4,
+      "opcode": 12,
+      "machine_word": "0x0000000000000642"
+    },
+    {
+      "key": "F036/clz",
+      "family_id": "F036",
+      "form_id": "clz",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 6,
+      "machine_word": "0x0000000000000302"
+    },
+    {
+      "key": "F036/ctz",
+      "family_id": "F036",
+      "form_id": "ctz",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 7,
+      "machine_word": "0x0000000000000382"
+    },
+    {
+      "key": "F036/popc",
+      "family_id": "F036",
+      "form_id": "popc",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 8,
+      "machine_word": "0x0000000000000402"
+    },
+    {
+      "key": "F037/pack.u16x2",
+      "family_id": "F037",
+      "form_id": "pack.u16x2",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 19,
+      "machine_word": "0x0000000000000992"
+    },
+    {
+      "key": "F037/unpack.lo16",
+      "family_id": "F037",
+      "form_id": "unpack.lo16",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 9,
+      "machine_word": "0x0000000000000482"
+    },
+    {
+      "key": "F037/unpack.hi16",
+      "family_id": "F037",
+      "form_id": "unpack.hi16",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 10,
+      "machine_word": "0x0000000000000502"
+    },
+    {
+      "key": "F038/equal",
+      "family_id": "F038",
+      "form_id": "equal",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 0,
+      "machine_word": "0x0000000000000032"
+    },
+    {
+      "key": "F038/not-equal",
+      "family_id": "F038",
+      "form_id": "not-equal",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 1,
+      "machine_word": "0x00000000000000B2"
+    },
+    {
+      "key": "F038/signed-less",
+      "family_id": "F038",
+      "form_id": "signed-less",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 2,
+      "machine_word": "0x0000000000000132"
+    },
+    {
+      "key": "F038/signed-less-or-equal",
+      "family_id": "F038",
+      "form_id": "signed-less-or-equal",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 3,
+      "machine_word": "0x00000000000001B2"
+    },
+    {
+      "key": "F038/unsigned-less",
+      "family_id": "F038",
+      "form_id": "unsigned-less",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 4,
+      "machine_word": "0x0000000000000232"
+    },
+    {
+      "key": "F038/unsigned-less-or-equal",
+      "family_id": "F038",
+      "form_id": "unsigned-less-or-equal",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 5,
+      "machine_word": "0x00000000000002B2"
+    },
+    {
+      "key": "F038/ordered-equal_f32",
+      "family_id": "F038",
+      "form_id": "ordered-equal_f32",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 6,
+      "machine_word": "0x0000000000000332"
+    },
+    {
+      "key": "F038/ordered-less_f32",
+      "family_id": "F038",
+      "form_id": "ordered-less_f32",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 7,
+      "machine_word": "0x00000000000003B2"
+    },
+    {
+      "key": "F038/f32.ne",
+      "family_id": "F038",
+      "form_id": "f32.ne",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 8,
+      "machine_word": "0x0000000000000432"
+    },
+    {
+      "key": "F038/f32.le",
+      "family_id": "F038",
+      "form_id": "f32.le",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 9,
+      "machine_word": "0x00000000000004B2"
+    },
+    {
+      "key": "F038/f32.gt",
+      "family_id": "F038",
+      "form_id": "f32.gt",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 10,
+      "machine_word": "0x0000000000000532"
+    },
+    {
+      "key": "F038/f32.ge",
+      "family_id": "F038",
+      "form_id": "f32.ge",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 11,
+      "machine_word": "0x00000000000005B2"
+    },
+    {
+      "key": "F038/gt.s32",
+      "family_id": "F038",
+      "form_id": "gt.s32",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 12,
+      "machine_word": "0x0000000000000632"
+    },
+    {
+      "key": "F038/ge.s32",
+      "family_id": "F038",
+      "form_id": "ge.s32",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 13,
+      "machine_word": "0x00000000000006B2"
+    },
+    {
+      "key": "F038/gt.u32",
+      "family_id": "F038",
+      "form_id": "gt.u32",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 14,
+      "machine_word": "0x0000000000000732"
+    },
+    {
+      "key": "F038/ge.u32",
+      "family_id": "F038",
+      "form_id": "ge.u32",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 15,
+      "machine_word": "0x00000000000007B2"
+    },
+    {
+      "key": "F038/f32.ord",
+      "family_id": "F038",
+      "form_id": "f32.ord",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 16,
+      "machine_word": "0x0000000000000832"
+    },
+    {
+      "key": "F038/f32.uno",
+      "family_id": "F038",
+      "form_id": "f32.uno",
+      "class": "VALU",
+      "format": 3,
+      "opcode": 17,
+      "machine_word": "0x00000000000008B2"
+    },
+    {
+      "key": "F039/b32",
+      "family_id": "F039",
+      "form_id": "b32",
+      "class": "VALU",
+      "format": 2,
+      "opcode": 5,
+      "machine_word": "0x00000000000002A2"
+    },
+    {
+      "key": "F039/b64",
+      "family_id": "F039",
+      "form_id": "b64",
+      "class": "VALU",
+      "format": 2,
+      "opcode": 6,
+      "machine_word": "0x0000000000000322"
+    },
+    {
+      "key": "F040/s32.f32",
+      "family_id": "F040",
+      "form_id": "s32.f32",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 11,
+      "machine_word": "0x0000000000000582"
+    },
+    {
+      "key": "F040/u32.f32",
+      "family_id": "F040",
+      "form_id": "u32.f32",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 12,
+      "machine_word": "0x0000000000000602"
+    },
+    {
+      "key": "F040/f32.s32",
+      "family_id": "F040",
+      "form_id": "f32.s32",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 13,
+      "machine_word": "0x0000000000000682"
+    },
+    {
+      "key": "F040/f32.u32",
+      "family_id": "F040",
+      "form_id": "f32.u32",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 14,
+      "machine_word": "0x0000000000000702"
+    },
+    {
+      "key": "F040/u16.u32",
+      "family_id": "F040",
+      "form_id": "u16.u32",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 15,
+      "machine_word": "0x0000000000000782"
+    },
+    {
+      "key": "F040/s16.s32",
+      "family_id": "F040",
+      "form_id": "s16.s32",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 16,
+      "machine_word": "0x0000000000000802"
+    },
+    {
+      "key": "F041/add",
+      "family_id": "F041",
+      "form_id": "add",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 20,
+      "machine_word": "0x0000000000000A12"
+    },
+    {
+      "key": "F041/sub",
+      "family_id": "F041",
+      "form_id": "sub",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 21,
+      "machine_word": "0x0000000000000A92"
+    },
+    {
+      "key": "F041/mul",
+      "family_id": "F041",
+      "form_id": "mul",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 22,
+      "machine_word": "0x0000000000000B12"
+    },
+    {
+      "key": "F041/fma",
+      "family_id": "F041",
+      "form_id": "fma",
+      "class": "VALU",
+      "format": 2,
+      "opcode": 7,
+      "machine_word": "0x00000000000003A2"
+    },
+    {
+      "key": "F041/min",
+      "family_id": "F041",
+      "form_id": "min",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 23,
+      "machine_word": "0x0000000000000B92"
+    },
+    {
+      "key": "F041/max",
+      "family_id": "F041",
+      "form_id": "max",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 24,
+      "machine_word": "0x0000000000000C12"
+    },
+    {
+      "key": "F041/sqrt",
+      "family_id": "F041",
+      "form_id": "sqrt",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 17,
+      "machine_word": "0x0000000000000882"
+    },
+    {
+      "key": "F041/abs.f32",
+      "family_id": "F041",
+      "form_id": "abs.f32",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 18,
+      "machine_word": "0x0000000000000902"
+    },
+    {
+      "key": "F041/neg.f32",
+      "family_id": "F041",
+      "form_id": "neg.f32",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 19,
+      "machine_word": "0x0000000000000982"
+    },
+    {
+      "key": "F042/div",
+      "family_id": "F042",
+      "form_id": "div",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 25,
+      "machine_word": "0x0000000000000C92"
+    },
+    {
+      "key": "F042/rcp",
+      "family_id": "F042",
+      "form_id": "rcp",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 20,
+      "machine_word": "0x0000000000000A02"
+    },
+    {
+      "key": "F043/add",
+      "family_id": "F043",
+      "form_id": "add",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 26,
+      "machine_word": "0x0000000000000D12"
+    },
+    {
+      "key": "F043/sub",
+      "family_id": "F043",
+      "form_id": "sub",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 27,
+      "machine_word": "0x0000000000000D92"
+    },
+    {
+      "key": "F043/mul",
+      "family_id": "F043",
+      "form_id": "mul",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 28,
+      "machine_word": "0x0000000000000E12"
+    },
+    {
+      "key": "F043/fma",
+      "family_id": "F043",
+      "form_id": "fma",
+      "class": "VALU",
+      "format": 2,
+      "opcode": 8,
+      "machine_word": "0x0000000000000422"
+    },
+    {
+      "key": "F043/min",
+      "family_id": "F043",
+      "form_id": "min",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 29,
+      "machine_word": "0x0000000000000E92"
+    },
+    {
+      "key": "F043/max",
+      "family_id": "F043",
+      "form_id": "max",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 30,
+      "machine_word": "0x0000000000000F12"
+    },
+    {
+      "key": "F043/div",
+      "family_id": "F043",
+      "form_id": "div",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 31,
+      "machine_word": "0x0000000000000F92"
+    },
+    {
+      "key": "F043/sqrt",
+      "family_id": "F043",
+      "form_id": "sqrt",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 21,
+      "machine_word": "0x0000000000000A82"
+    },
+    {
+      "key": "F043/abs",
+      "family_id": "F043",
+      "form_id": "abs",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 22,
+      "machine_word": "0x0000000000000B02"
+    },
+    {
+      "key": "F043/neg",
+      "family_id": "F043",
+      "form_id": "neg",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 23,
+      "machine_word": "0x0000000000000B82"
+    },
+    {
+      "key": "F044/f32.f16",
+      "family_id": "F044",
+      "form_id": "f32.f16",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 24,
+      "machine_word": "0x0000000000000C02"
+    },
+    {
+      "key": "F044/f16.f32",
+      "family_id": "F044",
+      "form_id": "f16.f32",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 25,
+      "machine_word": "0x0000000000000C82"
+    },
+    {
+      "key": "F045/and",
+      "family_id": "F045",
+      "form_id": "and",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 32,
+      "machine_word": "0x0000000000001012"
+    },
+    {
+      "key": "F045/or",
+      "family_id": "F045",
+      "form_id": "or",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 33,
+      "machine_word": "0x0000000000001092"
+    },
+    {
+      "key": "F045/xor",
+      "family_id": "F045",
+      "form_id": "xor",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 34,
+      "machine_word": "0x0000000000001112"
+    },
+    {
+      "key": "F045/not",
+      "family_id": "F045",
+      "form_id": "not",
+      "class": "VALU",
+      "format": 0,
+      "opcode": 26,
+      "machine_word": "0x0000000000000D02"
+    },
+    {
+      "key": "F046/global.u32.base",
+      "family_id": "F046",
+      "form_id": "global.u32.base",
+      "class": "MEMORY",
+      "format": 0,
+      "opcode": 0,
+      "machine_word": "0x0000000000000003"
+    },
+    {
+      "key": "F046/global.u64.base",
+      "family_id": "F046",
+      "form_id": "global.u64.base",
+      "class": "MEMORY",
+      "format": 0,
+      "opcode": 1,
+      "machine_word": "0x0000000000000083"
+    },
+    {
+      "key": "F046/global.u32.index",
+      "family_id": "F046",
+      "form_id": "global.u32.index",
+      "class": "MEMORY",
+      "format": 6,
+      "opcode": 0,
+      "machine_word": "0x0000000000000063"
+    },
+    {
+      "key": "F046/shared.u32",
+      "family_id": "F046",
+      "form_id": "shared.u32",
+      "class": "MEMORY",
+      "format": 0,
+      "opcode": 2,
+      "machine_word": "0x0000000000000103"
+    },
+    {
+      "key": "F046/const.u32",
+      "family_id": "F046",
+      "form_id": "const.u32",
+      "class": "MEMORY",
+      "format": 0,
+      "opcode": 3,
+      "machine_word": "0x0000000000000183"
+    },
+    {
+      "key": "F046/param.u32",
+      "family_id": "F046",
+      "form_id": "param.u32",
+      "class": "MEMORY",
+      "format": 0,
+      "opcode": 4,
+      "machine_word": "0x0000000000000203"
+    },
+    {
+      "key": "F046/generic.u32.index",
+      "family_id": "F046",
+      "form_id": "generic.u32.index",
+      "class": "MEMORY",
+      "format": 6,
+      "opcode": 1,
+      "machine_word": "0x00000000000000E3"
+    },
+    {
+      "key": "F047/global.u32.base",
+      "family_id": "F047",
+      "form_id": "global.u32.base",
+      "class": "MEMORY",
+      "format": 0,
+      "opcode": 5,
+      "machine_word": "0x0000000000000283"
+    },
+    {
+      "key": "F047/global.u64.base",
+      "family_id": "F047",
+      "form_id": "global.u64.base",
+      "class": "MEMORY",
+      "format": 0,
+      "opcode": 6,
+      "machine_word": "0x0000000000000303"
+    },
+    {
+      "key": "F047/global.u32.index",
+      "family_id": "F047",
+      "form_id": "global.u32.index",
+      "class": "MEMORY",
+      "format": 6,
+      "opcode": 2,
+      "machine_word": "0x0000000000000163"
+    },
+    {
+      "key": "F047/shared.u32",
+      "family_id": "F047",
+      "form_id": "shared.u32",
+      "class": "MEMORY",
+      "format": 0,
+      "opcode": 7,
+      "machine_word": "0x0000000000000383"
+    },
+    {
+      "key": "F047/generic.u32.index",
+      "family_id": "F047",
+      "form_id": "generic.u32.index",
+      "class": "MEMORY",
+      "format": 6,
+      "opcode": 3,
+      "machine_word": "0x00000000000001E3"
+    },
+    {
+      "key": "F048/global.u32.uniform_base",
+      "family_id": "F048",
+      "form_id": "global.u32.uniform_base",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 0,
+      "machine_word": "0x0000000000000013"
+    },
+    {
+      "key": "F048/global.u32.lane_address",
+      "family_id": "F048",
+      "form_id": "global.u32.lane_address",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 1,
+      "machine_word": "0x0000000000000093"
+    },
+    {
+      "key": "F048/global.u32.sv_mix",
+      "family_id": "F048",
+      "form_id": "global.u32.sv_mix",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 2,
+      "machine_word": "0x0000000000000113"
+    },
+    {
+      "key": "F048/global.u64.uniform_base",
+      "family_id": "F048",
+      "form_id": "global.u64.uniform_base",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 3,
+      "machine_word": "0x0000000000000193"
+    },
+    {
+      "key": "F048/global.u64.lane_address",
+      "family_id": "F048",
+      "form_id": "global.u64.lane_address",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 4,
+      "machine_word": "0x0000000000000213"
+    },
+    {
+      "key": "F048/global.u64.sv_mix",
+      "family_id": "F048",
+      "form_id": "global.u64.sv_mix",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 5,
+      "machine_word": "0x0000000000000293"
+    },
+    {
+      "key": "F048/generic.u32.uniform_base",
+      "family_id": "F048",
+      "form_id": "generic.u32.uniform_base",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 6,
+      "machine_word": "0x0000000000000313"
+    },
+    {
+      "key": "F048/generic.u32.lane_address",
+      "family_id": "F048",
+      "form_id": "generic.u32.lane_address",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 7,
+      "machine_word": "0x0000000000000393"
+    },
+    {
+      "key": "F048/generic.u32.sv_mix",
+      "family_id": "F048",
+      "form_id": "generic.u32.sv_mix",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 8,
+      "machine_word": "0x0000000000000413"
+    },
+    {
+      "key": "F048/generic.u64.uniform_base",
+      "family_id": "F048",
+      "form_id": "generic.u64.uniform_base",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 9,
+      "machine_word": "0x0000000000000493"
+    },
+    {
+      "key": "F048/generic.u64.lane_address",
+      "family_id": "F048",
+      "form_id": "generic.u64.lane_address",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 10,
+      "machine_word": "0x0000000000000513"
+    },
+    {
+      "key": "F048/generic.u64.sv_mix",
+      "family_id": "F048",
+      "form_id": "generic.u64.sv_mix",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 11,
+      "machine_word": "0x0000000000000593"
+    },
+    {
+      "key": "F048/const.u32.uniform_base",
+      "family_id": "F048",
+      "form_id": "const.u32.uniform_base",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 12,
+      "machine_word": "0x0000000000000613"
+    },
+    {
+      "key": "F048/const.u32.lane_address",
+      "family_id": "F048",
+      "form_id": "const.u32.lane_address",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 13,
+      "machine_word": "0x0000000000000693"
+    },
+    {
+      "key": "F048/const.u32.sv_mix",
+      "family_id": "F048",
+      "form_id": "const.u32.sv_mix",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 14,
+      "machine_word": "0x0000000000000713"
+    },
+    {
+      "key": "F048/const.u64.uniform_base",
+      "family_id": "F048",
+      "form_id": "const.u64.uniform_base",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 15,
+      "machine_word": "0x0000000000000793"
+    },
+    {
+      "key": "F048/const.u64.lane_address",
+      "family_id": "F048",
+      "form_id": "const.u64.lane_address",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 16,
+      "machine_word": "0x0000000000000813"
+    },
+    {
+      "key": "F048/const.u64.sv_mix",
+      "family_id": "F048",
+      "form_id": "const.u64.sv_mix",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 17,
+      "machine_word": "0x0000000000000893"
+    },
+    {
+      "key": "F048/param.u32.uniform_base",
+      "family_id": "F048",
+      "form_id": "param.u32.uniform_base",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 18,
+      "machine_word": "0x0000000000000913"
+    },
+    {
+      "key": "F048/param.u32.lane_address",
+      "family_id": "F048",
+      "form_id": "param.u32.lane_address",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 19,
+      "machine_word": "0x0000000000000993"
+    },
+    {
+      "key": "F048/param.u32.sv_mix",
+      "family_id": "F048",
+      "form_id": "param.u32.sv_mix",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 20,
+      "machine_word": "0x0000000000000A13"
+    },
+    {
+      "key": "F048/param.u64.uniform_base",
+      "family_id": "F048",
+      "form_id": "param.u64.uniform_base",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 21,
+      "machine_word": "0x0000000000000A93"
+    },
+    {
+      "key": "F048/param.u64.lane_address",
+      "family_id": "F048",
+      "form_id": "param.u64.lane_address",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 22,
+      "machine_word": "0x0000000000000B13"
+    },
+    {
+      "key": "F048/param.u64.sv_mix",
+      "family_id": "F048",
+      "form_id": "param.u64.sv_mix",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 23,
+      "machine_word": "0x0000000000000B93"
+    },
+    {
+      "key": "F048/shared.u32.uniform_base",
+      "family_id": "F048",
+      "form_id": "shared.u32.uniform_base",
+      "class": "MEMORY",
+      "format": 2,
+      "opcode": 0,
+      "machine_word": "0x0000000000000023"
+    },
+    {
+      "key": "F048/shared.u32.lane_address",
+      "family_id": "F048",
+      "form_id": "shared.u32.lane_address",
+      "class": "MEMORY",
+      "format": 2,
+      "opcode": 1,
+      "machine_word": "0x00000000000000A3"
+    },
+    {
+      "key": "F048/shared.u32.sv_mix",
+      "family_id": "F048",
+      "form_id": "shared.u32.sv_mix",
+      "class": "MEMORY",
+      "format": 2,
+      "opcode": 2,
+      "machine_word": "0x0000000000000123"
+    },
+    {
+      "key": "F048/shared.u64.uniform_base",
+      "family_id": "F048",
+      "form_id": "shared.u64.uniform_base",
+      "class": "MEMORY",
+      "format": 2,
+      "opcode": 3,
+      "machine_word": "0x00000000000001A3"
+    },
+    {
+      "key": "F048/shared.u64.lane_address",
+      "family_id": "F048",
+      "form_id": "shared.u64.lane_address",
+      "class": "MEMORY",
+      "format": 2,
+      "opcode": 4,
+      "machine_word": "0x0000000000000223"
+    },
+    {
+      "key": "F048/shared.u64.sv_mix",
+      "family_id": "F048",
+      "form_id": "shared.u64.sv_mix",
+      "class": "MEMORY",
+      "format": 2,
+      "opcode": 5,
+      "machine_word": "0x00000000000002A3"
+    },
+    {
+      "key": "F048/local.u32.lane_address",
+      "family_id": "F048",
+      "form_id": "local.u32.lane_address",
+      "class": "MEMORY",
+      "format": 3,
+      "opcode": 0,
+      "machine_word": "0x0000000000000033"
+    },
+    {
+      "key": "F048/local.u64.lane_address",
+      "family_id": "F048",
+      "form_id": "local.u64.lane_address",
+      "class": "MEMORY",
+      "format": 3,
+      "opcode": 1,
+      "machine_word": "0x00000000000000B3"
+    },
+    {
+      "key": "F049/global.u32.uniform_base",
+      "family_id": "F049",
+      "form_id": "global.u32.uniform_base",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 24,
+      "machine_word": "0x0000000000000C13"
+    },
+    {
+      "key": "F049/global.u32.lane_address",
+      "family_id": "F049",
+      "form_id": "global.u32.lane_address",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 25,
+      "machine_word": "0x0000000000000C93"
+    },
+    {
+      "key": "F049/global.u32.sv_mix",
+      "family_id": "F049",
+      "form_id": "global.u32.sv_mix",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 26,
+      "machine_word": "0x0000000000000D13"
+    },
+    {
+      "key": "F049/global.u64.uniform_base",
+      "family_id": "F049",
+      "form_id": "global.u64.uniform_base",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 27,
+      "machine_word": "0x0000000000000D93"
+    },
+    {
+      "key": "F049/global.u64.lane_address",
+      "family_id": "F049",
+      "form_id": "global.u64.lane_address",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 28,
+      "machine_word": "0x0000000000000E13"
+    },
+    {
+      "key": "F049/global.u64.sv_mix",
+      "family_id": "F049",
+      "form_id": "global.u64.sv_mix",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 29,
+      "machine_word": "0x0000000000000E93"
+    },
+    {
+      "key": "F049/generic.u32.uniform_base",
+      "family_id": "F049",
+      "form_id": "generic.u32.uniform_base",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 30,
+      "machine_word": "0x0000000000000F13"
+    },
+    {
+      "key": "F049/generic.u32.lane_address",
+      "family_id": "F049",
+      "form_id": "generic.u32.lane_address",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 31,
+      "machine_word": "0x0000000000000F93"
+    },
+    {
+      "key": "F049/generic.u32.sv_mix",
+      "family_id": "F049",
+      "form_id": "generic.u32.sv_mix",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 32,
+      "machine_word": "0x0000000000001013"
+    },
+    {
+      "key": "F049/generic.u64.uniform_base",
+      "family_id": "F049",
+      "form_id": "generic.u64.uniform_base",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 33,
+      "machine_word": "0x0000000000001093"
+    },
+    {
+      "key": "F049/generic.u64.lane_address",
+      "family_id": "F049",
+      "form_id": "generic.u64.lane_address",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 34,
+      "machine_word": "0x0000000000001113"
+    },
+    {
+      "key": "F049/generic.u64.sv_mix",
+      "family_id": "F049",
+      "form_id": "generic.u64.sv_mix",
+      "class": "MEMORY",
+      "format": 1,
+      "opcode": 35,
+      "machine_word": "0x0000000000001193"
+    },
+    {
+      "key": "F049/shared.u32.uniform_base",
+      "family_id": "F049",
+      "form_id": "shared.u32.uniform_base",
+      "class": "MEMORY",
+      "format": 2,
+      "opcode": 6,
+      "machine_word": "0x0000000000000323"
+    },
+    {
+      "key": "F049/shared.u32.lane_address",
+      "family_id": "F049",
+      "form_id": "shared.u32.lane_address",
+      "class": "MEMORY",
+      "format": 2,
+      "opcode": 7,
+      "machine_word": "0x00000000000003A3"
+    },
+    {
+      "key": "F049/shared.u32.sv_mix",
+      "family_id": "F049",
+      "form_id": "shared.u32.sv_mix",
+      "class": "MEMORY",
+      "format": 2,
+      "opcode": 8,
+      "machine_word": "0x0000000000000423"
+    },
+    {
+      "key": "F049/shared.u64.uniform_base",
+      "family_id": "F049",
+      "form_id": "shared.u64.uniform_base",
+      "class": "MEMORY",
+      "format": 2,
+      "opcode": 9,
+      "machine_word": "0x00000000000004A3"
+    },
+    {
+      "key": "F049/shared.u64.lane_address",
+      "family_id": "F049",
+      "form_id": "shared.u64.lane_address",
+      "class": "MEMORY",
+      "format": 2,
+      "opcode": 10,
+      "machine_word": "0x0000000000000523"
+    },
+    {
+      "key": "F049/shared.u64.sv_mix",
+      "family_id": "F049",
+      "form_id": "shared.u64.sv_mix",
+      "class": "MEMORY",
+      "format": 2,
+      "opcode": 11,
+      "machine_word": "0x00000000000005A3"
+    },
+    {
+      "key": "F049/local.u32.lane_address",
+      "family_id": "F049",
+      "form_id": "local.u32.lane_address",
+      "class": "MEMORY",
+      "format": 3,
+      "opcode": 2,
+      "machine_word": "0x0000000000000133"
+    },
+    {
+      "key": "F049/local.u64.lane_address",
+      "family_id": "F049",
+      "form_id": "local.u64.lane_address",
+      "class": "MEMORY",
+      "format": 3,
+      "opcode": 3,
+      "machine_word": "0x00000000000001B3"
+    },
+    {
+      "key": "F050/load.u32.global.satom",
+      "family_id": "F050",
+      "form_id": "load.u32.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 0,
+      "machine_word": "0x2000000000000043"
+    },
+    {
+      "key": "F050/store.u32.global.satom",
+      "family_id": "F050",
+      "form_id": "store.u32.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 1,
+      "machine_word": "0x20000000000000C3"
+    },
+    {
+      "key": "F050/add.u32.global.satom",
+      "family_id": "F050",
+      "form_id": "add.u32.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 2,
+      "machine_word": "0x2000000000000143"
+    },
+    {
+      "key": "F050/xchg.u32.global.satom",
+      "family_id": "F050",
+      "form_id": "xchg.u32.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 3,
+      "machine_word": "0x20000000000001C3"
+    },
+    {
+      "key": "F050/and.u32.global.satom",
+      "family_id": "F050",
+      "form_id": "and.u32.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 4,
+      "machine_word": "0x2000000000000243"
+    },
+    {
+      "key": "F050/or.u32.global.satom",
+      "family_id": "F050",
+      "form_id": "or.u32.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 5,
+      "machine_word": "0x20000000000002C3"
+    },
+    {
+      "key": "F050/xor.u32.global.satom",
+      "family_id": "F050",
+      "form_id": "xor.u32.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 6,
+      "machine_word": "0x2000000000000343"
+    },
+    {
+      "key": "F050/min.u32.global.satom",
+      "family_id": "F050",
+      "form_id": "min.u32.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 7,
+      "machine_word": "0x20000000000003C3"
+    },
+    {
+      "key": "F050/max.u32.global.satom",
+      "family_id": "F050",
+      "form_id": "max.u32.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 8,
+      "machine_word": "0x2000000000000443"
+    },
+    {
+      "key": "F050/cas.u32.global.satom",
+      "family_id": "F050",
+      "form_id": "cas.u32.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 9,
+      "machine_word": "0x20000000000004C3"
+    },
+    {
+      "key": "F050/load.u64.global.satom",
+      "family_id": "F050",
+      "form_id": "load.u64.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 10,
+      "machine_word": "0x2000000000000543"
+    },
+    {
+      "key": "F050/store.u64.global.satom",
+      "family_id": "F050",
+      "form_id": "store.u64.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 11,
+      "machine_word": "0x20000000000005C3"
+    },
+    {
+      "key": "F050/add.u64.global.satom",
+      "family_id": "F050",
+      "form_id": "add.u64.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 12,
+      "machine_word": "0x2000000000000643"
+    },
+    {
+      "key": "F050/xchg.u64.global.satom",
+      "family_id": "F050",
+      "form_id": "xchg.u64.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 13,
+      "machine_word": "0x20000000000006C3"
+    },
+    {
+      "key": "F050/and.u64.global.satom",
+      "family_id": "F050",
+      "form_id": "and.u64.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 14,
+      "machine_word": "0x2000000000000743"
+    },
+    {
+      "key": "F050/or.u64.global.satom",
+      "family_id": "F050",
+      "form_id": "or.u64.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 15,
+      "machine_word": "0x20000000000007C3"
+    },
+    {
+      "key": "F050/xor.u64.global.satom",
+      "family_id": "F050",
+      "form_id": "xor.u64.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 16,
+      "machine_word": "0x2000000000000843"
+    },
+    {
+      "key": "F050/min.u64.global.satom",
+      "family_id": "F050",
+      "form_id": "min.u64.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 17,
+      "machine_word": "0x20000000000008C3"
+    },
+    {
+      "key": "F050/max.u64.global.satom",
+      "family_id": "F050",
+      "form_id": "max.u64.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 18,
+      "machine_word": "0x2000000000000943"
+    },
+    {
+      "key": "F050/cas.u64.global.satom",
+      "family_id": "F050",
+      "form_id": "cas.u64.global.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 19,
+      "machine_word": "0x20000000000009C3"
+    },
+    {
+      "key": "F050/load.u32.shared.satom",
+      "family_id": "F050",
+      "form_id": "load.u32.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 20,
+      "machine_word": "0x0000000000000A43"
+    },
+    {
+      "key": "F050/store.u32.shared.satom",
+      "family_id": "F050",
+      "form_id": "store.u32.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 21,
+      "machine_word": "0x0000000000000AC3"
+    },
+    {
+      "key": "F050/add.u32.shared.satom",
+      "family_id": "F050",
+      "form_id": "add.u32.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 22,
+      "machine_word": "0x0000000000000B43"
+    },
+    {
+      "key": "F050/xchg.u32.shared.satom",
+      "family_id": "F050",
+      "form_id": "xchg.u32.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 23,
+      "machine_word": "0x0000000000000BC3"
+    },
+    {
+      "key": "F050/and.u32.shared.satom",
+      "family_id": "F050",
+      "form_id": "and.u32.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 24,
+      "machine_word": "0x0000000000000C43"
+    },
+    {
+      "key": "F050/or.u32.shared.satom",
+      "family_id": "F050",
+      "form_id": "or.u32.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 25,
+      "machine_word": "0x0000000000000CC3"
+    },
+    {
+      "key": "F050/xor.u32.shared.satom",
+      "family_id": "F050",
+      "form_id": "xor.u32.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 26,
+      "machine_word": "0x0000000000000D43"
+    },
+    {
+      "key": "F050/min.u32.shared.satom",
+      "family_id": "F050",
+      "form_id": "min.u32.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 27,
+      "machine_word": "0x0000000000000DC3"
+    },
+    {
+      "key": "F050/max.u32.shared.satom",
+      "family_id": "F050",
+      "form_id": "max.u32.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 28,
+      "machine_word": "0x0000000000000E43"
+    },
+    {
+      "key": "F050/cas.u32.shared.satom",
+      "family_id": "F050",
+      "form_id": "cas.u32.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 29,
+      "machine_word": "0x0000000000000EC3"
+    },
+    {
+      "key": "F050/load.u64.shared.satom",
+      "family_id": "F050",
+      "form_id": "load.u64.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 30,
+      "machine_word": "0x0000000000000F43"
+    },
+    {
+      "key": "F050/store.u64.shared.satom",
+      "family_id": "F050",
+      "form_id": "store.u64.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 31,
+      "machine_word": "0x0000000000000FC3"
+    },
+    {
+      "key": "F050/add.u64.shared.satom",
+      "family_id": "F050",
+      "form_id": "add.u64.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 32,
+      "machine_word": "0x0000000000001043"
+    },
+    {
+      "key": "F050/xchg.u64.shared.satom",
+      "family_id": "F050",
+      "form_id": "xchg.u64.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 33,
+      "machine_word": "0x00000000000010C3"
+    },
+    {
+      "key": "F050/and.u64.shared.satom",
+      "family_id": "F050",
+      "form_id": "and.u64.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 34,
+      "machine_word": "0x0000000000001143"
+    },
+    {
+      "key": "F050/or.u64.shared.satom",
+      "family_id": "F050",
+      "form_id": "or.u64.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 35,
+      "machine_word": "0x00000000000011C3"
+    },
+    {
+      "key": "F050/xor.u64.shared.satom",
+      "family_id": "F050",
+      "form_id": "xor.u64.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 36,
+      "machine_word": "0x0000000000001243"
+    },
+    {
+      "key": "F050/min.u64.shared.satom",
+      "family_id": "F050",
+      "form_id": "min.u64.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 37,
+      "machine_word": "0x00000000000012C3"
+    },
+    {
+      "key": "F050/max.u64.shared.satom",
+      "family_id": "F050",
+      "form_id": "max.u64.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 38,
+      "machine_word": "0x0000000000001343"
+    },
+    {
+      "key": "F050/cas.u64.shared.satom",
+      "family_id": "F050",
+      "form_id": "cas.u64.shared.satom",
+      "class": "MEMORY",
+      "format": 4,
+      "opcode": 39,
+      "machine_word": "0x00000000000013C3"
+    },
+    {
+      "key": "F051/load.u32.global.vatom",
+      "family_id": "F051",
+      "form_id": "load.u32.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 0,
+      "machine_word": "0x2000000000000053"
+    },
+    {
+      "key": "F051/store.u32.global.vatom",
+      "family_id": "F051",
+      "form_id": "store.u32.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 1,
+      "machine_word": "0x20000000000000D3"
+    },
+    {
+      "key": "F051/add.u32.global.vatom",
+      "family_id": "F051",
+      "form_id": "add.u32.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 2,
+      "machine_word": "0x2000000000000153"
+    },
+    {
+      "key": "F051/xchg.u32.global.vatom",
+      "family_id": "F051",
+      "form_id": "xchg.u32.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 3,
+      "machine_word": "0x20000000000001D3"
+    },
+    {
+      "key": "F051/and.u32.global.vatom",
+      "family_id": "F051",
+      "form_id": "and.u32.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 4,
+      "machine_word": "0x2000000000000253"
+    },
+    {
+      "key": "F051/or.u32.global.vatom",
+      "family_id": "F051",
+      "form_id": "or.u32.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 5,
+      "machine_word": "0x20000000000002D3"
+    },
+    {
+      "key": "F051/xor.u32.global.vatom",
+      "family_id": "F051",
+      "form_id": "xor.u32.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 6,
+      "machine_word": "0x2000000000000353"
+    },
+    {
+      "key": "F051/min.u32.global.vatom",
+      "family_id": "F051",
+      "form_id": "min.u32.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 7,
+      "machine_word": "0x20000000000003D3"
+    },
+    {
+      "key": "F051/max.u32.global.vatom",
+      "family_id": "F051",
+      "form_id": "max.u32.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 8,
+      "machine_word": "0x2000000000000453"
+    },
+    {
+      "key": "F051/cas.u32.global.vatom",
+      "family_id": "F051",
+      "form_id": "cas.u32.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 9,
+      "machine_word": "0x20000000000004D3"
+    },
+    {
+      "key": "F051/load.u64.global.vatom",
+      "family_id": "F051",
+      "form_id": "load.u64.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 10,
+      "machine_word": "0x2000000000000553"
+    },
+    {
+      "key": "F051/store.u64.global.vatom",
+      "family_id": "F051",
+      "form_id": "store.u64.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 11,
+      "machine_word": "0x20000000000005D3"
+    },
+    {
+      "key": "F051/add.u64.global.vatom",
+      "family_id": "F051",
+      "form_id": "add.u64.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 12,
+      "machine_word": "0x2000000000000653"
+    },
+    {
+      "key": "F051/xchg.u64.global.vatom",
+      "family_id": "F051",
+      "form_id": "xchg.u64.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 13,
+      "machine_word": "0x20000000000006D3"
+    },
+    {
+      "key": "F051/and.u64.global.vatom",
+      "family_id": "F051",
+      "form_id": "and.u64.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 14,
+      "machine_word": "0x2000000000000753"
+    },
+    {
+      "key": "F051/or.u64.global.vatom",
+      "family_id": "F051",
+      "form_id": "or.u64.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 15,
+      "machine_word": "0x20000000000007D3"
+    },
+    {
+      "key": "F051/xor.u64.global.vatom",
+      "family_id": "F051",
+      "form_id": "xor.u64.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 16,
+      "machine_word": "0x2000000000000853"
+    },
+    {
+      "key": "F051/min.u64.global.vatom",
+      "family_id": "F051",
+      "form_id": "min.u64.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 17,
+      "machine_word": "0x20000000000008D3"
+    },
+    {
+      "key": "F051/max.u64.global.vatom",
+      "family_id": "F051",
+      "form_id": "max.u64.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 18,
+      "machine_word": "0x2000000000000953"
+    },
+    {
+      "key": "F051/cas.u64.global.vatom",
+      "family_id": "F051",
+      "form_id": "cas.u64.global.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 19,
+      "machine_word": "0x20000000000009D3"
+    },
+    {
+      "key": "F051/load.u32.shared.vatom",
+      "family_id": "F051",
+      "form_id": "load.u32.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 20,
+      "machine_word": "0x0000000000000A53"
+    },
+    {
+      "key": "F051/store.u32.shared.vatom",
+      "family_id": "F051",
+      "form_id": "store.u32.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 21,
+      "machine_word": "0x0000000000000AD3"
+    },
+    {
+      "key": "F051/add.u32.shared.vatom",
+      "family_id": "F051",
+      "form_id": "add.u32.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 22,
+      "machine_word": "0x0000000000000B53"
+    },
+    {
+      "key": "F051/xchg.u32.shared.vatom",
+      "family_id": "F051",
+      "form_id": "xchg.u32.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 23,
+      "machine_word": "0x0000000000000BD3"
+    },
+    {
+      "key": "F051/and.u32.shared.vatom",
+      "family_id": "F051",
+      "form_id": "and.u32.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 24,
+      "machine_word": "0x0000000000000C53"
+    },
+    {
+      "key": "F051/or.u32.shared.vatom",
+      "family_id": "F051",
+      "form_id": "or.u32.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 25,
+      "machine_word": "0x0000000000000CD3"
+    },
+    {
+      "key": "F051/xor.u32.shared.vatom",
+      "family_id": "F051",
+      "form_id": "xor.u32.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 26,
+      "machine_word": "0x0000000000000D53"
+    },
+    {
+      "key": "F051/min.u32.shared.vatom",
+      "family_id": "F051",
+      "form_id": "min.u32.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 27,
+      "machine_word": "0x0000000000000DD3"
+    },
+    {
+      "key": "F051/max.u32.shared.vatom",
+      "family_id": "F051",
+      "form_id": "max.u32.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 28,
+      "machine_word": "0x0000000000000E53"
+    },
+    {
+      "key": "F051/cas.u32.shared.vatom",
+      "family_id": "F051",
+      "form_id": "cas.u32.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 29,
+      "machine_word": "0x0000000000000ED3"
+    },
+    {
+      "key": "F051/load.u64.shared.vatom",
+      "family_id": "F051",
+      "form_id": "load.u64.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 30,
+      "machine_word": "0x0000000000000F53"
+    },
+    {
+      "key": "F051/store.u64.shared.vatom",
+      "family_id": "F051",
+      "form_id": "store.u64.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 31,
+      "machine_word": "0x0000000000000FD3"
+    },
+    {
+      "key": "F051/add.u64.shared.vatom",
+      "family_id": "F051",
+      "form_id": "add.u64.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 32,
+      "machine_word": "0x0000000000001053"
+    },
+    {
+      "key": "F051/xchg.u64.shared.vatom",
+      "family_id": "F051",
+      "form_id": "xchg.u64.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 33,
+      "machine_word": "0x00000000000010D3"
+    },
+    {
+      "key": "F051/and.u64.shared.vatom",
+      "family_id": "F051",
+      "form_id": "and.u64.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 34,
+      "machine_word": "0x0000000000001153"
+    },
+    {
+      "key": "F051/or.u64.shared.vatom",
+      "family_id": "F051",
+      "form_id": "or.u64.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 35,
+      "machine_word": "0x00000000000011D3"
+    },
+    {
+      "key": "F051/xor.u64.shared.vatom",
+      "family_id": "F051",
+      "form_id": "xor.u64.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 36,
+      "machine_word": "0x0000000000001253"
+    },
+    {
+      "key": "F051/min.u64.shared.vatom",
+      "family_id": "F051",
+      "form_id": "min.u64.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 37,
+      "machine_word": "0x00000000000012D3"
+    },
+    {
+      "key": "F051/max.u64.shared.vatom",
+      "family_id": "F051",
+      "form_id": "max.u64.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 38,
+      "machine_word": "0x0000000000001353"
+    },
+    {
+      "key": "F051/cas.u64.shared.vatom",
+      "family_id": "F051",
+      "form_id": "cas.u64.shared.vatom",
+      "class": "MEMORY",
+      "format": 5,
+      "opcode": 39,
+      "machine_word": "0x00000000000013D3"
+    },
+    {
+      "key": "F051/load.u32.global.vatomx",
+      "family_id": "F051",
+      "form_id": "load.u32.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 0,
+      "machine_word": "0x2000000000000073"
+    },
+    {
+      "key": "F051/store.u32.global.vatomx",
+      "family_id": "F051",
+      "form_id": "store.u32.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 1,
+      "machine_word": "0x20000000000000F3"
+    },
+    {
+      "key": "F051/add.u32.global.vatomx",
+      "family_id": "F051",
+      "form_id": "add.u32.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 2,
+      "machine_word": "0x2000000000000173"
+    },
+    {
+      "key": "F051/xchg.u32.global.vatomx",
+      "family_id": "F051",
+      "form_id": "xchg.u32.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 3,
+      "machine_word": "0x20000000000001F3"
+    },
+    {
+      "key": "F051/and.u32.global.vatomx",
+      "family_id": "F051",
+      "form_id": "and.u32.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 4,
+      "machine_word": "0x2000000000000273"
+    },
+    {
+      "key": "F051/or.u32.global.vatomx",
+      "family_id": "F051",
+      "form_id": "or.u32.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 5,
+      "machine_word": "0x20000000000002F3"
+    },
+    {
+      "key": "F051/xor.u32.global.vatomx",
+      "family_id": "F051",
+      "form_id": "xor.u32.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 6,
+      "machine_word": "0x2000000000000373"
+    },
+    {
+      "key": "F051/min.u32.global.vatomx",
+      "family_id": "F051",
+      "form_id": "min.u32.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 7,
+      "machine_word": "0x20000000000003F3"
+    },
+    {
+      "key": "F051/max.u32.global.vatomx",
+      "family_id": "F051",
+      "form_id": "max.u32.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 8,
+      "machine_word": "0x2000000000000473"
+    },
+    {
+      "key": "F051/cas.u32.global.vatomx",
+      "family_id": "F051",
+      "form_id": "cas.u32.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 9,
+      "machine_word": "0x20000000000004F3"
+    },
+    {
+      "key": "F051/load.u64.global.vatomx",
+      "family_id": "F051",
+      "form_id": "load.u64.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 10,
+      "machine_word": "0x2000000000000573"
+    },
+    {
+      "key": "F051/store.u64.global.vatomx",
+      "family_id": "F051",
+      "form_id": "store.u64.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 11,
+      "machine_word": "0x20000000000005F3"
+    },
+    {
+      "key": "F051/add.u64.global.vatomx",
+      "family_id": "F051",
+      "form_id": "add.u64.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 12,
+      "machine_word": "0x2000000000000673"
+    },
+    {
+      "key": "F051/xchg.u64.global.vatomx",
+      "family_id": "F051",
+      "form_id": "xchg.u64.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 13,
+      "machine_word": "0x20000000000006F3"
+    },
+    {
+      "key": "F051/and.u64.global.vatomx",
+      "family_id": "F051",
+      "form_id": "and.u64.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 14,
+      "machine_word": "0x2000000000000773"
+    },
+    {
+      "key": "F051/or.u64.global.vatomx",
+      "family_id": "F051",
+      "form_id": "or.u64.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 15,
+      "machine_word": "0x20000000000007F3"
+    },
+    {
+      "key": "F051/xor.u64.global.vatomx",
+      "family_id": "F051",
+      "form_id": "xor.u64.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 16,
+      "machine_word": "0x2000000000000873"
+    },
+    {
+      "key": "F051/min.u64.global.vatomx",
+      "family_id": "F051",
+      "form_id": "min.u64.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 17,
+      "machine_word": "0x20000000000008F3"
+    },
+    {
+      "key": "F051/max.u64.global.vatomx",
+      "family_id": "F051",
+      "form_id": "max.u64.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 18,
+      "machine_word": "0x2000000000000973"
+    },
+    {
+      "key": "F051/cas.u64.global.vatomx",
+      "family_id": "F051",
+      "form_id": "cas.u64.global.vatomx",
+      "class": "MEMORY",
+      "format": 7,
+      "opcode": 19,
+      "machine_word": "0x20000000000009F3"
+    },
+    {
+      "key": "F052/direct",
+      "family_id": "F052",
+      "form_id": "direct",
+      "class": "CONTROL",
+      "format": 0,
+      "opcode": 0,
+      "machine_word": "0x0000000000000004"
+    },
+    {
+      "key": "F053/direct",
+      "family_id": "F053",
+      "form_id": "direct",
+      "class": "CONTROL",
+      "format": 0,
+      "opcode": 1,
+      "machine_word": "0x0000000000000084"
+    },
+    {
+      "key": "F054/direct",
+      "family_id": "F054",
+      "form_id": "direct",
+      "class": "CONTROL",
+      "format": 0,
+      "opcode": 2,
+      "machine_word": "0x0000000000000104"
+    },
+    {
+      "key": "F055/base",
+      "family_id": "F055",
+      "form_id": "base",
+      "class": "CONTROL",
+      "format": 0,
+      "opcode": 3,
+      "machine_word": "0x0000000000000184"
+    },
+    {
+      "key": "F056/base",
+      "family_id": "F056",
+      "form_id": "base",
+      "class": "CONTROL",
+      "format": 0,
+      "opcode": 4,
+      "machine_word": "0x0000000000000204"
+    },
+    {
+      "key": "F057/direct",
+      "family_id": "F057",
+      "form_id": "direct",
+      "class": "CONTROL",
+      "format": 0,
+      "opcode": 5,
+      "machine_word": "0x0000000000000284"
+    },
+    {
+      "key": "F057/indirect",
+      "family_id": "F057",
+      "form_id": "indirect",
+      "class": "CONTROL",
+      "format": 0,
+      "opcode": 6,
+      "machine_word": "0x0000000000000304"
+    },
+    {
+      "key": "F058/base",
+      "family_id": "F058",
+      "form_id": "base",
+      "class": "CONTROL",
+      "format": 0,
+      "opcode": 7,
+      "machine_word": "0x0000000000000384"
+    },
+    {
+      "key": "F059/indirect",
+      "family_id": "F059",
+      "form_id": "indirect",
+      "class": "CONTROL",
+      "format": 0,
+      "opcode": 8,
+      "machine_word": "0x0000000000000404"
+    },
+    {
+      "key": "F060/cta",
+      "family_id": "F060",
+      "form_id": "cta",
+      "class": "SYNC",
+      "format": 0,
+      "opcode": 0,
+      "machine_word": "0x0300000000000005"
+    },
+    {
+      "key": "F060/device",
+      "family_id": "F060",
+      "form_id": "device",
+      "class": "SYNC",
+      "format": 0,
+      "opcode": 1,
+      "machine_word": "0x0340000000000085"
+    },
+    {
+      "key": "F060/system",
+      "family_id": "F060",
+      "form_id": "system",
+      "class": "SYNC",
+      "format": 0,
+      "opcode": 2,
+      "machine_word": "0x0380000000000105"
+    },
+    {
+      "key": "F061/cta",
+      "family_id": "F061",
+      "form_id": "cta",
+      "class": "SYNC",
+      "format": 0,
+      "opcode": 3,
+      "machine_word": "0x0018000000000185"
+    },
+    {
+      "key": "F062/cta",
+      "family_id": "F062",
+      "form_id": "cta",
+      "class": "SYNC",
+      "format": 0,
+      "opcode": 4,
+      "machine_word": "0x0018000000280205"
+    },
+    {
+      "key": "F063/cta",
+      "family_id": "F063",
+      "form_id": "cta",
+      "class": "SYNC",
+      "format": 0,
+      "opcode": 5,
+      "machine_word": "0x0018000000280285"
+    },
+    {
+      "key": "F064/reg_lane",
+      "family_id": "F064",
+      "form_id": "reg_lane",
+      "class": "CROSSLANE",
+      "format": 0,
+      "opcode": 0,
+      "machine_word": "0x0000000000000006"
+    },
+    {
+      "key": "F064/imm_lane",
+      "family_id": "F064",
+      "form_id": "imm_lane",
+      "class": "CROSSLANE",
+      "format": 0,
+      "opcode": 1,
+      "machine_word": "0x0000000000000086"
+    },
+    {
+      "key": "F065/b32",
+      "family_id": "F065",
+      "form_id": "b32",
+      "class": "CROSSLANE",
+      "format": 0,
+      "opcode": 2,
+      "machine_word": "0x0000000000000106"
+    },
+    {
+      "key": "F065/b64",
+      "family_id": "F065",
+      "form_id": "b64",
+      "class": "CROSSLANE",
+      "format": 0,
+      "opcode": 3,
+      "machine_word": "0x0000000000000186"
+    },
+    {
+      "key": "F066/b32",
+      "family_id": "F066",
+      "form_id": "b32",
+      "class": "CROSSLANE",
+      "format": 0,
+      "opcode": 4,
+      "machine_word": "0x0000000000000206"
+    },
+    {
+      "key": "F066/b64",
+      "family_id": "F066",
+      "form_id": "b64",
+      "class": "CROSSLANE",
+      "format": 0,
+      "opcode": 5,
+      "machine_word": "0x0000000000000286"
+    },
+    {
+      "key": "F067/any",
+      "family_id": "F067",
+      "form_id": "any",
+      "class": "CROSSLANE",
+      "format": 0,
+      "opcode": 6,
+      "machine_word": "0x0000000000000306"
+    },
+    {
+      "key": "F067/all",
+      "family_id": "F067",
+      "form_id": "all",
+      "class": "CROSSLANE",
+      "format": 0,
+      "opcode": 7,
+      "machine_word": "0x0000000000000386"
+    },
+    {
+      "key": "F067/ballot",
+      "family_id": "F067",
+      "form_id": "ballot",
+      "class": "CROSSLANE",
+      "format": 0,
+      "opcode": 8,
+      "machine_word": "0x0000000000000406"
+    },
+    {
+      "key": "F068/idx",
+      "family_id": "F068",
+      "form_id": "idx",
+      "class": "CROSSLANE",
+      "format": 0,
+      "opcode": 9,
+      "machine_word": "0x0000000000000486"
+    },
+    {
+      "key": "F068/up",
+      "family_id": "F068",
+      "form_id": "up",
+      "class": "CROSSLANE",
+      "format": 0,
+      "opcode": 10,
+      "machine_word": "0x0000000000000506"
+    },
+    {
+      "key": "F068/down",
+      "family_id": "F068",
+      "form_id": "down",
+      "class": "CROSSLANE",
+      "format": 0,
+      "opcode": 11,
+      "machine_word": "0x0000000000000586"
+    },
+    {
+      "key": "F068/xor",
+      "family_id": "F068",
+      "form_id": "xor",
+      "class": "CROSSLANE",
+      "format": 0,
+      "opcode": 12,
+      "machine_word": "0x0000000000000606"
+    },
+    {
+      "key": "F069/m16n8k16.f16xf16.f32",
+      "family_id": "F069",
+      "form_id": "m16n8k16.f16xf16.f32",
+      "class": "MATRIX",
+      "format": 0,
+      "opcode": 0,
+      "machine_word": "0x0000000000000007"
+    }
+  ]
+}

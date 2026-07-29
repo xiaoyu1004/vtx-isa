@@ -1,0 +1,3507 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vtx.example/schema/vtx1-isa-1.0-draft.json",
+  "title": "VTX-1 ISA 1.0 Draft schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "title",
+    "version",
+    "status",
+    "word_bits",
+    "counts",
+    "barrier_contract",
+    "architectural_limits",
+    "encoding",
+    "class_registry",
+    "format_registry",
+    "guard_conditions",
+    "special_registers",
+    "operand_types",
+    "semantic_groups",
+    "faults",
+    "fault_priority",
+    "families",
+    "descriptor_contract"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0-draft"
+    },
+    "title": {
+      "const": "VTX-1 ISA 1.0 Draft"
+    },
+    "version": {
+      "const": "1.0-draft"
+    },
+    "status": {
+      "const": "Draft"
+    },
+    "word_bits": {
+      "const": 64
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "families",
+        "forms"
+      ],
+      "properties": {
+        "families": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "forms": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "barrier_contract": {
+      "const": {
+        "owner_identity": {
+          "name": "linear_tid",
+          "formula": "linear_tid = warp_id * 32 + lane_id",
+          "equivalent_tuple": [
+            "warp_id",
+            "lane_id"
+          ]
+        },
+        "generation_domain": {
+          "type": "mathematical_nonnegative_integer",
+          "notation": "N",
+          "initial": 0,
+          "retire_step": 1,
+          "monotonic": true,
+          "wraps": false,
+          "finite_implementation_rule": "as_if_non_wrapping",
+          "observable_identity_reuse": "forbidden",
+          "stale_token_revival": "forbidden",
+          "example_mechanisms": [
+            "wider_epoch",
+            "capability_id",
+            "safe_reclamation"
+          ]
+        },
+        "token_tag_fields": [
+          "cta_identity",
+          "linear_tid",
+          "slot",
+          "generation"
+        ],
+        "wait_record_fields": [
+          "warp_id",
+          "owner_snapshot",
+          "resume_pc"
+        ],
+        "max_blocked_records_per_warp": 1,
+        "idle_slot": {
+          "mode": "EMPTY",
+          "arrived_set_empty": true,
+          "consumed_set_empty": true,
+          "waiters_empty": true,
+          "completed": false,
+          "generation_ignored": true
+        },
+        "vgpr_tag_write_policy": {
+          "target_selection": {
+            "register_file": "VGPR",
+            "accesses": [
+              "write",
+              "read_write"
+            ],
+            "granularity": "each_vgpr32_slot"
+          },
+          "default_action": "clear",
+          "exceptions": [
+            {
+              "family_id": "F025",
+              "form_id": "b32.reg",
+              "mnemonic": "V_MOV.B32",
+              "action": "copy_source_tag"
+            },
+            {
+              "family_id": "F062",
+              "form_id": "cta",
+              "mnemonic": "BAR.ARRIVE.CTA",
+              "action": "create_tag"
+            }
+          ]
+        }
+      }
+    },
+    "architectural_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "call_stack_depth",
+        "named_barrier_slots_per_cta"
+      ],
+      "properties": {
+        "call_stack_depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "named_barrier_slots_per_cta": {
+          "const": 8
+        }
+      }
+    },
+    "encoding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "word_bits",
+        "byte_order",
+        "header",
+        "reserved_guard_codes",
+        "control_target"
+      ],
+      "properties": {
+        "word_bits": {
+          "const": 64
+        },
+        "byte_order": {
+          "const": "little"
+        },
+        "header": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "class",
+            "format",
+            "opcode",
+            "guard",
+            "payload"
+          ],
+          "properties": {
+            "class": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/bitSpec"
+                },
+                {
+                  "properties": {
+                    "lsb": {
+                      "const": 0
+                    },
+                    "width": {
+                      "const": 4
+                    }
+                  }
+                }
+              ]
+            },
+            "format": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/bitSpec"
+                },
+                {
+                  "properties": {
+                    "lsb": {
+                      "const": 4
+                    },
+                    "width": {
+                      "const": 3
+                    }
+                  }
+                }
+              ]
+            },
+            "opcode": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/bitSpec"
+                },
+                {
+                  "properties": {
+                    "lsb": {
+                      "const": 7
+                    },
+                    "width": {
+                      "const": 6
+                    }
+                  }
+                }
+              ]
+            },
+            "guard": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/bitSpec"
+                },
+                {
+                  "properties": {
+                    "lsb": {
+                      "const": 13
+                    },
+                    "width": {
+                      "const": 6
+                    }
+                  }
+                }
+              ]
+            },
+            "payload": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/bitSpec"
+                },
+                {
+                  "properties": {
+                    "lsb": {
+                      "const": 19
+                    },
+                    "width": {
+                      "const": 45
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "reserved_guard_codes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "first",
+            "last"
+          ],
+          "properties": {
+            "first": {
+              "const": 34
+            },
+            "last": {
+              "const": 63
+            }
+          }
+        },
+        "control_target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "field",
+            "decode",
+            "unit_bytes"
+          ],
+          "properties": {
+            "field": {
+              "const": "disp30"
+            },
+            "decode": {
+              "const": "target_pc = next_pc + (sign_extend_30(disp30) << 3)"
+            },
+            "unit_bytes": {
+              "const": 8
+            }
+          }
+        }
+      }
+    },
+    "class_registry": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "prefixItems": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "name",
+            "description"
+          ],
+          "properties": {
+            "code": {
+              "const": 0
+            },
+            "name": {
+              "const": "SYS"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "name",
+            "description"
+          ],
+          "properties": {
+            "code": {
+              "const": 1
+            },
+            "name": {
+              "const": "SALU"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "name",
+            "description"
+          ],
+          "properties": {
+            "code": {
+              "const": 2
+            },
+            "name": {
+              "const": "VALU"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "name",
+            "description"
+          ],
+          "properties": {
+            "code": {
+              "const": 3
+            },
+            "name": {
+              "const": "MEMORY"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "name",
+            "description"
+          ],
+          "properties": {
+            "code": {
+              "const": 4
+            },
+            "name": {
+              "const": "CONTROL"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "name",
+            "description"
+          ],
+          "properties": {
+            "code": {
+              "const": 5
+            },
+            "name": {
+              "const": "SYNC"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "name",
+            "description"
+          ],
+          "properties": {
+            "code": {
+              "const": 6
+            },
+            "name": {
+              "const": "CROSSLANE"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "name",
+            "description"
+          ],
+          "properties": {
+            "code": {
+              "const": 7
+            },
+            "name": {
+              "const": "MATRIX"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ],
+      "items": false
+    },
+    "format_registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "SYS",
+        "SALU",
+        "VALU",
+        "MEMORY",
+        "CONTROL",
+        "SYNC",
+        "CROSSLANE",
+        "MATRIX"
+      ],
+      "properties": {
+        "SYS": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "name": {
+                      "const": "SYS"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        },
+        "SALU": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "name": {
+                      "const": "S1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 1
+                    },
+                    "name": {
+                      "const": "S2"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 2
+                    },
+                    "name": {
+                      "const": "S3"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 3
+                    },
+                    "name": {
+                      "const": "SCMP"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 4
+                    },
+                    "name": {
+                      "const": "SIMM"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        },
+        "VALU": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "name": {
+                      "const": "V1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 1
+                    },
+                    "name": {
+                      "const": "V2"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 2
+                    },
+                    "name": {
+                      "const": "V3"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 3
+                    },
+                    "name": {
+                      "const": "VCMP"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 4
+                    },
+                    "name": {
+                      "const": "VIMM"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        },
+        "MEMORY": {
+          "type": "array",
+          "minItems": 8,
+          "maxItems": 8,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "name": {
+                      "const": "SMEM"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 1
+                    },
+                    "name": {
+                      "const": "VMEM"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 2
+                    },
+                    "name": {
+                      "const": "VSHMEM"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 3
+                    },
+                    "name": {
+                      "const": "VLMEM"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 4
+                    },
+                    "name": {
+                      "const": "SATOM"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 5
+                    },
+                    "name": {
+                      "const": "VATOM"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 6
+                    },
+                    "name": {
+                      "const": "SMEMX"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 7
+                    },
+                    "name": {
+                      "const": "VATOMX"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        },
+        "CONTROL": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "name": {
+                      "const": "CTRL"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        },
+        "SYNC": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "name": {
+                      "const": "SYNC"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        },
+        "CROSSLANE": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "name": {
+                      "const": "COLL"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        },
+        "MATRIX": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/formatItem"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "name": {
+                      "const": "MMA"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        }
+      }
+    },
+    "guard_conditions": {
+      "type": "array",
+      "minItems": 34,
+      "maxItems": 34,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "name"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 33
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "special_registers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uniform",
+        "lane"
+      ],
+      "properties": {
+        "uniform": {
+          "$ref": "#/$defs/specialList"
+        },
+        "lane": {
+          "$ref": "#/$defs/specialList"
+        }
+      }
+    },
+    "operand_types": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "address_const_lane",
+        "address_const_uniform",
+        "address_generic_lane",
+        "address_generic_uniform",
+        "address_global_lane",
+        "address_global_uniform",
+        "address_local_lane",
+        "address_param_lane",
+        "address_param_uniform",
+        "address_shared_lane",
+        "address_shared_uniform",
+        "atomic_order",
+        "barrier_id",
+        "barrier_token",
+        "call_stack",
+        "disp30",
+        "implicit_state",
+        "lane_special",
+        "memory_scope",
+        "mma_fragment",
+        "pred_cond",
+        "scc",
+        "sgpr32",
+        "sgpr64",
+        "sgpr_index",
+        "simm16",
+        "simm24",
+        "simm32",
+        "simm8",
+        "uimm16",
+        "uimm24",
+        "uimm32",
+        "uimm5",
+        "uimm8",
+        "uniform_special",
+        "vgpr32",
+        "vgpr64",
+        "vgpr_index",
+        "vpred"
+      ],
+      "properties": {
+        "address_const_uniform": {
+          "$ref": "#/$defs/operandType"
+        },
+        "address_generic_lane": {
+          "$ref": "#/$defs/operandType"
+        },
+        "address_generic_uniform": {
+          "$ref": "#/$defs/operandType"
+        },
+        "address_global_lane": {
+          "$ref": "#/$defs/operandType"
+        },
+        "address_global_uniform": {
+          "$ref": "#/$defs/operandType"
+        },
+        "address_local_lane": {
+          "$ref": "#/$defs/operandType"
+        },
+        "address_param_uniform": {
+          "$ref": "#/$defs/operandType"
+        },
+        "address_shared_lane": {
+          "$ref": "#/$defs/operandType"
+        },
+        "address_shared_uniform": {
+          "$ref": "#/$defs/operandType"
+        },
+        "barrier_id": {
+          "$ref": "#/$defs/operandType"
+        },
+        "call_stack": {
+          "$ref": "#/$defs/operandType"
+        },
+        "disp30": {
+          "$ref": "#/$defs/operandType"
+        },
+        "implicit_state": {
+          "$ref": "#/$defs/operandType"
+        },
+        "lane_special": {
+          "$ref": "#/$defs/operandType"
+        },
+        "barrier_token": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/operandType"
+            },
+            {
+              "required": [
+                "kind",
+                "bits",
+                "element_bits",
+                "register_file",
+                "range",
+                "description"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "barrier_token"
+                },
+                "bits": {
+                  "const": 32
+                },
+                "element_bits": {
+                  "const": 32
+                },
+                "register_file": {
+                  "const": "VGPR"
+                },
+                "range": {
+                  "const": "v0..v255"
+                }
+              }
+            }
+          ]
+        },
+        "mma_fragment": {
+          "$ref": "#/$defs/operandType"
+        },
+        "pred_cond": {
+          "$ref": "#/$defs/operandType"
+        },
+        "scc": {
+          "$ref": "#/$defs/operandType"
+        },
+        "sgpr32": {
+          "$ref": "#/$defs/operandType"
+        },
+        "sgpr64": {
+          "$ref": "#/$defs/operandType"
+        },
+        "sgpr_index": {
+          "$ref": "#/$defs/operandType"
+        },
+        "simm16": {
+          "$ref": "#/$defs/operandType"
+        },
+        "simm24": {
+          "$ref": "#/$defs/operandType"
+        },
+        "simm32": {
+          "$ref": "#/$defs/operandType"
+        },
+        "simm8": {
+          "$ref": "#/$defs/operandType"
+        },
+        "uimm16": {
+          "$ref": "#/$defs/operandType"
+        },
+        "uimm24": {
+          "$ref": "#/$defs/operandType"
+        },
+        "uimm32": {
+          "$ref": "#/$defs/operandType"
+        },
+        "uimm5": {
+          "$ref": "#/$defs/operandType"
+        },
+        "uimm8": {
+          "$ref": "#/$defs/operandType"
+        },
+        "uniform_special": {
+          "$ref": "#/$defs/operandType"
+        },
+        "vgpr32": {
+          "$ref": "#/$defs/operandType"
+        },
+        "vgpr64": {
+          "$ref": "#/$defs/operandType"
+        },
+        "vgpr_index": {
+          "$ref": "#/$defs/operandType"
+        },
+        "vpred": {
+          "$ref": "#/$defs/operandType"
+        },
+        "address_const_lane": {
+          "$ref": "#/$defs/operandType"
+        },
+        "address_param_lane": {
+          "$ref": "#/$defs/operandType"
+        },
+        "atomic_order": {
+          "$ref": "#/$defs/operandType"
+        },
+        "memory_scope": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/operandType"
+            },
+            {
+              "required": [
+                "reserved_values"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "enum_modifier"
+                },
+                "bits": {
+                  "const": 2
+                },
+                "values": {
+                  "const": [
+                    "CTA",
+                    "DEVICE",
+                    "SYSTEM"
+                  ]
+                },
+                "reserved_values": {
+                  "const": [
+                    3
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "semantic_groups": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "faults": {
+      "type": "array",
+      "minItems": 11,
+      "maxItems": 11,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "name",
+          "description"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 11
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "fault_priority": {
+      "const": [
+        "ILLEGAL_INSTRUCTION",
+        "ILLEGAL_OPERAND",
+        "SCALAR_STATE_FAULT",
+        "RECONVERGENCE_FAULT",
+        "BARRIER_FAULT",
+        "COLLECTIVE_FAULT",
+        "INTEGER_FAULT",
+        "MISALIGNED_ACCESS",
+        "MEMORY_BOUNDS",
+        "SOFTWARE_TRAP"
+      ]
+    },
+    "families": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/family"
+      }
+    },
+    "descriptor_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "call_stack_depth"
+      ],
+      "properties": {
+        "call_stack_depth": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "minimum",
+            "maximum"
+          ],
+          "properties": {
+            "minimum": {
+              "const": 0
+            },
+            "maximum": {
+              "const": 16
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "bitSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lsb",
+        "width",
+        "description"
+      ],
+      "properties": {
+        "lsb": {
+          "type": "integer"
+        },
+        "width": {
+          "type": "integer"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "lsb",
+        "width",
+        "kind",
+        "description"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "lsb": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 63
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "kind": {
+          "enum": [
+            "header",
+            "register",
+            "immediate",
+            "condition",
+            "modifier",
+            "extension",
+            "reserved",
+            "operand"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fixed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "must_zero": {
+          "const": true
+        },
+        "reserved_values": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 63
+          }
+        }
+      },
+      "not": {
+        "required": [
+          "fixed",
+          "must_zero"
+        ]
+      }
+    },
+    "operand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type",
+        "access"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "address_const_lane",
+            "address_const_uniform",
+            "address_generic_lane",
+            "address_generic_uniform",
+            "address_global_lane",
+            "address_global_uniform",
+            "address_local_lane",
+            "address_param_lane",
+            "address_param_uniform",
+            "address_shared_lane",
+            "address_shared_uniform",
+            "atomic_order",
+            "barrier_id",
+            "barrier_token",
+            "call_stack",
+            "disp30",
+            "implicit_state",
+            "lane_special",
+            "memory_scope",
+            "mma_fragment",
+            "pred_cond",
+            "scc",
+            "sgpr32",
+            "sgpr64",
+            "sgpr_index",
+            "simm16",
+            "simm24",
+            "simm32",
+            "simm8",
+            "uimm16",
+            "uimm24",
+            "uimm32",
+            "uimm5",
+            "uimm8",
+            "uniform_special",
+            "vgpr32",
+            "vgpr64",
+            "vgpr_index",
+            "vpred"
+          ]
+        },
+        "access": {
+          "enum": [
+            "read",
+            "write",
+            "read_write",
+            "control"
+          ]
+        },
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "implicit": {
+          "const": true
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "field"
+          ],
+          "not": {
+            "required": [
+              "implicit"
+            ]
+          }
+        },
+        {
+          "required": [
+            "implicit"
+          ],
+          "not": {
+            "required": [
+              "field"
+            ]
+          }
+        }
+      ]
+    },
+    "form": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "mnemonic",
+        "syntax",
+        "execution_domain",
+        "encoding_format",
+        "class",
+        "format",
+        "opcode",
+        "guard_policy",
+        "required_state",
+        "operands",
+        "semantics",
+        "constraints",
+        "faults",
+        "fields",
+        "example"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "mnemonic": {
+          "type": "string",
+          "minLength": 1
+        },
+        "syntax": {
+          "type": "string",
+          "minLength": 1
+        },
+        "execution_domain": {
+          "enum": [
+            "system",
+            "scalar",
+            "vector",
+            "warp_control",
+            "warp_collective",
+            "cta_sync",
+            "warp_matrix"
+          ]
+        },
+        "encoding_format": {
+          "enum": [
+            "COLL",
+            "CTRL",
+            "MMA",
+            "S1",
+            "S2",
+            "S3",
+            "SATOM",
+            "SCMP",
+            "SIMM",
+            "SMEM",
+            "SMEMX",
+            "SYNC",
+            "SYS",
+            "V1",
+            "V2",
+            "V3",
+            "VATOM",
+            "VATOMX",
+            "VCMP",
+            "VIMM",
+            "VLMEM",
+            "VMEM",
+            "VSHMEM"
+          ]
+        },
+        "class": {
+          "enum": [
+            "SYS",
+            "SALU",
+            "VALU",
+            "MEMORY",
+            "CONTROL",
+            "SYNC",
+            "CROSSLANE",
+            "MATRIX"
+          ]
+        },
+        "format": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "opcode": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 63
+        },
+        "guard_policy": {
+          "enum": [
+            "optional",
+            "required_pt",
+            "explicit_condition"
+          ]
+        },
+        "required_state": {
+          "enum": [
+            "none",
+            "scalar_ready"
+          ]
+        },
+        "operands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/operand"
+          }
+        },
+        "semantics": {
+          "type": "string",
+          "minLength": 1
+        },
+        "constraints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "faults": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "address_template": {
+          "$ref": "#/$defs/addressTemplate"
+        },
+        "matrix_contract": {
+          "$ref": "#/$defs/matrixContract"
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/field"
+          }
+        },
+        "example": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "assembly",
+            "machine_word"
+          ],
+          "properties": {
+            "assembly": {
+              "type": "string",
+              "minLength": 1
+            },
+            "machine_word": {
+              "type": "string",
+              "pattern": "^0x[0-9A-F]{16}$"
+            },
+            "field_values": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "order",
+                "scope"
+              ],
+              "properties": {
+                "order": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 3
+                },
+                "scope": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2
+                }
+              }
+            }
+          }
+        },
+        "legal_orders": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "RELAXED",
+              "ACQUIRE",
+              "RELEASE",
+              "ACQ_REL"
+            ]
+          }
+        },
+        "legal_scopes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "CTA",
+              "DEVICE",
+              "SYSTEM"
+            ]
+          }
+        }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "class": {
+                  "const": "SYS"
+                },
+                "encoding_format": {
+                  "const": "SYS"
+                },
+                "format": {
+                  "const": 0
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "SALU"
+                },
+                "encoding_format": {
+                  "const": "S1"
+                },
+                "format": {
+                  "const": 0
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "SALU"
+                },
+                "encoding_format": {
+                  "const": "S2"
+                },
+                "format": {
+                  "const": 1
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "SALU"
+                },
+                "encoding_format": {
+                  "const": "S3"
+                },
+                "format": {
+                  "const": 2
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "SALU"
+                },
+                "encoding_format": {
+                  "const": "SCMP"
+                },
+                "format": {
+                  "const": 3
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "SALU"
+                },
+                "encoding_format": {
+                  "const": "SIMM"
+                },
+                "format": {
+                  "const": 4
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "VALU"
+                },
+                "encoding_format": {
+                  "const": "V1"
+                },
+                "format": {
+                  "const": 0
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "VALU"
+                },
+                "encoding_format": {
+                  "const": "V2"
+                },
+                "format": {
+                  "const": 1
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "VALU"
+                },
+                "encoding_format": {
+                  "const": "V3"
+                },
+                "format": {
+                  "const": 2
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "VALU"
+                },
+                "encoding_format": {
+                  "const": "VCMP"
+                },
+                "format": {
+                  "const": 3
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "VALU"
+                },
+                "encoding_format": {
+                  "const": "VIMM"
+                },
+                "format": {
+                  "const": 4
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "MEMORY"
+                },
+                "encoding_format": {
+                  "const": "SMEM"
+                },
+                "format": {
+                  "const": 0
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "MEMORY"
+                },
+                "encoding_format": {
+                  "const": "VMEM"
+                },
+                "format": {
+                  "const": 1
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "MEMORY"
+                },
+                "encoding_format": {
+                  "const": "VSHMEM"
+                },
+                "format": {
+                  "const": 2
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "MEMORY"
+                },
+                "encoding_format": {
+                  "const": "VLMEM"
+                },
+                "format": {
+                  "const": 3
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "MEMORY"
+                },
+                "encoding_format": {
+                  "const": "SATOM"
+                },
+                "format": {
+                  "const": 4
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "MEMORY"
+                },
+                "encoding_format": {
+                  "const": "VATOM"
+                },
+                "format": {
+                  "const": 5
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "MEMORY"
+                },
+                "encoding_format": {
+                  "const": "SMEMX"
+                },
+                "format": {
+                  "const": 6
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "MEMORY"
+                },
+                "encoding_format": {
+                  "const": "VATOMX"
+                },
+                "format": {
+                  "const": 7
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "CONTROL"
+                },
+                "encoding_format": {
+                  "const": "CTRL"
+                },
+                "format": {
+                  "const": 0
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "SYNC"
+                },
+                "encoding_format": {
+                  "const": "SYNC"
+                },
+                "format": {
+                  "const": 0
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "CROSSLANE"
+                },
+                "encoding_format": {
+                  "const": "COLL"
+                },
+                "format": {
+                  "const": 0
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            },
+            {
+              "properties": {
+                "class": {
+                  "const": "MATRIX"
+                },
+                "encoding_format": {
+                  "const": "MMA"
+                },
+                "format": {
+                  "const": 0
+                }
+              },
+              "required": [
+                "class",
+                "encoding_format",
+                "format"
+              ]
+            }
+          ]
+        },
+        {
+          "if": {
+            "properties": {
+              "execution_domain": {
+                "const": "scalar"
+              }
+            },
+            "required": [
+              "execution_domain"
+            ]
+          },
+          "then": {
+            "properties": {
+              "guard_policy": {
+                "const": "required_pt"
+              },
+              "required_state": {
+                "const": "scalar_ready"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "class": {
+                "const": "MEMORY"
+              }
+            },
+            "required": [
+              "class"
+            ]
+          },
+          "then": {
+            "required": [
+              "address_template"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "class": {
+                "const": "MATRIX"
+              }
+            },
+            "required": [
+              "class"
+            ]
+          },
+          "then": {
+            "required": [
+              "matrix_contract"
+            ],
+            "properties": {
+              "execution_domain": {
+                "const": "warp_matrix"
+              },
+              "guard_policy": {
+                "const": "required_pt"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "encoding_format": {
+                "enum": [
+                  "SMEM",
+                  "SMEMX",
+                  "SATOM"
+                ]
+              }
+            },
+            "required": [
+              "encoding_format"
+            ]
+          },
+          "then": {
+            "properties": {
+              "execution_domain": {
+                "const": "scalar"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "encoding_format": {
+                "enum": [
+                  "VMEM",
+                  "VSHMEM",
+                  "VLMEM",
+                  "VATOM",
+                  "VATOMX"
+                ]
+              }
+            },
+            "required": [
+              "encoding_format"
+            ]
+          },
+          "then": {
+            "properties": {
+              "execution_domain": {
+                "const": "vector"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mnemonic": {
+                "enum": [
+                  "CALL",
+                  "CALL.IND",
+                  "JUMP.IND",
+                  "RET"
+                ]
+              }
+            },
+            "required": [
+              "mnemonic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "execution_domain": {
+                "const": "warp_control"
+              },
+              "required_state": {
+                "const": "scalar_ready"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mnemonic": {
+                "enum": [
+                  "V_BCAST.B32",
+                  "V_BCAST.B64"
+                ]
+              }
+            },
+            "required": [
+              "mnemonic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "execution_domain": {
+                "const": "vector"
+              },
+              "guard_policy": {
+                "const": "optional"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "encoding_format": {
+                "enum": [
+                  "SATOM",
+                  "VATOM",
+                  "VATOMX"
+                ]
+              }
+            },
+            "required": [
+              "encoding_format"
+            ]
+          },
+          "then": {
+            "required": [
+              "legal_orders",
+              "legal_scopes"
+            ],
+            "properties": {
+              "syntax": {
+                "pattern": "\\.\\{order\\}\\.\\{scope\\}\\s"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "allOf": [
+              {
+                "properties": {
+                  "encoding_format": {
+                    "enum": [
+                      "SATOM",
+                      "VATOM",
+                      "VATOMX"
+                    ]
+                  }
+                },
+                "required": [
+                  "encoding_format"
+                ]
+              },
+              {
+                "properties": {
+                  "mnemonic": {
+                    "pattern": "\\.LOAD\\."
+                  }
+                },
+                "required": [
+                  "mnemonic"
+                ]
+              }
+            ]
+          },
+          "then": {
+            "properties": {
+              "legal_orders": {
+                "const": [
+                  "RELAXED",
+                  "ACQUIRE"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "allOf": [
+              {
+                "properties": {
+                  "encoding_format": {
+                    "enum": [
+                      "SATOM",
+                      "VATOM",
+                      "VATOMX"
+                    ]
+                  }
+                },
+                "required": [
+                  "encoding_format"
+                ]
+              },
+              {
+                "properties": {
+                  "mnemonic": {
+                    "pattern": "\\.STORE\\."
+                  }
+                },
+                "required": [
+                  "mnemonic"
+                ]
+              }
+            ]
+          },
+          "then": {
+            "properties": {
+              "legal_orders": {
+                "const": [
+                  "RELAXED",
+                  "RELEASE"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "allOf": [
+              {
+                "properties": {
+                  "encoding_format": {
+                    "enum": [
+                      "SATOM",
+                      "VATOM",
+                      "VATOMX"
+                    ]
+                  }
+                },
+                "required": [
+                  "encoding_format"
+                ]
+              },
+              {
+                "properties": {
+                  "mnemonic": {
+                    "not": {
+                      "pattern": "\\.(LOAD|STORE)\\."
+                    }
+                  }
+                },
+                "required": [
+                  "mnemonic"
+                ]
+              }
+            ]
+          },
+          "then": {
+            "properties": {
+              "legal_orders": {
+                "const": [
+                  "RELAXED",
+                  "ACQUIRE",
+                  "RELEASE",
+                  "ACQ_REL"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "allOf": [
+              {
+                "properties": {
+                  "encoding_format": {
+                    "enum": [
+                      "SATOM",
+                      "VATOM",
+                      "VATOMX"
+                    ]
+                  }
+                },
+                "required": [
+                  "encoding_format"
+                ]
+              },
+              {
+                "properties": {
+                  "mnemonic": {
+                    "pattern": "\\.SHARED$"
+                  }
+                },
+                "required": [
+                  "mnemonic"
+                ]
+              }
+            ]
+          },
+          "then": {
+            "properties": {
+              "legal_scopes": {
+                "const": [
+                  "CTA"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "allOf": [
+              {
+                "properties": {
+                  "encoding_format": {
+                    "enum": [
+                      "SATOM",
+                      "VATOM",
+                      "VATOMX"
+                    ]
+                  }
+                },
+                "required": [
+                  "encoding_format"
+                ]
+              },
+              {
+                "properties": {
+                  "mnemonic": {
+                    "pattern": "\\.GLOBAL$"
+                  }
+                },
+                "required": [
+                  "mnemonic"
+                ]
+              }
+            ]
+          },
+          "then": {
+            "properties": {
+              "legal_scopes": {
+                "const": [
+                  "CTA",
+                  "DEVICE",
+                  "SYSTEM"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "encoding_format": {
+                "const": "VATOMX"
+              }
+            },
+            "required": [
+              "encoding_format"
+            ]
+          },
+          "then": {
+            "properties": {
+              "address_template": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/addressTemplate"
+                  },
+                  {
+                    "properties": {
+                      "mode": {
+                        "const": "sv_mix"
+                      },
+                      "scale": {
+                        "const": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "address_template": {
+                "properties": {
+                  "space": {
+                    "const": "local"
+                  }
+                },
+                "required": [
+                  "space"
+                ]
+              }
+            },
+            "required": [
+              "address_template"
+            ]
+          },
+          "then": {
+            "properties": {
+              "address_template": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/addressTemplate"
+                  },
+                  {
+                    "properties": {
+                      "mode": {
+                        "const": "lane_address"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mnemonic": {
+                "pattern": "^V_GETREG\\."
+              }
+            },
+            "required": [
+              "mnemonic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "execution_domain": {
+                "const": "vector"
+              },
+              "guard_policy": {
+                "const": "optional"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "encoding_format": {
+                "enum": [
+                  "SATOM",
+                  "VATOM",
+                  "VATOMX"
+                ]
+              }
+            },
+            "required": [
+              "encoding_format"
+            ]
+          },
+          "then": {
+            "properties": {
+              "example": {
+                "required": [
+                  "field_values"
+                ],
+                "properties": {
+                  "assembly": {
+                    "pattern": "^[SV]_ATOM\\.[A-Z]+\\.U(32|64)\\.(GLOBAL|SHARED)\\.(RELAXED|ACQUIRE|RELEASE|ACQ_REL)\\.(CTA|DEVICE|SYSTEM)\\s"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mnemonic": {
+                "const": "BAR.SYNC.CTA"
+              }
+            },
+            "required": [
+              "mnemonic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "syntax": {
+                "const": "BAR.SYNC.CTA 3"
+              },
+              "execution_domain": {
+                "const": "cta_sync"
+              },
+              "encoding_format": {
+                "const": "SYNC"
+              },
+              "class": {
+                "const": "SYNC"
+              },
+              "format": {
+                "const": 0
+              },
+              "opcode": {
+                "const": 3
+              },
+              "guard_policy": {
+                "const": "required_pt"
+              },
+              "operands": {
+                "minItems": 1,
+                "maxItems": 1,
+                "prefixItems": [
+                  {
+                    "properties": {
+                      "type": {
+                        "const": "barrier_id"
+                      },
+                      "access": {
+                        "const": "control"
+                      },
+                      "field": {
+                        "const": "slot3"
+                      }
+                    }
+                  }
+                ]
+              },
+              "example": {
+                "properties": {
+                  "assembly": {
+                    "const": "BAR.SYNC.CTA 3"
+                  },
+                  "machine_word": {
+                    "const": "0x0018000000000185"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mnemonic": {
+                "const": "BAR.ARRIVE.CTA"
+              }
+            },
+            "required": [
+              "mnemonic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "syntax": {
+                "const": "BAR.ARRIVE.CTA v5, 3"
+              },
+              "execution_domain": {
+                "const": "cta_sync"
+              },
+              "encoding_format": {
+                "const": "SYNC"
+              },
+              "class": {
+                "const": "SYNC"
+              },
+              "format": {
+                "const": 0
+              },
+              "opcode": {
+                "const": 4
+              },
+              "guard_policy": {
+                "const": "required_pt"
+              },
+              "operands": {
+                "minItems": 2,
+                "maxItems": 2,
+                "prefixItems": [
+                  {
+                    "properties": {
+                      "type": {
+                        "const": "barrier_token"
+                      },
+                      "access": {
+                        "const": "write"
+                      },
+                      "field": {
+                        "const": "a"
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "type": {
+                        "const": "barrier_id"
+                      },
+                      "access": {
+                        "const": "control"
+                      },
+                      "field": {
+                        "const": "slot3"
+                      }
+                    }
+                  }
+                ]
+              },
+              "example": {
+                "properties": {
+                  "assembly": {
+                    "const": "BAR.ARRIVE.CTA v5, 3"
+                  },
+                  "machine_word": {
+                    "const": "0x0018000000280205"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mnemonic": {
+                "const": "BAR.WAIT.CTA"
+              }
+            },
+            "required": [
+              "mnemonic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "syntax": {
+                "const": "BAR.WAIT.CTA 3, v5"
+              },
+              "execution_domain": {
+                "const": "cta_sync"
+              },
+              "encoding_format": {
+                "const": "SYNC"
+              },
+              "class": {
+                "const": "SYNC"
+              },
+              "format": {
+                "const": 0
+              },
+              "opcode": {
+                "const": 5
+              },
+              "guard_policy": {
+                "const": "required_pt"
+              },
+              "operands": {
+                "minItems": 2,
+                "maxItems": 2,
+                "prefixItems": [
+                  {
+                    "properties": {
+                      "type": {
+                        "const": "barrier_id"
+                      },
+                      "access": {
+                        "const": "control"
+                      },
+                      "field": {
+                        "const": "slot3"
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "type": {
+                        "const": "barrier_token"
+                      },
+                      "access": {
+                        "const": "read"
+                      },
+                      "field": {
+                        "const": "a"
+                      }
+                    }
+                  }
+                ]
+              },
+              "example": {
+                "properties": {
+                  "assembly": {
+                    "const": "BAR.WAIT.CTA 3, v5"
+                  },
+                  "machine_word": {
+                    "const": "0x0018000000280285"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "family": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "mnemonic",
+        "semantic_group",
+        "summary",
+        "forms"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^F[0-9]{3}$"
+        },
+        "mnemonic": {
+          "type": "string",
+          "minLength": 1
+        },
+        "semantic_group": {
+          "enum": [
+            "atomic",
+            "barrier",
+            "bit_manipulation",
+            "call_return",
+            "compare",
+            "conversion",
+            "crosslane",
+            "floating_point",
+            "integer_arithmetic",
+            "matrix_multiply",
+            "memory_load",
+            "memory_ordering",
+            "memory_store",
+            "move",
+            "predicate",
+            "select",
+            "shuffle",
+            "special_register",
+            "structured_control",
+            "system_control",
+            "unstructured_control",
+            "vote",
+            "wide_integer"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "forms": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/form"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "F061"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "then": {
+            "properties": {
+              "mnemonic": {
+                "const": "BAR.SYNC"
+              },
+              "semantic_group": {
+                "const": "barrier"
+              },
+              "forms": {
+                "minItems": 1,
+                "maxItems": 1,
+                "prefixItems": [
+                  {
+                    "properties": {
+                      "mnemonic": {
+                        "const": "BAR.SYNC.CTA"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "F062"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "then": {
+            "properties": {
+              "mnemonic": {
+                "const": "BAR.ARRIVE"
+              },
+              "semantic_group": {
+                "const": "barrier"
+              },
+              "forms": {
+                "minItems": 1,
+                "maxItems": 1,
+                "prefixItems": [
+                  {
+                    "properties": {
+                      "mnemonic": {
+                        "const": "BAR.ARRIVE.CTA"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "id": {
+                "const": "F063"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "then": {
+            "properties": {
+              "mnemonic": {
+                "const": "BAR.WAIT"
+              },
+              "semantic_group": {
+                "const": "barrier"
+              },
+              "forms": {
+                "minItems": 1,
+                "maxItems": 1,
+                "prefixItems": [
+                  {
+                    "properties": {
+                      "mnemonic": {
+                        "const": "BAR.WAIT.CTA"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "formatItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "name",
+        "payload_bits",
+        "fields"
+      ],
+      "properties": {
+        "code": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "name": {
+          "enum": [
+            "COLL",
+            "CTRL",
+            "MMA",
+            "S1",
+            "S2",
+            "S3",
+            "SATOM",
+            "SCMP",
+            "SIMM",
+            "SMEM",
+            "SMEMX",
+            "SYNC",
+            "SYS",
+            "V1",
+            "V2",
+            "V3",
+            "VATOM",
+            "VATOMX",
+            "VCMP",
+            "VIMM",
+            "VLMEM",
+            "VMEM",
+            "VSHMEM"
+          ]
+        },
+        "payload_bits": {
+          "const": [
+            19,
+            63
+          ]
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/field"
+          }
+        }
+      }
+    },
+    "operandType": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bits": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "element_bits": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "register_file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "range": {
+          "type": "string",
+          "minLength": 1
+        },
+        "alignment": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "address_space": {
+          "enum": [
+            "global",
+            "shared",
+            "local",
+            "const",
+            "param",
+            "generic"
+          ]
+        },
+        "signed": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scale": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "base": {
+          "type": "string",
+          "minLength": 1
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reserved_values": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 63
+          }
+        }
+      }
+    },
+    "addressTemplate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "space",
+        "mode",
+        "expression",
+        "address_operands",
+        "offset_unit",
+        "scale"
+      ],
+      "properties": {
+        "space": {
+          "enum": [
+            "global",
+            "shared",
+            "local",
+            "const",
+            "param",
+            "generic"
+          ]
+        },
+        "expression": {
+          "type": "string",
+          "minLength": 1
+        },
+        "address_operands": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "offset_unit": {
+          "const": "bytes"
+        },
+        "mode": {
+          "enum": [
+            "uniform_base",
+            "lane_address",
+            "sv_mix",
+            "scalar_indexed"
+          ]
+        },
+        "scale": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        }
+      }
+    },
+    "matrixContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shape",
+        "element_types",
+        "fragments",
+        "f16_packing",
+        "aliasing",
+        "numeric",
+        "participation"
+      ],
+      "properties": {
+        "shape": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "m",
+            "n",
+            "k"
+          ],
+          "properties": {
+            "m": {
+              "const": 16
+            },
+            "n": {
+              "const": 8
+            },
+            "k": {
+              "const": 16
+            }
+          }
+        },
+        "element_types": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ],
+          "properties": {
+            "A": {
+              "const": "F16"
+            },
+            "B": {
+              "const": "F16"
+            },
+            "C": {
+              "const": "F32"
+            },
+            "D": {
+              "const": "F32"
+            }
+          }
+        },
+        "fragments": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ],
+          "properties": {
+            "A": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "registers_per_lane",
+                "base_alignment",
+                "mapping"
+              ],
+              "properties": {
+                "registers_per_lane": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4
+                },
+                "base_alignment": {
+                  "type": "integer",
+                  "enum": [
+                    2,
+                    4
+                  ]
+                },
+                "mapping": {
+                  "type": "string",
+                  "minLength": 20
+                }
+              }
+            },
+            "B": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "registers_per_lane",
+                "base_alignment",
+                "mapping"
+              ],
+              "properties": {
+                "registers_per_lane": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4
+                },
+                "base_alignment": {
+                  "type": "integer",
+                  "enum": [
+                    2,
+                    4
+                  ]
+                },
+                "mapping": {
+                  "type": "string",
+                  "minLength": 20
+                }
+              }
+            },
+            "C": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "registers_per_lane",
+                "base_alignment",
+                "mapping"
+              ],
+              "properties": {
+                "registers_per_lane": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4
+                },
+                "base_alignment": {
+                  "type": "integer",
+                  "enum": [
+                    2,
+                    4
+                  ]
+                },
+                "mapping": {
+                  "type": "string",
+                  "minLength": 20
+                }
+              }
+            },
+            "D": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "registers_per_lane",
+                "base_alignment",
+                "mapping"
+              ],
+              "properties": {
+                "registers_per_lane": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4
+                },
+                "base_alignment": {
+                  "type": "integer",
+                  "enum": [
+                    2,
+                    4
+                  ]
+                },
+                "mapping": {
+                  "type": "string",
+                  "minLength": 20
+                }
+              }
+            }
+          }
+        },
+        "f16_packing": {
+          "type": "string",
+          "minLength": 20
+        },
+        "aliasing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "allowed",
+            "forbidden"
+          ],
+          "properties": {
+            "allowed": {
+              "const": [
+                "D=C"
+              ]
+            },
+            "forbidden": {
+              "type": "array",
+              "minItems": 4,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "numeric": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "formula",
+            "k_order",
+            "rounding",
+            "special_values"
+          ],
+          "properties": {
+            "formula": {
+              "type": "string",
+              "minLength": 40
+            },
+            "k_order": {
+              "type": "string",
+              "pattern": "0\\.\\.15"
+            },
+            "rounding": {
+              "type": "string",
+              "pattern": "RNE"
+            },
+            "special_values": {
+              "type": "string",
+              "pattern": "docs/05-numeric-environment\\.md"
+            }
+          }
+        },
+        "participation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "required_live_lanes",
+            "required_exec_equals_live"
+          ],
+          "properties": {
+            "required_live_lanes": {
+              "const": 32
+            },
+            "required_exec_equals_live": {
+              "const": true
+            }
+          }
+        }
+      }
+    },
+    "specialList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "name",
+          "bits",
+          "access"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[UL]SR_[A-Z0-9_]+$"
+          },
+          "bits": {
+            "enum": [
+              32,
+              64
+            ]
+          },
+          "access": {
+            "enum": [
+              "read",
+              "read_write"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
