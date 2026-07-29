@@ -5,7 +5,7 @@ status: Draft
 word_bits: 64
 counts:
   families: 69
-  forms: 391
+  forms: 392
 barrier_contract:
   owner_identity:
     name: linear_tid
@@ -38595,6 +38595,98 @@ families:
     example:
       assembly: V_SHUFFLE.DOWN.B32 v0, v0, v0, 0
       machine_word: '0x0000000000000586'
+  - id: down_imm
+    mnemonic: V_SHUFFLE.DOWN.B32
+    syntax: V_SHUFFLE.DOWN.B32 v0, v0, 0, 32
+    execution_domain: warp_collective
+    encoding_format: COLL
+    class: CROSSLANE
+    format: 0
+    opcode: 13
+    guard_policy: required_pt
+    required_state: none
+    operands:
+    - name: dst
+      type: vgpr32
+      access: write
+      field: vd
+    - name: src
+      type: vgpr32
+      access: read
+      field: va
+    - name: lane_or_delta
+      type: uimm8
+      access: read
+      field: vb
+    - name: width
+      type: uimm8
+      access: read
+      field: imm8
+    semantics: Each active lane reads src from lane_id plus the encoded immediate delta within the encoded power-of-two width.
+    constraints:
+    - Delta is an integer from 0 through 31; width is one of 2, 4, 8, 16, or 32; source lane is active or the result is zero.
+    faults:
+    - COLLECTIVE_FAULT if participating lanes disagree on uniform control or required source availability.
+    fields:
+    - name: class
+      lsb: 0
+      width: 4
+      kind: header
+      description: Execution class.
+      fixed: 6
+    - name: format
+      lsb: 4
+      width: 3
+      kind: header
+      description: Class-local payload format.
+      fixed: 0
+    - name: opcode
+      lsb: 7
+      width: 6
+      kind: header
+      description: Opcode local to class and format.
+      fixed: 13
+    - name: guard
+      lsb: 13
+      width: 6
+      kind: header
+      description: Header lane guard; zero is PT.
+      fixed: 0
+    - name: vd
+      lsb: 19
+      width: 8
+      kind: operand
+      description: Vector destination.
+    - name: va
+      lsb: 27
+      width: 8
+      kind: operand
+      description: Vector source.
+    - name: vb
+      lsb: 35
+      width: 8
+      kind: operand
+      description: Immediate DOWN lane delta.
+    - name: smask
+      lsb: 43
+      width: 8
+      kind: register
+      description: SGPR lane-mask source or scalar destination.
+      must_zero: true
+    - name: imm8
+      lsb: 51
+      width: 8
+      kind: operand
+      description: Encoded power-of-two shuffle width.
+    - name: x5
+      lsb: 59
+      width: 5
+      kind: extension
+      description: Opcode-defined extension; unused bits are zero.
+      must_zero: true
+    example:
+      assembly: V_SHUFFLE.DOWN.B32 v0, v0, 0, 32
+      machine_word: '0x0100000000000686'
   - id: xor
     mnemonic: V_SHUFFLE.XOR.B32
     syntax: V_SHUFFLE.XOR.B32 v0, v0, v0, 0

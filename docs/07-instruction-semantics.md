@@ -567,6 +567,11 @@ vote/ballot 对 P 做布尔归约；shuffle 从 P 中选择源 lane；match 比�
 
 X 指令在读取任何目标前冻结全部源，因此原地 shuffle 合法。参与协议不一致产生 `COLLECTIVE_FAULT`，所有 lane 目标保持不变。
 
+`V_SHUFFLE.DOWN.B32` 同时提供 VGPR delta 和 `0..31` 立即数 delta form。
+两者都在 `width ∈ {2,4,8,16,32}` 的子组内选择
+`source_lane = lane_id + delta`；源 lane 不 active 时结果为零。立即数 form
+只是消除固定归约树中的 delta 装载指令，不改变参与、会合、冻结源或故障语义。
+
 ## 7.13 MMA
 
 `M16N8K16` 形状只定义下面一个 form：

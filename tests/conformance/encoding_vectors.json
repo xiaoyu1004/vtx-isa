@@ -2,7 +2,7 @@
   "schema_version": "1.0-draft",
   "word_bits": 64,
   "counts": {
-    "forms": 391
+    "forms": 392
   },
   "forms": [
     {
@@ -3505,6 +3505,15 @@
       "format": 0,
       "opcode": 11,
       "machine_word": "0x0000000000000586"
+    },
+    {
+      "key": "F068/down_imm",
+      "family_id": "F068",
+      "form_id": "down_imm",
+      "class": "CROSSLANE",
+      "format": 0,
+      "opcode": 13,
+      "machine_word": "0x0100000000000686"
     },
     {
       "key": "F068/xor",

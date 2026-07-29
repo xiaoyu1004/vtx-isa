@@ -4,6 +4,16 @@
 
 ## 2026-07-29：建立全新 1.0 Draft 基线
 
+### 增加 shuffle-down 立即数 delta form
+
+- 保留 opcode 11 的 `V_SHUFFLE.DOWN.B32 vd,vs,vdelta,width`，新增 opcode 13
+  的 `V_SHUFFLE.DOWN.B32 vd,vs,delta,width`。
+- 立即数 delta 为 `0..31`，编码在 COLL `vb`；width 仍按字面值编码在
+  `imm8`，合法集合保持 `{2,4,8,16,32}`。
+- 两个 form 的参与、源冻结、缺失源写零和 `COLLECTIVE_FAULT` 语义完全相同；
+  新 form 用于消除固定归约树中的 delta 物化指令。
+- form 总数由 391 增至 392，family 数保持 69。
+
 ### 修复命名 CTA 屏障语义退化
 
 - 每 CTA 固定 8 个命名槽 `0..7`；owner 唯一身份固定为 `linear_tid=warp_id*32+lane_id`，owner/arrived/consumed 集合全部保存 linear_tid。
@@ -184,9 +194,9 @@ MMA.M16N8K16.F16.F16.F32
 `isa/vtx1/isa.yaml` 当前生成：
 
 - **69 个 instruction families**
-- **391 个 instruction forms**
+- **392 个 instruction forms**
 
-数量由 YAML 去重生成，不作为手工维护常量。`order`、`scope` 和地址 modifier 的合法组合另算 modifier instance，不混入 391 forms；出现不一致时以 YAML 为准。
+数量由 YAML 去重生成，不作为手工维护常量。`order`、`scope` 和地址 modifier 的合法组合另算 modifier instance，不混入 392 forms；出现不一致时以 YAML 为准。
 
 ### 已确定但仍需实现证明的边界
 
@@ -219,12 +229,12 @@ MMA.M16N8K16.F16.F16.F32
 - `disp30` 汇编、链接、重定位和溢出诊断。
 - `SMEMX/VATOMX` 地址模式选择和 atomic modifier 后缀生成。
 - CALL 栈深度估算、callee 重汇聚闭合和 B64 偶数寄存器对分配。
-- 从 YAML 生成 69 family / 391 form 的后端描述和测试清单。
+- 从 YAML 生成 69 family / 392 form 的后端描述和测试清单。
 
 ### 最终规范审计
 
 - **结论：PASS。**
-- YAML 去重清单为 69 families / 391 forms，生成参考与 all-form 清单一致。
+- YAML 去重清单为 69 families / 392 forms，生成参考与 all-form 清单一致。
 - 所有 form 的机器 class、执行域、唯一译码、payload 覆盖、guard、required state 和 must-zero 规则通过一致性检查。
 - `SMEMX/VATOMX`、完整 atomic modifier、CALL 栈、B64 跨域和唯一 MMA 均已进入编码、语义、故障和合规门禁。
 - modifier instance 与 family/form 统计分离，atomic 后缀组合不会虚增 form 数。

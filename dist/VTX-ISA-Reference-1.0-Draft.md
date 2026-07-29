@@ -7,7 +7,7 @@
 本规范同时定义每 warp 归属的标量寄存器（SGPR）与逐 lane 切片的向量寄存器（VGPR）。
 
 - 指令家族：69
-- 指令形式：391
+- 指令形式：392
 - 指令字宽：64 位
 
 <div class="page-break"></div>
@@ -2951,6 +2951,18 @@ S_READFIRST.B64 s6:s7, v8:v9
 
 `V_BCAST.B64` 的 `vd` 编码 VGPR 目标对基址，`smask` 编码 SGPR 源对基址，`va/vb/imm8/x5` 必须为零；它是 `execution_domain: vector`、`guard_policy: optional`。`S_READFIRST.B64` 的 `smask` 编码 SGPR 目标对基址，`va` 编码 VGPR 源对基址，`vd/vb/imm8/x5` 必须为零；它是 `execution_domain: scalar`、`guard_policy: required_pt`、`required_state: scalar_ready`。后者必须从同一个最低编号 active lane 原子快照两个 32 位半部，禁止两个半部分别选择 lane。
 
+`V_SHUFFLE.DOWN.B32` 有两个保留相同 width 编码的 form：
+
+```text
+V_SHUFFLE.DOWN.B32 vd, vs, vdelta, width   # (CROSSLANE,0,11)
+V_SHUFFLE.DOWN.B32 vd, vs, delta,  width   # (CROSSLANE,0,13)
+```
+
+寄存器 form 的 `vb` 是 VGPR delta 编号；立即数 form 的 `vb` 直接编码
+`0..31` 的无符号 delta。两者的 `imm8` 都按字面值编码
+`width ∈ {2,4,8,16,32}`，`smask/x5` 必须为零。form 只能由 opcode 区分，
+不得根据 `vb` 的数值或操作数恰好为零猜测。
+
 ### 6.5.8 MMA
 
 | P 位 | 字段 |
@@ -3818,6 +3830,11 @@ vote/ballot 对 P 做布尔归约；shuffle 从 P 中选择源 lane；match 比�
 
 X 指令在读取任何目标前冻结全部源，因此原地 shuffle 合法。参与协议不一致产生 `COLLECTIVE_FAULT`，所有 lane 目标保持不变。
 
+`V_SHUFFLE.DOWN.B32` 同时提供 VGPR delta 和 `0..31` 立即数 delta form。
+两者都在 `width ∈ {2,4,8,16,32}` 的子组内选择
+`source_lane = lane_id + delta`；源 lane 不 active 时结果为零。立即数 form
+只是消除固定归约树中的 delta 装载指令，不改变参与、会合、冻结源或故障语义。
+
 ## 7.13 MMA
 
 `M16N8K16` 形状只定义下面一个 form：
@@ -4617,6 +4634,11 @@ for each written VGPR32 slot of each target:
 - 原地源/目标别名；
 - 候选缺失和会合中 EXIT。
 
+`V_SHUFFLE.DOWN.B32` 必须同时覆盖 opcode 11 的 VGPR delta form 和 opcode 13
+的立即数 delta form。对 delta `0,1,2,4,8,16,31` 及每个合法 width，
+两种 form 在所有 lane 获得相同 delta 时必须逐位等价；立即数 `32..255`、
+非法 width、非零 `smask/x5` 和错误 opcode 都必须拒绝。
+
 协议错误产生 `COLLECTIVE_FAULT` 时，所有接收者目标保持。
 
 ## 8.13 MMA
@@ -4850,7 +4872,7 @@ scalar_ready_forms
 - 版本：1.0-draft
 - 指令字宽：64 位
 - Family 数：69
-- Form 数：391
+- Form 数：392
 - Descriptor contract：`{call_stack_depth: {maximum: 16, minimum: 0}}`
 - Barrier contract：`{generation_domain: {example_mechanisms: [wider_epoch, capability_id, safe_reclamation],
     finite_implementation_rule: as_if_non_wrapping, initial: 0, monotonic: true, notation: N,
@@ -28443,6 +28465,60 @@ Each active lane reads src from the lane selected by DOWN within the encoded pow
 | vb | 42:35 | — | 否 | — | Vector source B or lane selector. |
 | smask | 50:43 | — | 是 | — | SGPR lane-mask source or scalar destination. |
 | imm8 | 58:51 | — | 否 | — | Opcode-defined collective immediate. |
+| x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+
+### V_SHUFFLE.DOWN.B32 — `down_imm`
+
+- 执行域：`warp_collective`
+- 编码格式：`COLL`
+- 语义组：`shuffle`
+- `(class, format, opcode)`：`(CROSSLANE, 0, 13)`
+- Guard policy：`required_pt`
+- Required state：`none`
+- VGPR tag effect：`clear`
+
+**语法：** `V_SHUFFLE.DOWN.B32 v0, v0, 0, 32`
+
+#### Operands
+
+| 名称 | 类型 | 访问 | 字段 | 说明 |
+|---|---|---|---|---|
+| dst | vgpr32 | write | vd | — |
+| src | vgpr32 | read | va | — |
+| lane_or_delta | uimm8 | read | vb | — |
+| width | uimm8 | read | imm8 | — |
+
+**Semantics：**
+
+Each active lane reads src from lane_id plus the encoded immediate delta within the encoded power-of-two width.
+
+**Constraints：**
+
+- Delta is an integer from 0 through 31; width is one of 2, 4, 8, 16, or 32; source lane is active or the result is zero.
+
+**Faults：**
+
+- COLLECTIVE_FAULT if participating lanes disagree on uniform control or required source availability.
+
+**示例：** `V_SHUFFLE.DOWN.B32 v0, v0, 0, 32`
+
+**示例字段值：** —
+
+**64 位机器字：** `0x0100000000000686`
+
+#### 编码字段
+
+| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
+|---|---:|---:|:---:|---|---|
+| class | 3:0 | 6 | 否 | — | Execution class. |
+| format | 6:4 | 0 | 否 | — | Class-local payload format. |
+| opcode | 12:7 | 13 | 否 | — | Opcode local to class and format. |
+| guard | 18:13 | 0 | 否 | — | Header lane guard; zero is PT. |
+| vd | 26:19 | — | 否 | — | Vector destination. |
+| va | 34:27 | — | 否 | — | Vector source. |
+| vb | 42:35 | — | 否 | — | Immediate DOWN lane delta. |
+| smask | 50:43 | — | 是 | — | SGPR lane-mask source or scalar destination. |
+| imm8 | 58:51 | — | 否 | — | Encoded power-of-two shuffle width. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_SHUFFLE.XOR.B32 — `xor`

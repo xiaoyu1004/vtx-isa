@@ -10,7 +10,7 @@
 | `transpose` | 8192 x 8192 | 32 x 8 | 256 x 256 | 32 x 33 padded shared tile |
 | `sgemm` | M=N=K=4096 | 16 x 16 | 256 x 256 | shared tiling + `V_FFMA.F32` |
 | `hgemm_mma` | M=N=K=4096 | 256 | 256 x 32 | 两条 `MMA.M16N8K16.F16.F16.F32`/warp |
-| `reduce` | `N = 16 * 1024 * 1024` | 256 | 4096 blocks | shuffle + shared + CTA barrier |
+| `reduce` | `N = 16 * 1024 * 1024` | 256 | 4096 blocks | immediate-delta shuffle + shared + CTA barrier |
 
 ## 文件对应关系
 

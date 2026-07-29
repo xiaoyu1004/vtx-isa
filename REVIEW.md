@@ -240,7 +240,7 @@ MMA.M16N8K16.F16.F16.F32
 当前 `isa/vtx1/isa.yaml` 生成的清单是：
 
 - **69 个 instruction families**
-- **391 个 instruction forms**
+- **392 个 instruction forms**
 
 这两个数字是最终审计时从当前 YAML 去重生成的结果，不是手工填写的常量。`order`、`scope` 和地址 modifier 的合法取值另算 modifier instance，不混入 form 总数。任何人工文字与 YAML 不一致时，以 YAML 为准，并应修复生成或同步流程。
 
@@ -276,7 +276,7 @@ RTL 原型至少应给出可综合译码器、寄存器文件/记分牌模型、
 - `SMEMX/VATOMX` 地址模式选择，以及 atomic space/order/scope 后缀的完整生成；
 - CALL 栈深度估算、间接调用目标约束和 callee 重汇聚区域闭合检查；
 - B64 跨域操作的寄存器对分配与 provenance 保持；
-- 69 family / 391 form 的指令选择表是否能从 YAML 生成，避免后端手写重复清单；
+- 69 family / 392 form 的指令选择表是否能从 YAML 生成，避免后端手写重复清单；
 - 资源描述中的 `sgpr_count/vgpr_count/vp_count` 是否能由最终分配结果准确生成。
 
 至少应选择分支密集、访存密集、标量控制密集、原子同步和矩阵计算等代表性 kernel，比较代码大小、寄存器压力、occupancy 和动态指令数。
@@ -287,7 +287,7 @@ RTL 原型至少应给出可综合译码器、寄存器文件/记分牌模型、
 
 本次最终审计确认：
 
-1. YAML 去重生成的清单为 69 families / 391 forms，生成参考与清单一致；
+1. YAML 去重生成的清单为 69 families / 392 forms，生成参考与清单一致；
 2. 每个 form 的 `(class, format, opcode)` 唯一，payload 位都有定义或 must-zero 约束；
 3. `SMEMX/VATOMX` 地址模板、atomic modifier 矩阵、CALL 栈、B64 跨域、命名屏障状态机和唯一 MMA 都有明确编码、语义、故障与合规门禁；
 4. modifier instance 与 family/form 统计分开，完整 atomic 后缀组合不会虚增 form 数；

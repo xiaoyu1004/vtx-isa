@@ -954,6 +954,31 @@ def _validate_named_form_contract(
                 location,
                 "X_BROADCAST.B32 must use VGPR source/destination and a uniform lane selector",
             )
+    if mnemonic == "V_SHUFFLE.DOWN.B32":
+        delta_type = typed.get("lane_or_delta")
+        expected_opcode = {"vgpr32": 11, "uimm8": 13}.get(delta_type)
+        operand_fields = {
+            operand.get("name"): operand.get("field")
+            for operand in (operands if isinstance(operands, list) else [])
+            if isinstance(operand, Mapping)
+        }
+        if (
+            form.get("execution_domain") != "warp_collective"
+            or form.get("class") != "CROSSLANE"
+            or form.get("format") != 0
+            or form.get("guard_policy") != "required_pt"
+            or typed.get("dst") != "vgpr32"
+            or typed.get("src") != "vgpr32"
+            or expected_opcode is None
+            or form.get("opcode") != expected_opcode
+            or operand_fields.get("lane_or_delta") != "vb"
+            or typed.get("width") != "uimm8"
+            or operand_fields.get("width") != "imm8"
+        ):
+            report.error(
+                location,
+                "V_SHUFFLE.DOWN.B32 must use opcode 11 for VGPR delta or opcode 13 for immediate delta",
+            )
 
 
 def _validate_pair_syntax(

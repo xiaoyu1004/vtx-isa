@@ -712,6 +712,11 @@ for each written VGPR32 slot of each target:
 - 原地源/目标别名；
 - 候选缺失和会合中 EXIT。
 
+`V_SHUFFLE.DOWN.B32` 必须同时覆盖 opcode 11 的 VGPR delta form 和 opcode 13
+的立即数 delta form。对 delta `0,1,2,4,8,16,31` 及每个合法 width，
+两种 form 在所有 lane 获得相同 delta 时必须逐位等价；立即数 `32..255`、
+非法 width、非零 `smask/x5` 和错误 opcode 都必须拒绝。
+
 协议错误产生 `COLLECTIVE_FAULT` 时，所有接收者目标保持。
 
 ## 8.13 MMA

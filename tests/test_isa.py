@@ -29,13 +29,13 @@ class IsaConformanceTests(unittest.TestCase):
 
     def test_counts_are_read_from_yaml_and_match_actual_inventory(self) -> None:
         declared = self.document["counts"]
-        self.assertEqual((declared["families"], declared["forms"]), (69, 391))
+        self.assertEqual((declared["families"], declared["forms"]), (69, 392))
         self.assertEqual(
             (self.report.family_count, self.report.form_count),
             (declared["families"], declared["forms"]),
         )
 
-    def test_all_391_forms_have_unique_vectors(self) -> None:
+    def test_all_392_forms_have_unique_vectors(self) -> None:
         form_keys = {
             validate_isa.form_key(family, form)
             for family in self.document["families"]
@@ -43,8 +43,8 @@ class IsaConformanceTests(unittest.TestCase):
         }
         vector_keys = {entry["key"] for entry in self.vectors["forms"]}
         self.assertEqual(vector_keys, form_keys)
-        self.assertEqual(len(vector_keys), 391)
-        self.assertEqual(self.report.vector_count, 391)
+        self.assertEqual(len(vector_keys), 392)
+        self.assertEqual(self.report.vector_count, 392)
         for entry in self.vectors["forms"]:
             self.assertRegex(entry["machine_word"], r"^0x[0-9A-F]{16}$")
 
@@ -362,6 +362,68 @@ class IsaConformanceTests(unittest.TestCase):
                 form["execution_domain"] == "warp_collective"
                 and form["guard_policy"] == "required_pt"
                 for form in forms
+            )
+        )
+
+    def test_shuffle_down_register_and_immediate_delta_forms(self) -> None:
+        forms = [
+            form
+            for family in self.document["families"]
+            for form in family["forms"]
+            if form["mnemonic"] == "V_SHUFFLE.DOWN.B32"
+        ]
+        self.assertEqual(len(forms), 2)
+        by_delta_type = {
+            next(
+                operand["type"]
+                for operand in form["operands"]
+                if operand["name"] == "lane_or_delta"
+            ): form
+            for form in forms
+        }
+        self.assertEqual(set(by_delta_type), {"vgpr32", "uimm8"})
+        self.assertEqual(by_delta_type["vgpr32"]["opcode"], 11)
+        self.assertEqual(by_delta_type["uimm8"]["opcode"], 13)
+        self.assertEqual(
+            next(
+                operand["field"]
+                for operand in by_delta_type["uimm8"]["operands"]
+                if operand["name"] == "lane_or_delta"
+            ),
+            "vb",
+        )
+        self.assertEqual(
+            by_delta_type["uimm8"]["example"],
+            {
+                "assembly": "V_SHUFFLE.DOWN.B32 v0, v0, 0, 32",
+                "machine_word": "0x0100000000000686",
+            },
+        )
+        self.assertTrue(
+            all(
+                form["execution_domain"] == "warp_collective"
+                and form["guard_policy"] == "required_pt"
+                for form in forms
+            )
+        )
+
+        broken = copy.deepcopy(self.document)
+        immediate = next(
+            form
+            for family in broken["families"]
+            for form in family["forms"]
+            if family["id"] == "F068" and form["id"] == "down_imm"
+        )
+        next(
+            operand
+            for operand in immediate["operands"]
+            if operand["name"] == "lane_or_delta"
+        )["field"] = "smask"
+        report = validate_isa.validate_document(broken)
+        self.assertTrue(
+            any(
+                "V_SHUFFLE.DOWN.B32 must use opcode 11" in error
+                for error in report.errors
             )
         )
 
@@ -835,7 +897,7 @@ class IsaConformanceTests(unittest.TestCase):
         self.assertIn("`copy_source_tag`", appendix)
         self.assertIn("示例字段值", appendix)
         self.assertIn("保留值", appendix)
-        self.assertGreaterEqual(len(re.findall(r"`0x[0-9A-F]{16}`", appendix)), 391)
+        self.assertGreaterEqual(len(re.findall(r"`0x[0-9A-F]{16}`", appendix)), 392)
 
     def test_markdown_table_preserves_code_span_pipe(self) -> None:
         row = "| name | `a|b` | escaped \\| pipe |"
@@ -898,7 +960,7 @@ class IsaConformanceTests(unittest.TestCase):
             def fake_pdf(markdown: str, destination: Path, title: str, cover_summary: str = "") -> Path:
                 self.assertIn("SGPR + VGPR", markdown)
                 self.assertIn("69 指令家族", cover_summary)
-                self.assertIn("391 指令形式", cover_summary)
+                self.assertIn("392 指令形式", cover_summary)
                 destination.write_bytes(b"%PDF-test")
                 return Path("test-font.ttf")
 

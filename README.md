@@ -68,7 +68,7 @@ py tools\validate_isa.py
 - 自动枚举所有写 VGPR 的 form：标签默认 clear，唯一例外是 `V_MOV.B32`
   register form 复制源标签和 `BAR.ARRIVE.CTA` 创建 token 标签；
 - MEMORY `address_template` 的字段引用，以及唯一 MMA 的 32-lane `matrix_contract`；
-- 示例和 391 个 all-form 向量是否满足 fixed/must-zero/reserved 约束。
+- 示例和 392 个 all-form 向量是否满足 fixed/must-zero/reserved 约束。
 
 成功报告会显示 YAML 中的实际计数。失败时进程返回非零退出码，并打印具体 form
 和字段位置。调试另一份 YAML 时可以指定路径；若它没有配套向量，可暂时跳过向量：
@@ -113,7 +113,7 @@ family/form 数。HTML 自带 CSS 和目录；中文 PDF 带可见目录及书�
 py -m unittest discover -s tests -v
 ```
 
-测试覆盖 schema、计数、全部 391 个向量、7 个执行域、8 个 class、编码三元组、
+测试覆盖 schema、计数、全部 392 个向量、7 个执行域、8 个 class、编码三元组、
 SMEMX/VATOMX mixed 格式、header、64 位覆盖、guard、scalar-ready、控制状态、
 V_BCAST/X_BROADCAST、atomic modifier/CAS、VMEM 地址模式、寄存器对语法、call
 descriptor、SSY call stack、scope reserved、atomic 具体示例、SV zero-extension、

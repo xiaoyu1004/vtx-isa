@@ -530,6 +530,18 @@ S_READFIRST.B64 s6:s7, v8:v9
 
 `V_BCAST.B64` 的 `vd` 编码 VGPR 目标对基址，`smask` 编码 SGPR 源对基址，`va/vb/imm8/x5` 必须为零；它是 `execution_domain: vector`、`guard_policy: optional`。`S_READFIRST.B64` 的 `smask` 编码 SGPR 目标对基址，`va` 编码 VGPR 源对基址，`vd/vb/imm8/x5` 必须为零；它是 `execution_domain: scalar`、`guard_policy: required_pt`、`required_state: scalar_ready`。后者必须从同一个最低编号 active lane 原子快照两个 32 位半部，禁止两个半部分别选择 lane。
 
+`V_SHUFFLE.DOWN.B32` 有两个保留相同 width 编码的 form：
+
+```text
+V_SHUFFLE.DOWN.B32 vd, vs, vdelta, width   # (CROSSLANE,0,11)
+V_SHUFFLE.DOWN.B32 vd, vs, delta,  width   # (CROSSLANE,0,13)
+```
+
+寄存器 form 的 `vb` 是 VGPR delta 编号；立即数 form 的 `vb` 直接编码
+`0..31` 的无符号 delta。两者的 `imm8` 都按字面值编码
+`width ∈ {2,4,8,16,32}`，`smask/x5` 必须为零。form 只能由 opcode 区分，
+不得根据 `vb` 的数值或操作数恰好为零猜测。
+
 ### 6.5.8 MMA
 
 | P 位 | 字段 |

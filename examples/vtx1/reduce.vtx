@@ -12,7 +12,7 @@
 ;
 ; Register map:
 ;   v0=lane, v1=warp, v2=cta, v3=ntid, v4=ncta, v5=n
-;   v6=warp_base, v7=grid_stride, v8=i/delta, v9=byte_offset
+;   v6=warp_base, v7=grid_stride, v8=i, v9=byte_offset
 ;   v10=value, v11=sum, v12=shuffle value, v13=zero/warp count
 ;   v14=shared offset, v15=output offset
 
@@ -50,21 +50,17 @@ reduce_grid_loop:
 reduce_loop_done:
     JOIN
 
-    ; All 32 lanes remain active for each shuffle collective.
-    V_MOV.B32 v8, 16
-    V_SHUFFLE.DOWN.B32 v12, v11, v8, 32
+    ; All 32 lanes remain active. The immediate-delta form avoids five
+    ; separate delta materialization instructions in each reduction tree.
+    V_SHUFFLE.DOWN.B32 v12, v11, 16, 32
     V_FADD.F32 v11, v11, v12
-    V_MOV.B32 v8, 8
-    V_SHUFFLE.DOWN.B32 v12, v11, v8, 32
+    V_SHUFFLE.DOWN.B32 v12, v11, 8, 32
     V_FADD.F32 v11, v11, v12
-    V_MOV.B32 v8, 4
-    V_SHUFFLE.DOWN.B32 v12, v11, v8, 32
+    V_SHUFFLE.DOWN.B32 v12, v11, 4, 32
     V_FADD.F32 v11, v11, v12
-    V_MOV.B32 v8, 2
-    V_SHUFFLE.DOWN.B32 v12, v11, v8, 32
+    V_SHUFFLE.DOWN.B32 v12, v11, 2, 32
     V_FADD.F32 v11, v11, v12
-    V_MOV.B32 v8, 1
-    V_SHUFFLE.DOWN.B32 v12, v11, v8, 32
+    V_SHUFFLE.DOWN.B32 v12, v11, 1, 32
     V_FADD.F32 v11, v11, v12
 
     ; lane 0 of each of the 8 warps publishes one partial.
@@ -82,20 +78,15 @@ reduce_loop_done:
     V_SHL.B32 v14, v0, 2
     @vp1 V_LD.SHARED.U32 v11, [v14 + 0]
 
-    V_MOV.B32 v8, 16
-    V_SHUFFLE.DOWN.B32 v12, v11, v8, 32
+    V_SHUFFLE.DOWN.B32 v12, v11, 16, 32
     V_FADD.F32 v11, v11, v12
-    V_MOV.B32 v8, 8
-    V_SHUFFLE.DOWN.B32 v12, v11, v8, 32
+    V_SHUFFLE.DOWN.B32 v12, v11, 8, 32
     V_FADD.F32 v11, v11, v12
-    V_MOV.B32 v8, 4
-    V_SHUFFLE.DOWN.B32 v12, v11, v8, 32
+    V_SHUFFLE.DOWN.B32 v12, v11, 4, 32
     V_FADD.F32 v11, v11, v12
-    V_MOV.B32 v8, 2
-    V_SHUFFLE.DOWN.B32 v12, v11, v8, 32
+    V_SHUFFLE.DOWN.B32 v12, v11, 2, 32
     V_FADD.F32 v11, v11, v12
-    V_MOV.B32 v8, 1
-    V_SHUFFLE.DOWN.B32 v12, v11, v8, 32
+    V_SHUFFLE.DOWN.B32 v12, v11, 1, 32
     V_FADD.F32 v11, v11, v12
 
     V_MOV.B32 v13, 0
