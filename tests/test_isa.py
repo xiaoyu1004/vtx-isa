@@ -381,6 +381,34 @@ class IsaConformanceTests(unittest.TestCase):
             if "generation" in line or "consumed_set" in line or "SPLIT" in line:
                 self.assertIn("不存在", line)
 
+    def test_examples_only_spell_mnemonics_the_manifest_defines(self) -> None:
+        """The .vtx examples have no assembler, so nothing else checks them."""
+        known = {form["mnemonic"] for form in self.forms()}
+        orders = set(self.document["operand_types"]["atomic_order"]["values"])
+        scopes = set(self.document["operand_types"]["memory_scope"]["values"])
+        guard = re.compile(r"^@!?(PT|vp\d+)\s+")
+
+        examples = sorted((ROOT / "examples" / "vtx1").glob("*.vtx"))
+        self.assertTrue(examples)
+        for example in examples:
+            lines = example.read_text(encoding="utf-8").splitlines()
+            for number, raw in enumerate(lines, start=1):
+                line = guard.sub("", raw.split(";", 1)[0].strip())
+                if not line or line.endswith(":"):
+                    continue
+                where = f"{example.name}:{number}"
+                mnemonic = line.split()[0]
+                if mnemonic in known:
+                    continue
+
+                # Atomics spell the runtime order and scope into the mnemonic,
+                # while the manifest leaves them as {order}.{scope} operands.
+                parts = mnemonic.split(".")
+                self.assertEqual(len(parts), 6, f"{where}: unknown {mnemonic}")
+                self.assertIn(".".join(parts[:4]), known, where)
+                self.assertIn(parts[4], orders, where)
+                self.assertIn(parts[5], scopes, where)
+
     def test_prose_names_the_memory_ordering_family_as_the_manifest_does(self) -> None:
         """Prose drifted to MEMBAR once while the manifest said FENCE."""
         mnemonics = {form["mnemonic"] for form in self.forms()}

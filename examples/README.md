@@ -1,6 +1,6 @@
 # CUDA / VTX-1 对照示例
 
-本目录给出五个较大工作负载的 CUDA kernel，以及逐项对应的 VTX-1
+本目录给出六个较大工作负载的 CUDA kernel，以及逐项对应的 VTX-1
 汇编示意。每个 CTA 都至少包含 4 个 32-lane warp；推荐配置实际使用
 8 个 warp。
 
@@ -11,6 +11,7 @@
 | `sgemm` | M=N=K=4096 | 16 x 16 | 256 x 256 | shared tiling + `V_FFMA.F32` |
 | `hgemm_mma` | M=N=K=4096 | 256 | 256 x 32 | 两条 `MMA.M16N8K16.F16.F16.F32`/warp |
 | `reduce` | `N = 16 * 1024 * 1024` | 256 | 4096 blocks | immediate-delta shuffle + shared + CTA barrier |
+| `pipeline` | `N = 16 * 1024 * 1024` | 256 | 4096 blocks | shared 原子计数器 + `FENCE.CTA` 点对点同步 |
 
 ## 文件对应关系
 
@@ -20,6 +21,7 @@ cuda/transpose.cu    <-> vtx1/transpose.vtx
 cuda/sgemm.cu        <-> vtx1/sgemm.vtx
 cuda/hgemm_mma.cu    <-> vtx1/hgemm_mma.vtx
 cuda/reduce.cu       <-> vtx1/reduce.vtx
+cuda/pipeline.cu     <-> vtx1/pipeline.vtx
 ```
 
 CUDA 文件只包含 kernel 和推荐启动常量，不绑定特定 host 框架。VTX 文件顶部
@@ -44,6 +46,18 @@ CUDA 文件只包含 kernel 和推荐启动常量，不绑定特定 host 框架�
 - `transpose`、`sgemm` 和 `reduce` 中的 `BAR.SYNC.CTA 0` 必须由 CTA 内
   所有线程一致到达；边界线程通过 predicated memory operation 零填充，
   不在 barrier 前提前退出。
+- `pipeline` 展示屏障覆盖不到的那一类同步：生产者 warp 和消费者 warp
+  之间的点对点交接。ISA 只提供全 CTA 的 `BAR.SYNC.CTA`，没有 split
+  arrive/wait，所以流水线用 shared 上的两个原子计数器加 `FENCE.CTA`
+  自行构造。两个方向的写法故意不对称：发布侧只用一条 `RELEASE` 原子，
+  因为 `RELEASE` 本身已经排序它之前的全部访问，再加栅栏是重复；等待侧
+  用 `RELAXED` 自旋，成功后才付一次 `FENCE.CTA`，因为 `ACQUIRE` 自旋会
+  逐次付出排序代价。`BAR.SYNC.CTA 0` 只在开头清零计数器时用一次，那正是
+  屏障擅长的一次性会合。
+- `pipeline` 的所有 `BRA.P` 都是 warp 统一分支：生产者/消费者划分按
+  `warp_id` 取值，两个循环条件比较的也都是 warp 内一致的值。因此没有
+  分支消耗重汇聚帧（`reconv_stack_depth=0`），warp 全程保持
+  scalar-ready，`SATOM` 标志访问才合法。
 
 ## 可执行性
 

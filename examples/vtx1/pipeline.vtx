@@ -1,0 +1,177 @@
+; pipeline: warp-specialized double-buffered scale, out[i] = alpha * in[i].
+; Recommended launch: N=16*1024*1024, NTID=(256,1,1), NCTA=(4096,1,1),
+; n_tiles=16. Warp 0 stages tiles from global into shared; warps 1..7
+; consume them. Point-to-point flags replace the CTA barrier.
+;
+; Why not BAR.SYNC.CTA? A barrier is all-or-nothing. It would make the
+; producer wait for the consumers and the consumers wait for the producer at
+; the same instant, so the producer could never run ahead and fetch tile k+1
+; while the consumers still work on tile k. Two shared counters plus
+; FENCE.CTA give the same ordering without ever stopping the whole CTA, which
+; is what makes the prefetch overlap possible. This is the split arrive/wait
+; structure the ISA deliberately omits, built from the memory model instead.
+;
+; The arithmetic body is one V_FMUL on purpose so the protocol stays visible.
+; A real pipeline puts a much heavier consumer body there; the synchronization
+; only pays off when the consumer work is large enough to hide the staging.
+;
+; The two directions of the handoff are spelled asymmetrically on purpose.
+; Publishing uses a RELEASE atomic and no fence, because a RELEASE atomic
+; already orders every earlier access before itself; a fence next to it would
+; buy nothing. Waiting spins on RELAXED loads and pays for one FENCE.CTA after
+; the wait succeeds, because an ACQUIRE load would pay for ordering on every
+; iteration of the spin and there is no way to know which read is the last.
+; That asymmetry is the whole reason a separate fence instruction exists.
+;
+; Parameter ABI:
+;   s0:s1 = in       GLOBAL_PTR, byte offset 0
+;   s2:s3 = out      GLOBAL_PTR, byte offset 8
+;   s4     = n_tiles  U32,        byte offset 16
+;   s5     = alpha    F32,        byte offset 20
+;
+; A tile is 224 elements: seven consumer warps times 32 lanes. Each CTA walks
+; n_tiles consecutive tiles from cta_id * n_tiles * 224, so the launch must
+; satisfy N == NCTA_X * n_tiles * 224 and no tail handling is needed.
+;
+; Descriptor resources: sgpr_count=16, vgpr_count=16, vp_count=3,
+; reconv_stack_depth=0, static_shared_size=1800.
+;
+; Shared layout:
+;   0    .. 895   tile buffer 0, 224 x U32
+;   896  .. 1791  tile buffer 1
+;   1792          filled,  producer increments once per published tile
+;   1796          drained, each consumer warp increments once per tile
+;
+; Register map:
+;   v0=lane, v1=warp, v2=cta, v3=stage k, v4=const 1, v5=const 7
+;   v6=tile base element, v7=buffer byte base, v8=slot index in tile
+;   v9=slot byte offset, v10=data, v11=producer chunk counter
+;   v12=wait threshold, v13=global index scratch, v14=zero
+;   v15=shared byte address scratch
+;   s8=counter base 1792, s9=const 1, s10=atomic result, s11=drained+7
+;
+; reconv_stack_depth is 0 because every BRA.P here is warp-uniform. The
+; producer/consumer split tests warp_id, and both loop conditions compare
+; warp-uniform values, so no branch ever splits a warp and none of them
+; consumes a reconvergence frame. That is also what keeps each warp
+; scalar-ready, which the SATOM flag accesses require.
+
+pipeline:
+    V_GETREG.LANE.U32 v0, LSR_LANE_ID
+    V_GETREG.UNIFORM.U32 v1, USR_WARP_ID
+    V_GETREG.UNIFORM.U32 v2, USR_CTA_ID_X
+
+    V_MOV.B32 v3, 0
+    V_MOV.B32 v4, 1
+    V_MOV.B32 v5, 7
+    V_MOV.B32 v14, 0
+
+    S_MOV.B32 s8, 1792
+    S_MOV.B32 s9, 1
+
+    ; First tile of this CTA. n_tiles stays in s4 and the V2 scalar-source
+    ; selector reads it in place.
+    V_MUL.U32 v6, v2, s4
+    V_MUL.U32 v6, v6, 224
+
+    ; Shared memory is not zero-initialized, so one thread clears both
+    ; counters and the CTA rendezvouses once. This is the one job a barrier
+    ; does better than flags, and BAR.SYNC.CTA orders shared, which is exactly
+    ; where the counters live, so no FENCE is needed here.
+    V_CMP.EQ vp0, v0, v14
+    V_CMP.EQ vp1, v1, v14
+    V_PAND vp2, vp0, vp1
+    @vp2 V_ST.SHARED.U32 [s8 + 0], v14
+    @vp2 V_ST.SHARED.U32 [s8 + 4], v14
+    BAR.SYNC.CTA 0
+
+    ; warp_id is warp-uniform, so this branch splits warps, never lanes.
+    BRA.P vp1, produce
+
+; ---- consumers: warps 1..7, one 32-element slice of every tile ----
+consume:
+    V_SUB.U32 v8, v1, 1
+    V_MUL.U32 v8, v8, 32
+    V_ADD.U32 v8, v8, v0
+    V_SHL.B32 v9, v8, 2
+
+consume_stage:
+    ; Wait until the producer has published tile k, that is filled >= k+1.
+    V_ADD.U32 v12, v3, 1
+consume_wait:
+    S_ATOM.LOAD.U32.SHARED.RELAXED.CTA s10, [s8 + 0]
+    V_CMP.GT.U32 vp0, v12, s10
+    BRA.P vp0, consume_wait
+
+    ; The spin reads the flag RELAXED, so the acquire costs one instruction
+    ; here instead of one per iteration. This fence pairs with the producer's
+    ; RELEASE increment and is what makes the tile stores visible; without it
+    ; the loads below may observe the previous contents of the buffer.
+    FENCE.CTA
+
+    ; buffer base = (k & 1) * 896
+    V_AND.B32 v7, v3, v4
+    V_MUL.U32 v7, v7, 896
+    V_ADD.U32 v15, v7, v9
+    V_LD.SHARED.U32 v10, [v15 + 0]
+    V_FMUL.F32 v10, v10, s5
+
+    V_ADD.U32 v13, v6, v8
+    V_SHL.B32 v13, v13, 2
+    V_ST.GLOBAL.U32 [s2:s3 + v13 + 0], v10
+
+    ; Announce that the buffer is free. RELEASE orders the load above before
+    ; this increment, which is what stops the producer from refilling the tile
+    ; while that load is still outstanding. No fence: a fence here would
+    ; duplicate ordering the RELEASE already provides.
+    S_ATOM.ADD.U32.SHARED.RELEASE.CTA s10, [s8 + 4], s9
+
+    V_ADD.U32 v3, v3, 1
+    V_ADD.U32 v6, v6, 224
+    V_CMP.LT.U32 vp0, v3, s4
+    BRA.P vp0, consume_stage
+    EXIT PT
+
+; ---- producer: warp 0 stages one 224-element tile per stage ----
+produce:
+    ; Buffer (k & 1) last held tile k-2, so all seven consumers must have
+    ; finished that tile: drained >= 7*(k-1). Written as 7k <= drained+7 so
+    ; the unsigned comparison stays correct for k = 0 and k = 1.
+    V_MUL.U32 v12, v3, 7
+produce_wait:
+    S_ATOM.LOAD.U32.SHARED.RELAXED.CTA s10, [s8 + 4]
+    S_ADD.U32 s11, s10, 7
+    V_CMP.GT.U32 vp0, v12, s11
+    BRA.P vp0, produce_wait
+
+    ; Acquire the consumers' reads before overwriting the buffer. Same shape
+    ; as the consumer's wait: relaxed spin, one fence once it succeeds.
+    FENCE.CTA
+
+    V_AND.B32 v7, v3, v4
+    V_MUL.U32 v7, v7, 896
+    V_MOV.B32 v11, 0
+
+    ; Seven 32-lane chunks fill one 224-element tile.
+produce_chunk:
+    V_MUL.U32 v8, v11, 32
+    V_ADD.U32 v8, v8, v0
+    V_ADD.U32 v13, v6, v8
+    V_SHL.B32 v13, v13, 2
+    V_LD.GLOBAL.U32 v10, [s0:s1 + v13 + 0]
+    V_SHL.B32 v15, v8, 2
+    V_ADD.U32 v15, v15, v7
+    V_ST.SHARED.U32 [v15 + 0], v10
+    V_ADD.U32 v11, v11, 1
+    V_CMP.LT.U32 vp0, v11, v5
+    BRA.P vp0, produce_chunk
+
+    ; Publish. RELEASE orders every tile store above before this increment,
+    ; otherwise a consumer could see filled == k+1 and still read stale data.
+    S_ATOM.ADD.U32.SHARED.RELEASE.CTA s10, [s8 + 0], s9
+
+    V_ADD.U32 v3, v3, 1
+    V_ADD.U32 v6, v6, 224
+    V_CMP.LT.U32 vp0, v3, s4
+    BRA.P vp0, produce
+    EXIT PT
