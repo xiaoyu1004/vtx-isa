@@ -10,7 +10,7 @@
 ;   s7     = n  U32,        byte offset 28
 ;   s8     = k  U32,        byte offset 32
 ;
-; Descriptor resources: sgpr_count=16, vgpr_count=24, vp_count=4,
+; Descriptor resources: sgpr_count=16, vgpr_count=21, vp_count=4,
 ; reconv_stack_depth=1, static_shared_size=2048.
 ;
 ; Shared layout:
@@ -19,15 +19,21 @@
 ;
 ; The ISA's only MMA form consumes F16 A/B fragments. This is genuine SGEMM,
 ; so the inner product deliberately uses V_FFMA.F32.
+;
+; Register map:
+;   v0=tx, v1=ty, v2=block_x, v3=block_y, v7=row, v8=col, v9=tile_k
+;   v10=linear index, v11=byte offset, v12=a value, v13=b value
+;   v14=accumulator, v15=shared byte offset, v16=a row base, v17=b column base
+;   v18=16, v19=a k index, v20=b k index
+;
+; m/n/k stay in s6/s7/s8. Every compare and V_MAD below names at most one of
+; them, so the V2/V3/VCMP scalar-source selector covers all of them.
 
 sgemm:
     V_GETREG.LANE.U32 v0, LSR_TID_X
     V_GETREG.LANE.U32 v1, LSR_TID_Y
     V_GETREG.UNIFORM.U32 v2, USR_CTA_ID_X
     V_GETREG.UNIFORM.U32 v3, USR_CTA_ID_Y
-    V_BCAST.B32 v4, s6
-    V_BCAST.B32 v5, s7
-    V_BCAST.B32 v6, s8
     V_MOV.B32 v18, 16
 
     V_MUL.U32 v7, v3, 16
@@ -40,16 +46,16 @@ sgemm:
     ; tile_k is uniform across each warp, so BRA.P never divides a warp.
     SSY sgemm_done
 sgemm_k_loop:
-    V_CMP.LT.U32 vp0, v9, v6
+    V_CMP.LT.U32 vp0, v9, s8
     BRA.P !vp0, sgemm_done
 
     ; a_tile[ty][tx] = in_bounds ? A[row][tile_k + tx] : 0
     V_ADD.U32 v19, v9, v0
-    V_CMP.LT.U32 vp1, v7, v4
-    V_CMP.LT.U32 vp2, v19, v6
+    V_CMP.LT.U32 vp1, v7, s6
+    V_CMP.LT.U32 vp2, v19, s8
     V_PAND vp3, vp1, vp2
     V_MOV.B32 v12, 0x00000000
-    V_MAD.U32 v10, v7, v6, v19
+    V_MAD.U32 v10, v7, s8, v19
     V_SHL.B32 v11, v10, 2
     @vp3 V_LD.GLOBAL.U32 v12, [s0:s1 + v11 + 0]
     V_MAD.U32 v15, v1, v18, v0
@@ -58,11 +64,11 @@ sgemm_k_loop:
 
     ; b_tile[ty][tx] = in_bounds ? B[tile_k + ty][col] : 0
     V_ADD.U32 v20, v9, v1
-    V_CMP.LT.U32 vp1, v20, v6
-    V_CMP.LT.U32 vp2, v8, v5
+    V_CMP.LT.U32 vp1, v20, s8
+    V_CMP.LT.U32 vp2, v8, s7
     V_PAND vp3, vp1, vp2
     V_MOV.B32 v13, 0x00000000
-    V_MAD.U32 v10, v20, v5, v8
+    V_MAD.U32 v10, v20, s7, v8
     V_SHL.B32 v11, v10, 2
     @vp3 V_LD.GLOBAL.U32 v13, [s2:s3 + v11 + 0]
     V_ADD.U32 v15, v15, 1024
@@ -130,10 +136,10 @@ sgemm_k_loop:
 
 sgemm_done:
     JOIN
-    V_CMP.LT.U32 vp1, v7, v4
-    V_CMP.LT.U32 vp2, v8, v5
+    V_CMP.LT.U32 vp1, v7, s6
+    V_CMP.LT.U32 vp2, v8, s7
     V_PAND vp3, vp1, vp2
-    V_MAD.U32 v10, v7, v5, v8
+    V_MAD.U32 v10, v7, s7, v8
     V_SHL.B32 v11, v10, 2
     @vp3 V_ST.GLOBAL.U32 [s4:s5 + v11 + 0], v14
     EXIT PT

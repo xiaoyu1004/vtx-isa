@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import re
 import sys
@@ -14,6 +15,19 @@ from typing import Any, Mapping, Sequence
 import yaml
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import isa_model
+from isa_model import (
+    FAMILY_ID_RE,
+    HEADER_FIELD_NAMES,
+    MIXED_SOURCE_TYPES,
+    SELECTOR_KIND,
+    SELECTOR_LAYOUT,
+    UniqueKeyLoader,
+    mixed_source_operands,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -28,17 +42,21 @@ REGISTER_OPERAND_WIDTHS = {
     "sgpr64": {8},
     "vgpr32": {8},
     "vgpr64": {8},
+    "vsrc32": {8},
+    "vsrc64": {8},
     "vpred": {4, 8},
-    "barrier_token": {8},
 }
 REGISTER_FILES = {
     "sgpr32": "SGPR",
     "sgpr64": "SGPR",
     "vgpr32": "VGPR",
     "vgpr64": "VGPR",
+    "vsrc32": "VGPR_OR_SGPR",
+    "vsrc64": "VGPR_OR_SGPR",
     "vpred": "VPRED",
-    "barrier_token": "VGPR",
 }
+#: Derived keys that the YAML source must not restate on a form.
+DERIVED_FORM_KEYS = ("class", "format", "fields")
 EXECUTION_DOMAINS = {
     "system",
     "scalar",
@@ -74,69 +92,25 @@ ATOMIC_ORDERS = {"RELAXED", "ACQUIRE", "RELEASE", "ACQ_REL"}
 ATOMIC_SCOPES = {"CTA", "DEVICE", "SYSTEM"}
 ATOMIC_ORDER_CODES = {"RELAXED": 0, "ACQUIRE": 1, "RELEASE": 2, "ACQ_REL": 3}
 ATOMIC_SCOPE_CODES = {"CTA": 0, "DEVICE": 1, "SYSTEM": 2}
-BARRIER_FORMS = {
-    "F061": {
-        "family_mnemonic": "BAR.SYNC",
-        "form_mnemonic": "BAR.SYNC.CTA",
-        "triple": ("SYNC", 0, 3),
-        "syntax": "BAR.SYNC.CTA 3",
-        "assembly": "BAR.SYNC.CTA 3",
-        "machine_word": "0x0018000000000185",
-        "operands": [("barrier", "barrier_id", "control", "slot3")],
-    },
-    "F062": {
-        "family_mnemonic": "BAR.ARRIVE",
-        "form_mnemonic": "BAR.ARRIVE.CTA",
-        "triple": ("SYNC", 0, 4),
-        "syntax": "BAR.ARRIVE.CTA v5, 3",
-        "assembly": "BAR.ARRIVE.CTA v5, 3",
-        "machine_word": "0x0018000000280205",
-        "operands": [
-            ("token", "barrier_token", "write", "a"),
-            ("barrier", "barrier_id", "control", "slot3"),
-        ],
-    },
-    "F063": {
-        "family_mnemonic": "BAR.WAIT",
-        "form_mnemonic": "BAR.WAIT.CTA",
-        "triple": ("SYNC", 0, 5),
-        "syntax": "BAR.WAIT.CTA 3, v5",
-        "assembly": "BAR.WAIT.CTA 3, v5",
-        "machine_word": "0x0018000000280285",
-        "operands": [
-            ("barrier", "barrier_id", "control", "slot3"),
-            ("token", "barrier_token", "read", "a"),
-        ],
-    },
+#: BAR.SYNC.CTA is the only barrier instruction in the ISA.
+BARRIER_FORM = {
+    "family_id": "bar-sync",
+    "family_mnemonic": "BAR.SYNC",
+    "form_mnemonic": "BAR.SYNC.CTA",
+    "triple": ("SYNC", 0, 3),
+    "syntax": "BAR.SYNC.CTA 3",
+    "assembly": "BAR.SYNC.CTA 3",
+    "machine_word": "0x0018000000000185",
+    "operands": [("barrier", "barrier_id", "control", "slot3")],
 }
-VGPR_TAG_EXCEPTIONS = {
-    ("F025", "b32.reg", "V_MOV.B32"): "copy_source_tag",
-    ("F062", "cta", "BAR.ARRIVE.CTA"): "create_tag",
-}
-
-
-class UniqueKeyLoader(yaml.SafeLoader):
-    """Safe YAML loader that rejects duplicate mapping keys."""
-
-
-def _construct_mapping(loader: UniqueKeyLoader, node: yaml.MappingNode, deep: bool = False) -> dict:
-    mapping: dict[Any, Any] = {}
-    for key_node, value_node in node.value:
-        key = loader.construct_object(key_node, deep=deep)
-        if key in mapping:
-            raise yaml.constructor.ConstructorError(
-                "while constructing a mapping",
-                node.start_mark,
-                f"duplicate key: {key!r}",
-                key_node.start_mark,
-            )
-        mapping[key] = loader.construct_object(value_node, deep=deep)
-    return mapping
-
-
-UniqueKeyLoader.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
-    _construct_mapping,
+#: Prose the barrier contract must state so the model cannot silently drift.
+BARRIER_REQUIRED_TEXT = (
+    "linear_tid",
+    "BarrierWaitRecord",
+    "live_owner_set",
+    "shared CTA release",
+    "shared CTA acquire",
+    "scalar_ready",
 )
 
 
@@ -173,8 +147,8 @@ def parse_integer(value: Any) -> int | None:
 
 
 def load_isa(path: Path) -> Any:
-    with path.open("r", encoding="utf-8") as stream:
-        return yaml.load(stream, Loader=UniqueKeyLoader)
+    """Load the YAML source exactly as authored, without deriving encodings."""
+    return isa_model.load_raw(path)
 
 
 def load_json(path: Path) -> Any:
@@ -490,6 +464,92 @@ def _validate_format_registration(
             f"{location}.fields",
             "payload layout does not exactly match the class-specific format registry",
         )
+
+
+def _validate_mixed_source(
+    form: Mapping[str, Any],
+    fields: Mapping[str, tuple[int, int, Mapping[str, Any]]],
+    location: str,
+    report: ValidationReport,
+) -> None:
+    """Check the single-SGPR source model against the format's selector."""
+    format_name = str(form.get("encoding_format"))
+    mixed = mixed_source_operands(form)
+    selector_names = [
+        name for name, (_, _, data) in fields.items() if data.get("kind") == SELECTOR_KIND
+    ]
+    layout = SELECTOR_LAYOUT.get(format_name)
+
+    if layout is None:
+        if mixed:
+            report.error(
+                f"{location}.operands",
+                f"format {format_name!r} has no source selector, so it cannot take vsrc operands",
+            )
+        if selector_names:
+            report.error(
+                f"{location}.fields",
+                f"format {format_name!r} must not declare a source selector",
+            )
+        return
+
+    selector_name, selectable_fields = layout
+    if selector_names != [selector_name]:
+        report.error(
+            f"{location}.fields",
+            f"{format_name} must declare exactly one selector field {selector_name!r}",
+        )
+        return
+
+    low, high, data = fields[selector_name]
+    width = high - low + 1
+    expected_width = 1 if format_name == "V1" else 2
+    if width != expected_width:
+        report.error(
+            f"{location}.fields[{selector_name}]",
+            f"{format_name} selector must be {expected_width} bits wide",
+        )
+
+    if not mixed:
+        # A form with no mixed source must pin the selector to "no scalar source".
+        if _constraint_value(data) != 0:
+            report.error(
+                f"{location}.fields[{selector_name}]",
+                "a form without vsrc operands must fix the selector to zero",
+            )
+        return
+
+    if _constraint_value(data) is not None:
+        report.error(
+            f"{location}.fields[{selector_name}]",
+            "a mixed-source form must leave the selector runtime-selectable",
+        )
+
+    # Every selector code above zero must land on a field bound to a vsrc operand.
+    mixed_fields = {
+        operand.get("field")
+        for operand in mixed
+        if isinstance(operand, Mapping)
+    }
+    reachable = {
+        field_name
+        for code, field_name in selectable_fields.items()
+        if code < (1 << width)
+    }
+    unreachable = sorted(mixed_fields - reachable)
+    if unreachable:
+        report.error(
+            f"{location}.operands",
+            f"{format_name} selector cannot reach vsrc fields {unreachable}",
+        )
+    for operand in mixed:
+        if not isinstance(operand, Mapping):
+            continue
+        if operand.get("access") != "read":
+            report.error(
+                f"{location}.operands",
+                f"vsrc operand {operand.get('name')!r} must be read-only",
+            )
 
 
 def _validate_operands(
@@ -904,29 +964,28 @@ def _validate_named_form_contract(
         for operand in (operands if isinstance(operands, list) else [])
         if isinstance(operand, Mapping)
     }
-    if mnemonic == "V_BCAST.B32":
+    if mnemonic == "V_MOV.B32" and form.get("encoding_format") == "V1":
+        # V_MOV.B32 replaces the deleted V_BCAST.B32: ssrc=1 broadcasts an SGPR.
         if (
             form.get("execution_domain") != "vector"
-            or form.get("class") != "CROSSLANE"
             or form.get("guard_policy") != "optional"
             or typed.get("dst") != "vgpr32"
-            or typed.get("src") != "sgpr32"
+            or typed.get("src") != "vsrc32"
         ):
             report.error(
                 location,
-                "V_BCAST.B32 must be an optionally guarded SGPR-to-VGPR broadcast",
+                "V_MOV.B32 register form must be an optionally guarded mixed-source move",
             )
-    if mnemonic == "V_BCAST.B64":
+    if mnemonic == "V_MOV.B64" and form.get("encoding_format") == "V1":
         if (
             form.get("execution_domain") != "vector"
-            or form.get("class") != "CROSSLANE"
             or form.get("guard_policy") != "optional"
             or typed.get("dst") != "vgpr64"
-            or typed.get("src") != "sgpr64"
+            or typed.get("src") != "vsrc64"
         ):
             report.error(
                 location,
-                "V_BCAST.B64 must be an optionally guarded SGPR64-to-VGPR64 broadcast",
+                "V_MOV.B64 register form must be an optionally guarded mixed-source move",
             )
     if mnemonic == "S_READFIRST.B64":
         if (
@@ -1006,7 +1065,11 @@ def _validate_pair_syntax(
     }
     required_prefixes = {
         prefix
-        for operand_type, prefix in (("sgpr64", "s"), ("vgpr64", "v"))
+        for operand_type, prefix in (
+            ("sgpr64", "s"),
+            ("vgpr64", "v"),
+            ("vsrc64", "v"),
+        )
         if operand_type in explicit_types
     }
     found_prefixes = {match.group(1) for match in matches}
@@ -1100,45 +1163,6 @@ def _validate_state_rules(
         )
 
 
-def _writes_vgpr(document: Mapping[str, Any], form: Mapping[str, Any]) -> bool:
-    operand_types = document.get("operand_types")
-    if not isinstance(operand_types, Mapping):
-        return False
-    operands = form.get("operands")
-    return any(
-        isinstance(operand, Mapping)
-        and operand.get("access") in {"write", "read_write"}
-        and isinstance(operand_types.get(operand.get("type")), Mapping)
-        and operand_types[operand["type"]].get("register_file") == "VGPR"
-        for operand in (operands if isinstance(operands, list) else [])
-    )
-
-
-def enumerate_vgpr_tag_effects(document: Mapping[str, Any]) -> dict[str, str]:
-    """Derive the tag effect for every form that writes any VGPR32 slot."""
-    contract = document.get("barrier_contract")
-    policy = contract.get("vgpr_tag_write_policy") if isinstance(contract, Mapping) else None
-    default_action = policy.get("default_action") if isinstance(policy, Mapping) else None
-    exceptions = policy.get("exceptions") if isinstance(policy, Mapping) else None
-    exception_actions = {
-        (item.get("family_id"), item.get("form_id"), item.get("mnemonic")): item.get("action")
-        for item in (exceptions if isinstance(exceptions, list) else [])
-        if isinstance(item, Mapping)
-    }
-    effects: dict[str, str] = {}
-    for family in get_families(document) or []:
-        if not isinstance(family, Mapping):
-            continue
-        for form in get_forms(family) or []:
-            if not isinstance(form, Mapping) or not _writes_vgpr(document, form):
-                continue
-            exception_key = (family.get("id"), form.get("id"), form.get("mnemonic"))
-            action = exception_actions.get(exception_key, default_action)
-            if isinstance(action, str):
-                effects[form_key(family, form)] = action
-    return effects
-
-
 def _validate_barrier_contract(
     document: Mapping[str, Any],
     families_by_id: Mapping[str, Mapping[str, Any]],
@@ -1160,27 +1184,15 @@ def _validate_barrier_contract(
             "$.operand_types.barrier_id",
             "must define the canonical 3-bit named-barrier id range 0..7",
         )
-    barrier_token = (
-        operand_types.get("barrier_token") if isinstance(operand_types, Mapping) else None
-    )
-    expected_token = {
-        "kind": "barrier_token",
-        "bits": 32,
-        "element_bits": 32,
-        "register_file": "VGPR",
-        "range": "v0..v255",
-    }
-    if not isinstance(barrier_token, Mapping) or any(
-        barrier_token.get(name) != value for name, value in expected_token.items()
-    ):
+    if isinstance(operand_types, Mapping) and "barrier_token" in operand_types:
         report.error(
             "$.operand_types.barrier_token",
-            "barrier_token must be a 32-bit VGPR token type",
+            "split-barrier tokens were removed; the type must not be defined",
         )
 
     contract = document.get("barrier_contract")
     if not isinstance(contract, Mapping):
-        report.error("$.barrier_contract", "root named-barrier contract is missing")
+        report.error("$.barrier_contract", "root barrier contract is missing")
         return
     expected_root = {
         "owner_identity": {
@@ -1188,214 +1200,133 @@ def _validate_barrier_contract(
             "formula": "linear_tid = warp_id * 32 + lane_id",
             "equivalent_tuple": ["warp_id", "lane_id"],
         },
-        "generation_domain": {
-            "type": "mathematical_nonnegative_integer",
-            "notation": "N",
-            "initial": 0,
-            "retire_step": 1,
-            "monotonic": True,
-            "wraps": False,
-            "finite_implementation_rule": "as_if_non_wrapping",
-            "observable_identity_reuse": "forbidden",
-            "stale_token_revival": "forbidden",
-            "example_mechanisms": ["wider_epoch", "capability_id", "safe_reclamation"],
+        "live_owner_set": {
+            "initial": "every real linear_tid launched in the CTA",
+            "shrinks_on": "EXIT",
+            "exit_contributes_release": False,
         },
-        "token_tag_fields": ["cta_identity", "linear_tid", "slot", "generation"],
         "wait_record_fields": ["warp_id", "owner_snapshot", "resume_pc"],
         "max_blocked_records_per_warp": 1,
-        "idle_slot": {
-            "mode": "EMPTY",
-            "arrived_set_empty": True,
-            "consumed_set_empty": True,
-            "waiters_empty": True,
-            "completed": False,
-            "generation_ignored": True,
-        },
+        "idle_slot": {"arrived_set_empty": True, "waiters_empty": True},
     }
+    if set(contract) != set(expected_root):
+        report.error(
+            "$.barrier_contract",
+            f"must define exactly {sorted(expected_root)}",
+        )
     for name, expected in expected_root.items():
         if contract.get(name) != expected:
             report.error(
                 f"$.barrier_contract.{name}",
-                f"must equal the canonical named-barrier contract {expected!r}",
+                f"must equal the canonical barrier contract {expected!r}",
             )
 
-    policy = contract.get("vgpr_tag_write_policy")
-    expected_selection = {
-        "register_file": "VGPR",
-        "accesses": ["write", "read_write"],
-        "granularity": "each_vgpr32_slot",
-    }
-    if not isinstance(policy, Mapping):
-        report.error(
-            "$.barrier_contract.vgpr_tag_write_policy",
-            "VGPR tag-write policy is missing",
-        )
-    else:
-        if policy.get("target_selection") != expected_selection:
-            report.error(
-                "$.barrier_contract.vgpr_tag_write_policy.target_selection",
-                "must select every written/read_write VGPR32 slot",
-            )
-        if policy.get("default_action") != "clear":
-            report.error(
-                "$.barrier_contract.vgpr_tag_write_policy.default_action",
-                "every VGPR write must clear the tag by default",
-            )
-        exceptions = policy.get("exceptions")
-        normalized_exceptions = {
-            (item.get("family_id"), item.get("form_id"), item.get("mnemonic")): item.get(
-                "action"
-            )
-            for item in (exceptions if isinstance(exceptions, list) else [])
-            if isinstance(item, Mapping)
-        }
-        if (
-            not isinstance(exceptions, list)
-            or len(exceptions) != 2
-            or normalized_exceptions != VGPR_TAG_EXCEPTIONS
-        ):
-            report.error(
-                "$.barrier_contract.vgpr_tag_write_policy.exceptions",
-                "must contain only V_MOV.B32 register-copy and BAR.ARRIVE.CTA create exceptions",
-            )
-
-    writer_keys = {
-        form_key(family, form)
+    barrier_families = [
+        family
         for family in get_families(document) or []
-        if isinstance(family, Mapping)
-        for form in get_forms(family) or []
-        if isinstance(form, Mapping) and _writes_vgpr(document, form)
-    }
-    tag_effects = enumerate_vgpr_tag_effects(document)
-    if set(tag_effects) != writer_keys:
+        if isinstance(family, Mapping) and family.get("semantic_group") == "barrier"
+    ]
+    if len(barrier_families) != 1:
         report.error(
-            "$.barrier_contract.vgpr_tag_write_policy",
-            "tag_effect metadata does not cover every VGPR-writing form",
+            "$.families",
+            f"BAR.SYNC must be the only barrier family; found {len(barrier_families)}",
         )
-    if any(
-        action not in {"clear", "copy_source_tag", "create_tag"}
-        for action in tag_effects.values()
+
+    expected = BARRIER_FORM
+    family = families_by_id.get(expected["family_id"])
+    location = f"$.families[{expected['family_id']}]"
+    if not isinstance(family, Mapping):
+        report.error(location, "the canonical BAR.SYNC family is missing")
+        return
+    if (
+        family.get("mnemonic") != expected["family_mnemonic"]
+        or family.get("semantic_group") != "barrier"
+    ):
+        report.error(location, f"must be canonical family {expected['family_mnemonic']}")
+    forms = get_forms(family)
+    if not isinstance(forms, list) or len(forms) != 1 or not isinstance(forms[0], Mapping):
+        report.error(f"{location}.forms", "must contain exactly the canonical CTA form")
+        return
+    form = forms[0]
+    form_location = f"{location}.forms[cta]"
+    triple = (
+        form.get("class"),
+        parse_integer(form.get("format")),
+        parse_integer(form.get("opcode")),
+    )
+    if (
+        form.get("id") != "cta"
+        or form.get("mnemonic") != expected["form_mnemonic"]
+        or triple != expected["triple"]
+        or form.get("execution_domain") != "cta_sync"
+        or form.get("encoding_format") != "SYNC"
+        or form.get("guard_policy") != "required_pt"
     ):
         report.error(
-            "$.barrier_contract.vgpr_tag_write_policy",
-            "tag_effect contains an unknown action",
+            form_location,
+            f"must use canonical {expected['form_mnemonic']} identity and triple",
         )
+    if form.get("required_state") != "scalar_ready":
+        report.error(
+            f"{form_location}.required_state",
+            "BAR.SYNC.CTA must require scalar_ready so a divergent warp faults",
+        )
+    if form.get("syntax") != expected["syntax"]:
+        report.error(f"{form_location}.syntax", "must expose the explicit barrier slot id")
+    actual_operands = [
+        (
+            operand.get("name"),
+            operand.get("type"),
+            operand.get("access"),
+            operand.get("field"),
+        )
+        for operand in form.get("operands", [])
+        if isinstance(operand, Mapping)
+    ]
+    if actual_operands != expected["operands"]:
+        report.error(
+            f"{form_location}.operands",
+            f"must equal canonical operands {expected['operands']!r}",
+        )
+    fields = {name: data for name, data in normalize_fields(form)}
+    slot = fields.get("slot3")
+    if (
+        not isinstance(slot, Mapping)
+        or slot.get("lsb") != 51
+        or slot.get("width") != 3
+        or slot.get("kind") != "operand"
+        or "fixed" in slot
+        or slot.get("must_zero")
+    ):
+        report.error(
+            f"{form_location}.fields[slot3]",
+            "must be the explicit variable 3-bit slot field at bits 53:51",
+        )
+    example = form.get("example")
+    if not isinstance(example, Mapping) or (
+        example.get("assembly") != expected["assembly"]
+        or example.get("machine_word") != expected["machine_word"]
+    ):
+        report.error(
+            f"{form_location}.example",
+            "must contain the canonical slot-3 assembly and machine word",
+        )
+    prose_parts = [form.get("semantics", "")]
+    prose_parts.extend(form.get("constraints", []))
+    prose = " ".join(item for item in prose_parts if isinstance(item, str))
+    for fragment in BARRIER_REQUIRED_TEXT:
+        if fragment not in prose:
+            report.error(form_location, f"barrier contract must state {fragment!r}")
 
-    required_text = {
-        "F061": (
-            "linear_tid",
-            "BarrierWaitRecord",
-            "SYNC mode",
-            "current generation",
-            "shared CTA release",
-            "shared CTA acquire",
-            "EXIT never shrinks",
-        ),
-        "F062": (
-            "linear_tid",
-            "SPLIT mode",
-            "current generation",
-            "shared CTA release",
-            "create_tag",
-        ),
-        "F063": (
-            "linear_tid",
-            "BarrierWaitRecord",
-            "current generation",
-            "shared CTA acquire",
-            "explicit id",
-        ),
-    }
-    for family_id, expected in BARRIER_FORMS.items():
-        family = families_by_id.get(family_id)
-        location = f"$.families[{family_id}]"
-        if not isinstance(family, Mapping):
-            report.error(location, "canonical named-barrier family is missing")
-            continue
-        if (
-            family.get("mnemonic") != expected["family_mnemonic"]
-            or family.get("semantic_group") != "barrier"
-        ):
-            report.error(
-                location,
-                f"must be canonical family {expected['family_mnemonic']}",
-            )
-        forms = get_forms(family)
-        if not isinstance(forms, list) or len(forms) != 1 or not isinstance(forms[0], Mapping):
-            report.error(f"{location}.forms", "must contain exactly the canonical CTA form")
-            continue
-        form = forms[0]
-        form_location = f"{location}.forms[cta]"
-        triple = (
-            form.get("class"),
-            parse_integer(form.get("format")),
-            parse_integer(form.get("opcode")),
+    exit_family = families_by_id.get("exit")
+    exit_forms = get_forms(exit_family) if isinstance(exit_family, Mapping) else None
+    if not isinstance(exit_forms, list) or not exit_forms:
+        report.error("$.families[exit]", "the EXIT family is missing")
+    elif "live_owner_set" not in str(exit_forms[0].get("semantics", "")):
+        report.error(
+            "$.families[exit].forms[0].semantics",
+            "EXIT must state that it removes the lane from live_owner_set",
         )
-        if (
-            form.get("id") != "cta"
-            or form.get("mnemonic") != expected["form_mnemonic"]
-            or triple != expected["triple"]
-            or form.get("execution_domain") != "cta_sync"
-            or form.get("encoding_format") != "SYNC"
-            or form.get("guard_policy") != "required_pt"
-            or form.get("required_state") != "none"
-        ):
-            report.error(
-                form_location,
-                f"must use canonical {expected['form_mnemonic']} identity and triple",
-            )
-        if form.get("syntax") != expected["syntax"]:
-            report.error(
-                f"{form_location}.syntax",
-                "must expose the explicit barrier slot id",
-            )
-        actual_operands = [
-            (
-                operand.get("name"),
-                operand.get("type"),
-                operand.get("access"),
-                operand.get("field"),
-            )
-            for operand in form.get("operands", [])
-            if isinstance(operand, Mapping)
-        ]
-        if actual_operands != expected["operands"]:
-            report.error(
-                f"{form_location}.operands",
-                f"must equal canonical operands {expected['operands']!r}",
-            )
-        fields = {name: data for name, data in normalize_fields(form)}
-        slot = fields.get("slot3")
-        if (
-            not isinstance(slot, Mapping)
-            or slot.get("lsb") != 51
-            or slot.get("width") != 3
-            or slot.get("kind") != "operand"
-            or "fixed" in slot
-            or slot.get("must_zero")
-        ):
-            report.error(
-                f"{form_location}.fields[slot3]",
-                "must be the explicit variable 3-bit slot field at bits 53:51",
-            )
-        example = form.get("example")
-        if not isinstance(example, Mapping) or (
-            example.get("assembly") != expected["assembly"]
-            or example.get("machine_word") != expected["machine_word"]
-        ):
-            report.error(
-                f"{form_location}.example",
-                "must contain the canonical slot-3 assembly and machine word",
-            )
-        prose_parts = [form.get("semantics", "")]
-        prose_parts.extend(form.get("constraints", []))
-        prose = " ".join(item for item in prose_parts if isinstance(item, str))
-        for fragment in required_text[family_id]:
-            if fragment not in prose:
-                report.error(
-                    form_location,
-                    f"named-barrier contract must state {fragment!r}",
-                )
 
 
 def _validate_global_contracts(
@@ -1557,6 +1488,7 @@ def _validate_form(
     _validate_header(document, form, fields, class_codes, location, report)
     _validate_format_registration(form, fields, formats_by_class, location, report)
     _validate_operands(document, form, fields, location, report)
+    _validate_mixed_source(form, fields, location, report)
     _validate_address_template(form, fields, location, report)
     _validate_matrix_contract(form, location, report)
     _validate_atomic_form(family, form, fields, location, report)
@@ -1603,6 +1535,30 @@ def _validate_form(
     return form_id, triple
 
 
+def _validate_normalisation(document: Mapping[str, Any], report: ValidationReport) -> None:
+    """The registry owns every layout, so forms must not restate one."""
+    registered = set(isa_model.format_index(document))
+    for family in get_families(document) or []:
+        if not isinstance(family, Mapping):
+            continue
+        for form in get_forms(family) or []:
+            if not isinstance(form, Mapping):
+                continue
+            location = f"$.families[{family.get('id')}].forms[{form.get('id')}]"
+            for key in DERIVED_FORM_KEYS:
+                if key in form:
+                    report.error(
+                        f"{location}.{key}",
+                        f"{key!r} is derived from format_registry and must not be authored",
+                    )
+            name = form.get("encoding_format")
+            if name not in registered:
+                report.error(
+                    f"{location}.encoding_format",
+                    f"{name!r} is not registered in format_registry, so no layout can be derived",
+                )
+
+
 def validate_document(document: Any, schema: Any | None = None) -> ValidationReport:
     report = ValidationReport()
     if schema is not None:
@@ -1610,6 +1566,9 @@ def validate_document(document: Any, schema: Any | None = None) -> ValidationRep
     if not isinstance(document, Mapping):
         report.error("$", "YAML root must be an object")
         return report
+    _validate_normalisation(document, report)
+    # Expand a copy so callers keep the authored source they passed in.
+    document = isa_model.expand_document(copy.deepcopy(dict(document)))
     families = get_families(document)
     if not isinstance(families, list):
         report.error("$.families", "must be a list")
@@ -1637,6 +1596,16 @@ def validate_document(document: Any, schema: Any | None = None) -> ValidationRep
             family_id = f"#{family_index + 1}"
         elif family_id in family_ids:
             report.error(f"{family_location}.id", f"duplicate family id {family_id!r}")
+        elif not FAMILY_ID_RE.fullmatch(family_id):
+            report.error(
+                f"{family_location}.id",
+                f"must be a lowercase hyphenated slug, got {family_id!r}",
+            )
+        elif family_id != isa_model.family_slug(str(family.get("mnemonic", ""))):
+            report.error(
+                f"{family_location}.id",
+                f"must be the slug of mnemonic {family.get('mnemonic')!r}",
+            )
         family_ids.add(str(family_id))
         families_by_id[str(family_id)] = family
         family_location = f"$.families[{family_id}]"
@@ -1775,6 +1744,105 @@ def validate_vectors(
     declared = vectors.get("counts")
     if isinstance(declared, Mapping) and parse_integer(declared.get("forms")) != len(entries):
         report.error("$vectors.counts.forms", "does not match vector entry count")
+    _validate_mixed_source_vectors(indexed, family_by_key, vectors, report)
+
+
+def _validate_mixed_source_vectors(
+    indexed: Mapping[str, Mapping[str, Any]],
+    family_by_key: Mapping[str, Mapping[str, Any]],
+    vectors: Mapping[str, Any],
+    report: ValidationReport,
+) -> None:
+    """Every non-zero selector code of every mixed-source form needs a vector."""
+    entries = vectors.get("mixed_source")
+    if not isinstance(entries, list):
+        report.error("$vectors.mixed_source", "must be a list")
+        return
+
+    required: set[str] = set()
+    for key, form in indexed.items():
+        layout = SELECTOR_LAYOUT.get(str(form.get("encoding_format")))
+        mixed = mixed_source_operands(form)
+        if not mixed or layout is None:
+            continue
+        selector_name, choices = layout
+        bound = {str(operand.get("field")) for operand in mixed}
+        for code, field_name in choices.items():
+            if field_name in bound:
+                required.add(f"{key}#{selector_name}={code}")
+
+    seen: set[str] = set()
+    for index, entry in enumerate(entries):
+        location = f"$vectors.mixed_source[{index}]"
+        if not isinstance(entry, Mapping):
+            report.error(location, "must be an object")
+            continue
+        key = entry.get("key")
+        if not isinstance(key, str) or key not in required:
+            report.error(f"{location}.key", f"unknown mixed-source key {key!r}")
+            continue
+        if key in seen:
+            report.error(f"{location}.key", f"duplicate vector for {key!r}")
+        seen.add(key)
+        form_key_part = key.split("#", 1)[0]
+        form = indexed[form_key_part]
+        selector_name, _ = SELECTOR_LAYOUT[str(form.get("encoding_format"))]
+        expected_metadata = {
+            "family_id": family_by_key[form_key_part].get("id"),
+            "form_id": form.get("id"),
+            "selector_field": selector_name,
+        }
+        for name, expected in expected_metadata.items():
+            if entry.get(name) != expected:
+                report.error(f"{location}.{name}", f"expected {expected!r}")
+        _validate_selector_word(form, entry, location, report)
+
+    unmet = sorted(required - seen)
+    if unmet:
+        report.error("$vectors.mixed_source", f"selector coverage mismatch; missing={unmet}")
+    declared = vectors.get("counts")
+    if isinstance(declared, Mapping):
+        if parse_integer(declared.get("mixed_source")) != len(entries):
+            report.error("$vectors.counts.mixed_source", "does not match vector entry count")
+
+
+def _validate_selector_word(
+    form: Mapping[str, Any],
+    entry: Mapping[str, Any],
+    location: str,
+    report: ValidationReport,
+) -> None:
+    """A selector vector differs from the form example only in the selector."""
+    machine_word = entry.get("machine_word")
+    if not isinstance(machine_word, str) or not MACHINE_WORD_RE.fullmatch(machine_word):
+        report.error(
+            f"{location}.machine_word",
+            "machine_word must be 0x followed by 16 uppercase hex digits",
+        )
+        return
+    example = form.get("example")
+    base = example.get("machine_word") if isinstance(example, Mapping) else None
+    if not isinstance(base, str):
+        return
+    selector_name, _ = SELECTOR_LAYOUT[str(form.get("encoding_format"))]
+    fields = {name: data for name, data in normalize_fields(form)}
+    bit_range = _range(fields.get(selector_name, {}))
+    if bit_range is None:
+        return
+    low, high = bit_range
+    mask = ((1 << (high - low + 1)) - 1) << low
+    word = int(machine_word, 16)
+    if (word & ~mask) != (int(base, 16) & ~mask):
+        report.error(
+            f"{location}.machine_word",
+            "must differ from the form example only in the selector field",
+        )
+    code = (word >> low) & ((1 << (high - low + 1)) - 1)
+    if code != entry.get("selector_code"):
+        report.error(f"{location}.selector_code", f"machine_word encodes {code}")
+    if code == 0:
+        report.error(f"{location}.selector_code", "must exercise a non-zero selector code")
+    _validate_machine_word(form, machine_word, f"{location}.machine_word", report)
 
 
 def validate_all(
@@ -1784,7 +1852,8 @@ def validate_all(
 ) -> ValidationReport:
     report = validate_document(document, schema)
     if isinstance(document, Mapping) and vectors is not None:
-        validate_vectors(document, vectors, report)
+        expanded = isa_model.expand_document(copy.deepcopy(dict(document)))
+        validate_vectors(expanded, vectors, report)
     return report
 
 

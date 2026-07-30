@@ -29,7 +29,11 @@ CUDA 文件只包含 kernel 和推荐启动常量，不绑定特定 host 框架�
 
 - warp 固定为 32 lane。
 - kernel 参数的前 64 字节由运行时复制到 `s0..s15`。
-- 指针参数必须由参数布局记录声明为 `GLOBAL_PTR`，以保留地址空间 provenance。
+- 指针参数必须由参数布局记录声明为 `GLOBAL_PTR`，因为访存指令的地址空间由
+  opcode 决定，而不是由地址值携带。
+- uniform 标量（矩阵维度、元素个数等）留在 SGPR 中，由 `V1`/`V2`/`V3`/`VCMP`
+  的 scalar-source selector 直接读取；每条向量指令最多一个 SGPR 源，因此不需要
+  先把它们复制进 VGPR。
 - ISA 没有 `*.F32` load/store；浮点数据通过 `V_LD.*.U32` 和
   `V_ST.*.U32` 原样搬入 VGPR，再交给 FP32 算术指令解释。
 - VTX-1 1.0 Draft 唯一的 MMA 是 F16 x F16 -> F32，不能直接表示真正的

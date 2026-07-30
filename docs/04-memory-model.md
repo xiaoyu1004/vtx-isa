@@ -4,16 +4,17 @@
 
 文中的“必须”“禁止”“可以”分别表示 MUST、MUST NOT、MAY。
 
-## 1. 先记住六条直观规则
+## 1. 先记住七条直观规则
 
 1. **SGPR 是每 warp 一份，VGPR 是每 lane 一份。** scalar 访存读写 SGPR，整条 warp 只做一次；vector 访存读写 VGPR，每个参与 lane 各做一次。
-2. **所有 scalar 访存和 scalar 原子都要求头部 guard 固定为 `PT`，并且 warp scalar-ready。** 静态 guard 不是 `PT` 时按非法编码处理；不满足 scalar-ready 时固定报告 `SCALAR_STATE_FAULT`。两种失败都不读动态源、不形成地址、不产生事件。
+2. **所有 scalar 访存和 scalar 原子都要求头部 guard 固定为 `PT`，并且 warp scalar-ready。** 静态 guard 不是 `PT` 时按非法编码处理；不满足 scalar-ready 时固定报告 `DIVERGENCE_FAULT`。两种失败都不读动态源、不形成地址、不产生事件。
 3. **vector 访存按参与 lane 展开。** `vp` 条件筛出几个参与 lane，就有几个彼此独立的事件。即使硬件把它们合成一个总线请求，内存模型里仍是多个事件。
-4. **地址可以“统一基址 + 各 lane 索引”。** global、param、const 的向量访问可以用一个带 provenance 的 SGPR64 基址，再加每 lane 的 VGPR32 无符号索引。SV-mix 固定先做 `zero_extend`，不能把最高位当符号位。
-5. **空间有明确限制。** local 只能向量访问；param 和 const 只读；param、const、global 可以标量读，global 可以标量写；shared 同时支持标量和向量访问。
-6. **BAR 只管整个 CTA 的 shared。** 它不是任意线程子集屏障，也不会替代 global 的原子通信或主机所有权转移。
+4. **地址可以“统一基址 + 各 lane 索引”。** global、param、const 的向量访问可以用一个 SGPR64 基址，再加每 lane 的 VGPR32 无符号索引。SV-mix 固定先做 `zero_extend`，不能把最高位当符号位。
+5. **地址空间由 opcode 决定，不由地址值决定。** 每条访存 form 的助记符里写明 `GLOBAL`、`SHARED`、`LOCAL`、`PARAM` 或 `CONST`；地址寄存器只保存位模式，不携带空间身份，也没有 generic 空间和运行期空间推断。
+6. **空间有明确限制。** local 只能向量访问；param 和 const 只读；param、const、global 可以标量读，global 可以标量写；shared 同时支持标量和向量访问。
+7. **`BAR.SYNC.CTA` 只管整个 CTA 的 shared。** 它不是任意线程子集屏障，也不会替代 global 的原子通信或主机所有权转移。
 
-含数据竞争、原子与普通访问非法混用、或违反主机所有权的程序是未定义程序。未定义不是一种可捕获的设备故障。地址越界、未对齐和错误空间仍按各自精确故障处理；scalar-ready 失败固定为 `SCALAR_STATE_FAULT`。
+含数据竞争、原子与普通访问非法混用、或违反主机所有权的程序是未定义程序。未定义不是一种可捕获的设备故障。地址越界、未对齐和错误空间仍按各自精确故障处理；scalar-ready 失败固定为 `DIVERGENCE_FAULT`。
 
 ## 2. 两类访存指令
 
@@ -23,7 +24,7 @@ scalar 访存使用 SGPR 操作数。成功的 scalar load 对整个 warp 产生
 
 每条 scalar load 和 scalar store 都必须在读取动态源之前检查执行模型定义的 `scalar-ready(warp)`。大白话说，warp 必须至少还有一个活 lane，全部活 lane 必须在同一路径上，而且重汇聚栈中不能有未完成的 `FIRST` 或 `SECOND` 帧。只要有一条分歧路径还没走完，就不是 scalar-ready；不存在“这一条 scalar 指令碰巧安全，所以可以执行”的例外。
 
-scalar-ready 检查失败固定报告 `SCALAR_STATE_FAULT`，不读取 SGPR 地址或数据源，不形成地址，不产生 `R/W/A_*`、`ppo` 或其他内存关系，也不写任何 SGPR。
+scalar-ready 检查失败固定报告 `DIVERGENCE_FAULT`，不读取 SGPR 地址或数据源，不形成地址，不产生 `R/W/A_*`、`ppo` 或其他内存关系，也不写任何 SGPR。
 
 scalar load 把一次读取结果写入 SGPR；scalar store 从 SGPR 取得一次写入值。无论 warp 有多少个参与 lane，都不能把一次 scalar store 解释为多次相同写入，也不能把一次 scalar 原子解释为多次 RMW。
 
@@ -66,7 +67,7 @@ scalar 访存先检查静态操作数和固定 `PT`，再检查 scalar-ready，�
 
 标量和向量只决定“产生几个架构事件”，不规定硬件发出几个缓存请求。
 
-## 3. 地址空间、地址形成与 provenance
+## 3. 地址空间和地址形成
 
 ### 3.1 空间和窗口
 
@@ -74,21 +75,23 @@ scalar 访存先检查静态操作数和固定 `PT`，再检查 scalar-ready，�
 
 | 空间 | 可见范围 | 地址宽度和来源 |
 |---|---|---|
-| `global` | 设备内 CTA；主机须遵守所有权 | 带 global provenance 的 SGPR64 或 VGPR64 基址 |
+| `global` | 设备内 CTA；主机须遵守所有权 | SGPR64 或 VGPR64 基址 |
 | `shared` | 同一 CTA | CTA 内 U32 字节偏移 |
 | `local` | 单 lane | 该 lane 私有窗口内的 U32 字节偏移 |
-| `param` | 本次 kernel 启动，只读 | 带 param provenance 的 SGPR64 或 VGPR64 基址 |
-| `const` | 设备只读 | 带 const provenance 的 SGPR64 或 VGPR64 基址 |
+| `param` | 本次 kernel 启动，只读 | SGPR64 或 VGPR64 基址 |
+| `const` | 设备只读 | SGPR64 或 VGPR64 基址 |
 
-global、param、const allocation 都有空间身份、基址、长度和生命周期。一次访问必须完整落在同一个活跃 allocation 中，不能跨到相邻 allocation。shared 每 CTA 一份，local 每真实 lane 一份；不同 lane 的 local 永不别名。
+一次访问落在哪个空间只由 form 决定：每条访存 form 的操作数类型固定写明空间，助记符里也带同一个空间后缀。架构没有 generic 空间，寄存器里的地址值不带空间身份，实现禁止在运行期根据数值猜测空间。
+
+global、param、const allocation 都有空间身份、基址、长度和生命周期。一次访问必须完整落在同一个活跃 allocation 中，不能跨到相邻 allocation。这项检查在实现内部按 allocation 表完成，与寄存器内容无关。shared 每 CTA 一份，local 每真实 lane 一份；不同 lane 的 local 永不别名。
 
 ### 3.2 三种地址合同
 
-地址 form 只能明确选择 `uniform`、`lane`、`SV-mix` 三种合同之一。地址先用无界数学整数计算，再检查 provenance、窗口、范围和对齐；任何中间步骤都不能按 32 位或 64 位回绕。
+地址 form 只能明确选择 `uniform`、`lane`、`SV-mix` 三种合同之一。地址先用无界数学整数计算，再检查窗口、allocation 范围和对齐；任何中间步骤都不能按 32 位或 64 位回绕。
 
 #### uniform
 
-整个 warp 使用同一个 SGPR 地址。global、param、const 使用带正确 provenance 的 SGPR64 base；shared 使用 CTA 内 SGPR32 offset。基本模板是：
+整个 warp 使用同一个 SGPR 地址。global、param、const 使用 SGPR64 base；shared 使用 CTA 内 SGPR32 offset。基本模板是：
 
 ```text
 EA = unsigned(SGPR_base) + sign_extend(immediate)
@@ -103,7 +106,7 @@ EA = unsigned(SGPR_base)
      + sign_extend(immediate)
 ```
 
-SGPR base 提供空间和 allocation provenance，index 只是无标签字节索引。uniform 只说明地址统一，不决定事件数：scalar memory 成功后整个 warp 恰好一个事件；若某个 vector form 使用 uniform 地址，仍对 `P` 中每个 lane 各产生一个事件。
+base 和 index 都只是字节数值。uniform 只说明地址统一，不决定事件数：scalar memory 成功后整个 warp 恰好一个事件；若某个 vector form 使用 uniform 地址，仍对 `P` 中每个 lane 各产生一个事件。
 
 #### lane
 
@@ -114,7 +117,7 @@ EA[lane] = unsigned(VGPR_base[lane])
            + sign_extend(immediate)
 ```
 
-global、param、const 的 lane base 为带相应 provenance 的 VGPR64；shared 和 local 使用各 lane 的 VGPR32 窗口 offset。local **只能**使用 lane 合同，不能使用 uniform、`SMEMX` 或 `SV-mix`。同一个数值 offset 在不同 lane 的 local 中仍指向不同私有 allocation。
+global、param、const 的 lane base 为 VGPR64；shared 和 local 使用各 lane 的 VGPR32 窗口 offset。local **只能**使用 lane 合同，不能使用 uniform、`SMEMX` 或 `SV-mix`。同一个数值 offset 在不同 lane 的 local 中仍指向不同私有 allocation，因为 local form 的窗口按 lane 选取。
 
 #### SV-mix
 
@@ -126,7 +129,7 @@ EA[lane] = unsigned(SGPR_base)
            + sign_extend(immediate)
 ```
 
-`scale` 只能取具体 form 明写的值。SGPR base 提供 provenance，VGPR index 不携带 provenance。所有 SV-mix form 都必须对 VGPR32 index 做 `zero_extend`；使用 `sign_extend` 或二补数负 offset 是错误实现。SV-mix 可用于 global、param、const 和 shared，但不能用于 local。
+`scale` 只能取具体 form 明写的值。所有 SV-mix form 都必须对 VGPR32 index 做 `zero_extend`；使用 `sign_extend` 或二补数负 offset 是错误实现。SV-mix 可用于 global、param、const 和 shared，但不能用于 local。
 
 `VATOMX` 是 global vector atomic 的 SV-mix 固定模板：
 
@@ -145,8 +148,7 @@ EA[lane] = unsigned(SGPR64_base)
 - `start < 0`；
 - global、param、const 的 `start` 或 `end` 超出 U64 地址范围；
 - shared/local 的结果超出对应窗口；
-- 访问没有完整落在同一个活跃 allocation；
-- provenance 正确但 offset 已越出该 allocation。
+- 访问没有完整落在同一个活跃 allocation。
 
 自然对齐要求如下：
 
@@ -162,40 +164,22 @@ EA[lane] = unsigned(SGPR64_base)
 
 未对齐报 `MISALIGNED_ACCESS`。同一参与地址同时未对齐和越界时，按精确故障优先级报告。
 
-### 3.4 provenance 的产生和复制
+### 3.4 64 位地址在两个寄存器文件之间搬运
 
-global、param、const 指针除 64 位数值外，还携带软件不可直接读取的 provenance：
-
-```text
-{ space, allocation-id, offset }
-```
-
-运行时物化指针参数，`SR_PARAM_BASE` 产生 param provenance，装载器产生 const provenance。以下操作完整保留 provenance：
-
-- 同寄存器类别的 U64 move；
-- 带 provenance 指针加无标签整数偏移；
-- 自然对齐 U64 load/store 的 shadow tag；
-- `V_BCAST.B64` 把一个 SGPR64 广播到各目标 VGPR64 时，向每个写入 lane 完整复制同一 provenance；
-- `S_READFIRST.B64` 从编号最小的 live lane 读取 VGPR64 时，把该 lane 的 64 位数值和 provenance 一起完整复制到 SGPR64。
-
-`V_BCAST.B64` 和 `S_READFIRST.B64` 都是真实机器 form，不是伪指令，也不能拆成两条 `.B32` 来替代。规范语法和效果为：
+地址就是 64 位数值，没有影子状态，所以在寄存器之间搬运它只是搬 64 个位。两条真实机器 form 覆盖两个方向，它们都不是伪指令，也不能拆成两条 `.B32` 来替代：
 
 ```text
-V_BCAST.B64 vE:v(E+1), sA:s(A+1)
+V_MOV.B64 vE:v(E+1), sA:s(A+1)      # ssrc=1，SGPR64 -> 每 lane VGPR64
 S_READFIRST.B64 sE:s(E+1), vA:v(A+1)
 ```
 
-`V_BCAST.B64` 在入口冻结一次 SGPR 偶数连续寄存器对及其 provenance，再对 `P` 中每个 lane 整体写入对应 VGPR 偶数连续寄存器对和同一 provenance；非参与 lane 的数值和 provenance 都保持不变。它是 vector form，不要求 scalar-ready。
+`V_MOV.B64` 是 `V1` 格式的混合源 form。`ssrc=0` 时它是普通的 VGPR64 到 VGPR64 复制；`ssrc=1` 时源在 SGPR 文件中解释，于入口冻结一次那个偶数对齐的 SGPR 对，再对 `P` 中每个 lane 整体写入对应 VGPR 对。这就是把一个统一的 64 位地址送进各 lane 的规范做法。它是 vector form，不要求 scalar-ready；非参与 lane 保持原值。
 
-这里复制的是 pointer provenance，不是 barrier-token 标签。按全 ISA VGPR 写回闭包，`V_BCAST.B32/B64` 对每个实际写入的 VGPR32 槽清除旧 barrier-token 标签；两类 shadow 状态必须分别处理。
+`S_READFIRST.B64` 的头部 guard 固定为 `PT`，并且先检查 scalar-ready。通过后选择编号最小的 live lane，冻结该 lane 的 VGPR 偶数连续寄存器对，再整体写入 SGPR 偶数连续寄存器对。它不检查其他 lane 是否同值。
 
-`S_READFIRST.B64` 的头部 guard 固定为 `PT`，并且先检查 scalar-ready。通过后选择编号最小的 live lane，同时冻结该 lane 的 VGPR 偶数连续寄存器对及 provenance，再整体写入 SGPR 偶数连续寄存器对。它不检查其他 lane 是否同值。
+两条指令都只复制 64 个数值位。目标地址属于哪个空间由后续访存指令的 opcode 决定，与这次搬运无关；把一个 shared offset 搬进 SGPR64 再交给 `S_LD.GLOBAL` 不是“指针伪造”，而是一个越界或越窗口的地址，按 3.3 节的精确故障处理。
 
-这里“完整复制”包含 `space`、`allocation-id` 和当前 `offset`，不能只复制数值位，也不能重新猜测 tag。源没有 provenance 时，目标的 provenance 也必须清除。`.B32` form 只复制 32 个数值位，不产生 pointer provenance。
-
-自然对齐 U64 store/load 将 64 位数据和 shadow tag 作为同一来源保存/恢复。任何与该 8 字节槽重叠的非 U64 写都会清除 tag。U64 原子对 tag 的处理见第 7 节。
-
-错误空间、已释放 allocation、或无 provenance 的 U64 值用作 global、param、const 基址时，报 `ILLEGAL_OPERAND`。数值碰巧相同不能伪造指针。
+超出窗口、落在已释放 allocation，或没有完整落在同一个活跃 allocation 的地址报 `MEMORY_BOUNDS`；寄存器类别、编号或对齐不符合 form 要求时报 `ILLEGAL_OPERAND`。
 
 ## 4. 事件和普通访问粒度
 
@@ -212,7 +196,7 @@ space, allocation, byte-range, value, scope, order
 - `R`、`W`：普通读写；
 - `A_R`、`A_W`、`A_RMW`：原子读、写、读改写；
 - `F(scope)`：`MEMBAR`；
-- `B(slot,logical_generation,phase)`：BAR 到达、完成、等待；其中 logical generation 是永不回绕的 `N`；
+- `B(slot,phase)`：`BAR.SYNC.CTA` 的到达和恢复；
 - `H`：allocation、启动、完成和所有权转移。
 
 原子事件的 `order` 和 `scope` 来自该动态指令机器字中的 modifier 位，不由地址、寄存器值或实现猜测。译码出的 modifier 会原样成为事件属性，并参与后面的 `ppo/sw/hb`。
@@ -227,7 +211,7 @@ space, allocation, byte-range, value, scope, order
 - 每个读必须说清楚“读的是哪次写”，这就是 `rf`。
 - 一个读选了旧写，那么它自然位于后续写之前，这就是 `fr`。
 - 单个 warp/lane 里不是所有程序顺序都强制保留；真正必须保留的部分叫 `ppo`。
-- release/acquire、BAR 和运行时所有权可以在不同代理之间搭桥，这些桥叫 `sw`。
+- release/acquire、CTA 屏障和运行时所有权可以在不同代理之间搭桥，这些桥叫 `sw`。
 - `ppo` 和 `sw` 反复串起来得到 `hb`。如果 `A hb B`，意思是 A 必须先于 B 对程序生效。
 
 下面给出完整关系，不能只凭上面的比喻实现。
@@ -249,10 +233,10 @@ space, allocation, byte-range, value, scope, order
 
 1. 同一代理且字节区间重叠的 `po-loc`；
 2. SGPR 或 VGPR 的真数据依赖、地址依赖和控制依赖；
-3. `V_BCAST.B32/B64`、`S_READFIRST.B32/B64` 建立的寄存器值依赖；其中 `.B64` 还建立 provenance 依赖；
+3. 混合源 `V_MOV.B32/B64` 和 `S_READFIRST.B32/B64` 建立的寄存器值依赖；
 4. 任意事件到其后 `MEMBAR`，以及 `MEMBAR` 到其后任意事件；
 5. 任意事件到其后 RELEASE/ACQ_REL 原子，以及 ACQUIRE/ACQ_REL 原子到其后任意事件；
-6. `BAR.SYNC.CTA` 或 `BAR.ARRIVE.CTA` 到达前的 shared 事件到该 owner 的 release 到达事件，成功 SYNC 恢复或成功 `BAR.WAIT.CTA` acquire 到之后的 shared 事件；
+6. `BAR.SYNC.CTA` 到达前的 shared 事件到该 owner 的 release 到达事件，以及屏障恢复的 acquire 到之后的 shared 事件；
 7. 同一 RMW 的读部到写部；
 8. 运行时启动、完成和所有权转移要求的边。
 
@@ -326,7 +310,7 @@ shared 的可见范围固定为 CTA，因此 shared 原子事件只允许 `CTA` 
 2. release fence `Fr` 在 `po` 中先于原子修改 `X`，acquire 原子 `Y` 读取 `X` 的 release sequence，且相关 scope 相容，则 `Fr sw Y`。
 3. release 原子 `X` 的 release sequence 被原子 `Y` 读取，且 `Y po Fa`、`Fa` 是 acquire fence，相关 scope 相容，则 `X sw Fa`。
 4. 同时满足 `Fr po X`、`Y po Fa`，且 `Y` 读取 `X` 的 release sequence 时，在全部相关 scope 相容后有 `Fr sw Fa`。
-5. 一个成功的全 CTA BAR 代际，把每个 `linear_tid` owner 的 shared release arrival 侧连接到每个成功 SYNC 恢复或成功 WAIT 的 shared acquire 侧。阻塞记录冻结 `owner_snapshot: set<linear_tid>`；恢复时 acquire 正好应用于该快照。SPLIT 代的 owner 可以在代完成前先消费 token 并阻塞，但 acquire 边只在代完成、其 warp 按记录离开 WAIT 时建立。
+5. 一次成功的 `BAR.SYNC.CTA`，把每个到达 owner 的 shared release 侧连接到每个恢复 waiter 的 shared acquire 侧。阻塞记录冻结 `owner_snapshot: set<linear_tid>`；恢复时 acquire 正好应用于该快照。`EXIT` 只缩小 `live_owner_set`，不贡献 release 侧，因此不建立这类 `sw` 边。
 6. 主机 release 所有权并启动 kernel，启动事件同步到设备入口；设备全部完成后，完成事件同步到重新取得所有权的主机访问。
 
 release sequence 是 `mo_x` 中从一个 release 修改开始、随后只包含连续 RMW 的最大序列；遇到普通原子写就结束。
@@ -422,24 +406,23 @@ param、const 和 local 不支持原子。没有 SC order，也没有跨所有�
 - 不同起点或宽度的重叠原子，程序未定义；
 - U32 和 U64 原子永不共享同一个 `mo`。
 
-U64 原子 load/store/XCHG/CAS 同时读取或写入 provenance shadow tag；失败 CAS 保留旧 tag。ADD、MIN、MAX、AND、OR、XOR 的结果清除 tag。U32 原子不携带 tag。
+原子操作只搬运和计算位模式。U32 和 U64 原子都不携带任何影子状态，也不需要区分“保留 tag”和“清除 tag”的情况；一次 U64 原子读写的就是那 8 个字节。
 
-本段的 `tag` 只指 pointer provenance。任何普通或原子 load/RMW 返回到 VGPR 的每个实际写入槽，都按根规则清除旧 barrier-token 标签；不能因为返回值复制 provenance 就顺便保留 barrier token。
-
-## 8. MEMBAR 和全 CTA BAR
+## 8. MEMBAR 和 CTA 屏障
 
 `MEMBAR.CTA/DEVICE/SYSTEM` 是执行代理的 acquire-release fence。它对 warp 的 scalar 事件和相关 vector 事件建立第 6 节规定的 `ppo`；它不是会合点，也不等待其他 warp。只有配合同址原子通信并满足 scope 相容时，它才建立跨代理 `sw`。
 
-BAR 只有全 CTA 语义。每 CTA 有 8 个槽 `0..7`；owner 唯一身份为 CTA 内 `linear_tid=warp_id*32+lane_id`。每槽每一代的 owner 集固定为 CTA 启动时全部真实线程的 `linear_tid` 集合。不存在的尾 lane 不计入 owner，提前 `EXIT` 不会缩小 owner 集，也没有 `expected` 或子集参数。
+`BAR.SYNC.CTA id` 是唯一的屏障指令，只有全 CTA 语义。每 CTA 有 8 个槽 `0..7`；owner 唯一身份为 CTA 内 `linear_tid=warp_id*32+lane_id`。完成条件是槽的 `arrived_set` 等于 CTA 当前的 `live_owner_set`；不存在的尾 lane 从不计入，`EXIT` 会把退出线程移出 `live_owner_set`，也没有 `expected` 或子集参数。
 
-- `BAR.SYNC.CTA id` 的每次合法 active-owner arrival 是 shared CTA release；全体 owner 到齐后，所有 SYNC 等待者一起恢复并各自取得 shared CTA acquire。
-- `BAR.ARRIVE.CTA vd,id` 的每次合法 active-owner arrival 是 shared CTA release，并向 `vd[lane]` 写该 owner 的 token；到齐只把 SPLIT 代标为 completed。
-- `BAR.WAIT.CTA id,vs` 逐 lane 消费匹配 token。代未完成时先消费再阻塞；代完成后该 owner 成功离开 WAIT 时取得 shared CTA acquire。到齐后才来的 WAIT 立即 acquire。
-- SPLIT 代必须在全体 owner 的 token 都恰好消费一次后退休；错误 CTA、owner、槽、generation、标签或重复消费都没有内存边，并使整条动态指令回滚。
+- 每次到达是一次 shared CTA release，覆盖该 warp 当前全部 live lane：屏障要求 scalar-ready，所以 warp 只能整体到达。
+- `arrived_set` 追上 `live_owner_set` 后，所有等待者一起恢复并各自取得 shared CTA acquire，槽随即清回 idle。
+- `EXIT` 可以通过缩小 `live_owner_set` 让屏障完成，但它自己不是 release，因此不给任何 waiter 建立 `sw` 边。
 
-BAR 阻塞记录保存 `{warp_id, owner_snapshot, resume_pc}`。恢复只把该 warp 的 PC 写成 `resume_pc` 并置 ready；active/live 掩码、重汇聚栈、调用栈和 shared 事件历史都不改。generation 是单调、永不回绕的逻辑整数；退休加 1 本身不是内存事件，也不妨碍一个 IDLE 槽参与 CTA 完成判断。有限实现的内部计数器复用不得把不同逻辑代的 `B` 事件或 token 身份合并。
+屏障阻塞记录保存 `{warp_id, owner_snapshot, resume_pc}`。恢复只把该 warp 的 PC 写成 `resume_pc` 并置 ready；active/live 掩码、重汇聚栈、调用栈和 shared 事件历史都不改。槽清空不是内存事件；因为槽里不保留任何跨屏障状态，同一个槽的两次屏障之间也没有需要区分的“代”。
 
-这些边只覆盖 shared 事件。BAR 不排序 global、local、param、const，也不涉及 host。用 BAR 交换 global 数据仍需合法原子发布/获取；需要的顺序仍由 atomic order/scope 和 `MEMBAR` 建立。
+这些边只覆盖 shared 事件。屏障不排序 global、local、param、const，也不涉及 host。用屏障交换 global 数据仍需合法原子发布/获取；需要的顺序仍由 atomic order/scope 和 `MEMBAR` 建立。
+
+需要 arrive/wait 分离的软件用 shared memory 上的原子计数器加 `MEMBAR.CTA` 自行实现：release 侧用 RELEASE 原子递增，acquire 侧用 ACQUIRE 原子自旋读。这样得到的顺序由第 6 节的原子 `sw` 规则给出，不依赖任何屏障槽状态。
 
 ## 9. 主机所有权
 
@@ -481,23 +464,23 @@ V_LD.GLOBAL.U32 v0, [s2:s3 + v4]  // P 中每个 lane 各有一个 R
 
 第一条的头部 guard 必须是 `PT`，且必须满足 scalar-ready；成功恰好一个事件，失败零个事件。第二条对 `P` 中每个 lane 恰好一个事件，即使所有 `v4` 都相等，也不能退化成一个 scalar 事件。
 
-### 11.2 provenance 跨寄存器类别
+### 11.2 64 位地址跨寄存器文件
 
 ```text
-V_BCAST.B64 v2:v3, s4:s5
+V_MOV.B64 v2:v3, s4:s5      # ssrc=1
 S_READFIRST.B64 s6:s7, v2:v3
 ```
 
-若 `s4:s5` 是合法 global 指针，则每个被广播 lane 的 `v2:v3` 都得到完整相同 provenance；`S_READFIRST.B64` 再从编号最小的 live lane 把数值和 tag 一起复制到 `s6:s7`。
+若 `s4:s5` 保存一个合法 global 地址，则每个参与 lane 的 `v2:v3` 都得到同一个 64 位值；`S_READFIRST.B64` 再从编号最小的 live lane 把这 64 位复制回 `s6:s7`。两步都只搬位，空间仍由随后的访存 opcode 决定。
 
-### 11.3 shared BAR
+### 11.3 shared 屏障
 
 ```text
-lane0: V_ST.SHARED.U32 [x], 1; BAR.SYNC.CTA 0
-lane1: BAR.SYNC.CTA 0; v5 = V_LD.SHARED.U32 [x]
+warp0: V_ST.SHARED.U32 [x], 1; BAR.SYNC.CTA 0
+warp1: BAR.SYNC.CTA 0; v5 = V_LD.SHARED.U32 [x]
 ```
 
-成功的全 CTA BAR 后，`v5` 必须看到 1。把 `x` 换成 global，仅有 BAR 不足，未排序的普通冲突是数据竞争。
+成功的全 CTA 屏障后，`v5` 必须看到 1。把 `x` 换成 global，仅有屏障不足，未排序的普通冲突是数据竞争。
 
 ### 11.4 主机完成边
 

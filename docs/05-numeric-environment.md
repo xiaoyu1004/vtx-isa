@@ -9,11 +9,11 @@
 3. **默认只有一种舍入。** 浮点结果固定使用“最近值，正中间取偶数”（RNE）。没有动态舍入寄存器，也没有每 lane 不同的舍入模式。
 4. **小数不会偷偷冲成零。** normal 以下仍保留 subnormal；输入也不做 DAZ，结果也不做 FTZ。
 5. **NaN 结果有统一答案。** 只要一个数值运算应得到 NaN，就返回目标格式的正号 canonical qNaN；load/store/MOV 这种纯位搬运则原样保留 payload。
-6. **所有 S 浮点和 S 转换都要求 scalar-ready。** 算术、比较、FMIN/FMAX、FABS/FNEG、近似函数和整数/浮点转换没有例外。失败固定报告 `SCALAR_STATE_FAULT`，不读 SGPR、不写 SGPR 或 `SCC`。
+6. **所有 S 浮点和 S 转换都要求 scalar-ready。** 算术、比较、FMIN/FMAX、FABS/FNEG、近似函数和整数/浮点转换没有例外。失败固定报告 `DIVERGENCE_FAULT`，不读 SGPR、不写 SGPR 或 `SCC`。
 
 VTX-1 不提供浮点异常标志、trap enable、动态舍入状态、DAZ 或 FTZ。invalid、除零、上溢、下溢和 inexact 都不产生设备故障。
 
-VGPR 上的 barrier-token 隐藏标签不是数值位型的一部分。全 ISA 的根规则是：每个参与 lane 的每个 VGPR32 槽写入默认清除旧标签，唯二例外是 `BAR.ARRIVE.CTA` 创建标签、寄存器型 `V_MOV.B32` 复制源标签。因此任何浮点算术、数值转换或 MMA 输出都逐槽清除 barrier-token 标签，即使输出 32 位恰好与旧 token 相同。浮点 MOV/转换不能制造或保留 token；这条规则不改浮点位型，也不覆盖 pointer provenance 的独立规则。
+本章只关心 32 位和 16 位数值位型。寄存器上没有任何隐藏影子状态，浮点算术、数值转换和 MMA 输出都只写位型，不需要额外说明标签如何传播。
 
 ## 2. S 与 V 的执行规则
 
@@ -23,7 +23,7 @@ S.F32 指令使用 SGPR。一次动态 S.F32 指令对整个 warp 只计算一�
 
 本章所有 S.F32 指令和所有 S 数值转换都必须在读取任何动态源之前检查执行模型定义的 scalar-ready。warp 必须至少还有一个活 lane，全部活 lane 必须在同一路径上，而且重汇聚栈中不能有未完成的 `FIRST` 或 `SECOND` 帧。
 
-只要还有一条分歧路径没走完，任何 S 浮点或 S 转换都固定报告 `SCALAR_STATE_FAULT`。不存在“比较可以跑”“只读 SGPR 可以跑”“结果碰巧相同可以跑”或“这一条不会写结果所以可以跑”的例外。
+只要还有一条分歧路径没走完，任何 S 浮点或 S 转换都固定报告 `DIVERGENCE_FAULT`。不存在“比较可以跑”“只读 SGPR 可以跑”“结果碰巧相同可以跑”或“这一条不会写结果所以可以跑”的例外。
 
 失败指令不读 SGPR，不做 NaN 分类或舍入，不写 SGPR 或 `SCC`，也不留下部分结果。
 
@@ -42,7 +42,9 @@ E = 当前路径上的候选 lane
 
 除 warp collective 和 MMA 外，一个 lane 的特殊值不会影响另一个 lane。
 
-V 浮点和 V 转换不套用 scalar-ready；它们只更新 `P` 中 lane 的 VGPR 或 `vp`。V 指令把 SGPR 当统一只读源时，执行类别仍是 V，也不会因此变成 S 指令。
+V 浮点和 V 转换不套用 scalar-ready；它们只更新 `P` 中 lane 的 VGPR 或 `vp`。
+
+V 浮点 form 的 scalar-source selector 可以把其中一个源改成 SGPR，例如 `V_FMUL.F32 vd, va, sB`。这只改变那个源从哪个寄存器文件读取，不改变数值语义：舍入、NaN 传播和 subnormal 处理与两个源都来自 VGPR 时完全一致。执行类别仍是 V，也不会因此变成 S 指令。一条 V 浮点指令最多只能有一个 SGPR 源。
 
 ### 2.3 同一算法，不同寄存器
 
@@ -238,7 +240,7 @@ F32 转整数先使用 round toward zero（RTZ）截断，再饱和：
 
 `-0` 转为整数 0。转换不产生浮点或整数故障。
 
-这里所有 S 转换都读写 SGPR，并且必须先通过 scalar-ready；失败是 `SCALAR_STATE_FAULT`，不是数值饱和，也不会写目标 SGPR。所有 V 转换逐参与 lane 读写 VGPR，不套用 scalar-ready。
+这里所有 S 转换都读写 SGPR，并且必须先通过 scalar-ready；失败是 `DIVERGENCE_FAULT`，不是数值饱和，也不会写目标 SGPR。所有 V 转换逐参与 lane 读写 VGPR，不套用 scalar-ready。
 
 ### 9.2 V.F16 与 V.F32
 
@@ -401,7 +403,7 @@ acc = RN32(F32(A[m,k]) * F32(B[k,n]) + acc)
 符合实现至少必须逐位测试：
 
 - S.F32 与 V.F32 对相同输入得到相同数值位型；
-- 每一种 S 浮点、S 比较和 S 转换在非 scalar-ready 状态都报告 `SCALAR_STATE_FAULT`，不读动态源、不写 SGPR 或 `SCC`；
+- 每一种 S 浮点、S 比较和 S 转换在非 scalar-ready 状态都报告 `DIVERGENCE_FAULT`，不读动态源、不写 SGPR 或 `SCC`；
 - 未完成的 `FIRST` 或 `SECOND` 分歧中不存在任何可执行的 S 浮点或 S 转换例外；
 - F16/F32 的正负零、最小/最大 subnormal、最小 normal、最大有限值、正负 Inf、qNaN 和 sNaN；
 - RNE 中点取偶，以及 subnormal/normal、最大有限值/Inf 两个边界；

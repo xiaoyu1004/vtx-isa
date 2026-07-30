@@ -2,12 +2,13 @@
   "schema_version": "1.0-draft",
   "word_bits": 64,
   "counts": {
-    "forms": 392
+    "forms": 379,
+    "mixed_source": 161
   },
   "forms": [
     {
-      "key": "F001/base",
-      "family_id": "F001",
+      "key": "nop/base",
+      "family_id": "nop",
       "form_id": "base",
       "class": "SYS",
       "format": 0,
@@ -15,8 +16,8 @@
       "machine_word": "0x0000000000000000"
     },
     {
-      "key": "F002/reason",
-      "family_id": "F002",
+      "key": "trap/reason",
+      "family_id": "trap",
       "form_id": "reason",
       "class": "SYS",
       "format": 0,
@@ -24,8 +25,8 @@
       "machine_word": "0x0000000000000080"
     },
     {
-      "key": "F003/u32",
-      "family_id": "F003",
+      "key": "s-getreg/u32",
+      "family_id": "s-getreg",
       "form_id": "u32",
       "class": "SYS",
       "format": 0,
@@ -33,8 +34,8 @@
       "machine_word": "0x0000000000000100"
     },
     {
-      "key": "F003/u64",
-      "family_id": "F003",
+      "key": "s-getreg/u64",
+      "family_id": "s-getreg",
       "form_id": "u64",
       "class": "SYS",
       "format": 0,
@@ -42,8 +43,8 @@
       "machine_word": "0x0000000000000180"
     },
     {
-      "key": "F004/lane.u32",
-      "family_id": "F004",
+      "key": "v-getreg/lane.u32",
+      "family_id": "v-getreg",
       "form_id": "lane.u32",
       "class": "SYS",
       "format": 0,
@@ -51,8 +52,8 @@
       "machine_word": "0x0000000000000200"
     },
     {
-      "key": "F004/uniform.u32",
-      "family_id": "F004",
+      "key": "v-getreg/uniform.u32",
+      "family_id": "v-getreg",
       "form_id": "uniform.u32",
       "class": "SYS",
       "format": 0,
@@ -60,8 +61,8 @@
       "machine_word": "0x0000000000000280"
     },
     {
-      "key": "F004/lane.u64",
-      "family_id": "F004",
+      "key": "v-getreg/lane.u64",
+      "family_id": "v-getreg",
       "form_id": "lane.u64",
       "class": "SYS",
       "format": 0,
@@ -69,8 +70,8 @@
       "machine_word": "0x0000000000000300"
     },
     {
-      "key": "F004/uniform.u64",
-      "family_id": "F004",
+      "key": "v-getreg/uniform.u64",
+      "family_id": "v-getreg",
       "form_id": "uniform.u64",
       "class": "SYS",
       "format": 0,
@@ -78,8 +79,8 @@
       "machine_word": "0x0000000000000380"
     },
     {
-      "key": "F005/u32",
-      "family_id": "F005",
+      "key": "s-setreg/u32",
+      "family_id": "s-setreg",
       "form_id": "u32",
       "class": "SYS",
       "format": 0,
@@ -87,8 +88,8 @@
       "machine_word": "0x0000000000000400"
     },
     {
-      "key": "F006/u32",
-      "family_id": "F006",
+      "key": "v-setreg/u32",
+      "family_id": "v-setreg",
       "form_id": "u32",
       "class": "SYS",
       "format": 0,
@@ -96,8 +97,8 @@
       "machine_word": "0x0000000000000480"
     },
     {
-      "key": "F007/b32.reg",
-      "family_id": "F007",
+      "key": "s-mov/b32.reg",
+      "family_id": "s-mov",
       "form_id": "b32.reg",
       "class": "SALU",
       "format": 0,
@@ -105,8 +106,8 @@
       "machine_word": "0x0000000000000001"
     },
     {
-      "key": "F007/b32.imm",
-      "family_id": "F007",
+      "key": "s-mov/b32.imm",
+      "family_id": "s-mov",
       "form_id": "b32.imm",
       "class": "SALU",
       "format": 4,
@@ -114,8 +115,8 @@
       "machine_word": "0x0000000000000041"
     },
     {
-      "key": "F007/b64.reg",
-      "family_id": "F007",
+      "key": "s-mov/b64.reg",
+      "family_id": "s-mov",
       "form_id": "b64.reg",
       "class": "SALU",
       "format": 0,
@@ -123,8 +124,8 @@
       "machine_word": "0x0000000000000081"
     },
     {
-      "key": "F007/b64.imm",
-      "family_id": "F007",
+      "key": "s-mov/b64.imm",
+      "family_id": "s-mov",
       "form_id": "b64.imm",
       "class": "SALU",
       "format": 4,
@@ -132,8 +133,8 @@
       "machine_word": "0x00000000000000C1"
     },
     {
-      "key": "F008/u32.reg",
-      "family_id": "F008",
+      "key": "s-add/u32.reg",
+      "family_id": "s-add",
       "form_id": "u32.reg",
       "class": "SALU",
       "format": 1,
@@ -141,8 +142,8 @@
       "machine_word": "0x0000000000000011"
     },
     {
-      "key": "F008/u32.imm",
-      "family_id": "F008",
+      "key": "s-add/u32.imm",
+      "family_id": "s-add",
       "form_id": "u32.imm",
       "class": "SALU",
       "format": 4,
@@ -150,8 +151,8 @@
       "machine_word": "0x0000000000000141"
     },
     {
-      "key": "F008/u64.reg",
-      "family_id": "F008",
+      "key": "s-add/u64.reg",
+      "family_id": "s-add",
       "form_id": "u64.reg",
       "class": "SALU",
       "format": 1,
@@ -159,8 +160,8 @@
       "machine_word": "0x0000000000000091"
     },
     {
-      "key": "F008/u64.imm",
-      "family_id": "F008",
+      "key": "s-add/u64.imm",
+      "family_id": "s-add",
       "form_id": "u64.imm",
       "class": "SALU",
       "format": 4,
@@ -168,8 +169,8 @@
       "machine_word": "0x00000000000001C1"
     },
     {
-      "key": "F009/u32.reg",
-      "family_id": "F009",
+      "key": "s-sub/u32.reg",
+      "family_id": "s-sub",
       "form_id": "u32.reg",
       "class": "SALU",
       "format": 1,
@@ -177,8 +178,8 @@
       "machine_word": "0x0000000000000111"
     },
     {
-      "key": "F009/u32.imm",
-      "family_id": "F009",
+      "key": "s-sub/u32.imm",
+      "family_id": "s-sub",
       "form_id": "u32.imm",
       "class": "SALU",
       "format": 4,
@@ -186,8 +187,8 @@
       "machine_word": "0x0000000000000241"
     },
     {
-      "key": "F009/u64.reg",
-      "family_id": "F009",
+      "key": "s-sub/u64.reg",
+      "family_id": "s-sub",
       "form_id": "u64.reg",
       "class": "SALU",
       "format": 1,
@@ -195,8 +196,8 @@
       "machine_word": "0x0000000000000191"
     },
     {
-      "key": "F009/u64.imm",
-      "family_id": "F009",
+      "key": "s-sub/u64.imm",
+      "family_id": "s-sub",
       "form_id": "u64.imm",
       "class": "SALU",
       "format": 4,
@@ -204,8 +205,8 @@
       "machine_word": "0x00000000000002C1"
     },
     {
-      "key": "F010/u32.reg",
-      "family_id": "F010",
+      "key": "s-mul/u32.reg",
+      "family_id": "s-mul",
       "form_id": "u32.reg",
       "class": "SALU",
       "format": 1,
@@ -213,8 +214,8 @@
       "machine_word": "0x0000000000000211"
     },
     {
-      "key": "F010/u32.imm",
-      "family_id": "F010",
+      "key": "s-mul/u32.imm",
+      "family_id": "s-mul",
       "form_id": "u32.imm",
       "class": "SALU",
       "format": 4,
@@ -222,8 +223,8 @@
       "machine_word": "0x0000000000000341"
     },
     {
-      "key": "F010/u64.reg",
-      "family_id": "F010",
+      "key": "s-mul/u64.reg",
+      "family_id": "s-mul",
       "form_id": "u64.reg",
       "class": "SALU",
       "format": 1,
@@ -231,8 +232,8 @@
       "machine_word": "0x0000000000000291"
     },
     {
-      "key": "F010/u64.imm",
-      "family_id": "F010",
+      "key": "s-mul/u64.imm",
+      "family_id": "s-mul",
       "form_id": "u64.imm",
       "class": "SALU",
       "format": 4,
@@ -240,8 +241,8 @@
       "machine_word": "0x00000000000003C1"
     },
     {
-      "key": "F011/u32",
-      "family_id": "F011",
+      "key": "s-mad/u32",
+      "family_id": "s-mad",
       "form_id": "u32",
       "class": "SALU",
       "format": 2,
@@ -249,8 +250,8 @@
       "machine_word": "0x0000000000000021"
     },
     {
-      "key": "F012/u32",
-      "family_id": "F012",
+      "key": "s-mul-wide/u32",
+      "family_id": "s-mul-wide",
       "form_id": "u32",
       "class": "SALU",
       "format": 1,
@@ -258,8 +259,8 @@
       "machine_word": "0x0000000000000311"
     },
     {
-      "key": "F012/s32",
-      "family_id": "F012",
+      "key": "s-mul-wide/s32",
+      "family_id": "s-mul-wide",
       "form_id": "s32",
       "class": "SALU",
       "format": 1,
@@ -267,8 +268,8 @@
       "machine_word": "0x0000000000000391"
     },
     {
-      "key": "F013/u32",
-      "family_id": "F013",
+      "key": "s-mad-wide/u32",
+      "family_id": "s-mad-wide",
       "form_id": "u32",
       "class": "SALU",
       "format": 2,
@@ -276,8 +277,8 @@
       "machine_word": "0x00000000000000A1"
     },
     {
-      "key": "F013/s32",
-      "family_id": "F013",
+      "key": "s-mad-wide/s32",
+      "family_id": "s-mad-wide",
       "form_id": "s32",
       "class": "SALU",
       "format": 2,
@@ -285,8 +286,8 @@
       "machine_word": "0x0000000000000121"
     },
     {
-      "key": "F014/min.s32",
-      "family_id": "F014",
+      "key": "s-int-misc/min.s32",
+      "family_id": "s-int-misc",
       "form_id": "min.s32",
       "class": "SALU",
       "format": 1,
@@ -294,8 +295,8 @@
       "machine_word": "0x0000000000000411"
     },
     {
-      "key": "F014/min.u32",
-      "family_id": "F014",
+      "key": "s-int-misc/min.u32",
+      "family_id": "s-int-misc",
       "form_id": "min.u32",
       "class": "SALU",
       "format": 1,
@@ -303,8 +304,8 @@
       "machine_word": "0x0000000000000491"
     },
     {
-      "key": "F014/max.s32",
-      "family_id": "F014",
+      "key": "s-int-misc/max.s32",
+      "family_id": "s-int-misc",
       "form_id": "max.s32",
       "class": "SALU",
       "format": 1,
@@ -312,8 +313,8 @@
       "machine_word": "0x0000000000000511"
     },
     {
-      "key": "F014/max.u32",
-      "family_id": "F014",
+      "key": "s-int-misc/max.u32",
+      "family_id": "s-int-misc",
       "form_id": "max.u32",
       "class": "SALU",
       "format": 1,
@@ -321,8 +322,8 @@
       "machine_word": "0x0000000000000591"
     },
     {
-      "key": "F014/abs.s32",
-      "family_id": "F014",
+      "key": "s-int-misc/abs.s32",
+      "family_id": "s-int-misc",
       "form_id": "abs.s32",
       "class": "SALU",
       "format": 0,
@@ -330,8 +331,8 @@
       "machine_word": "0x0000000000000101"
     },
     {
-      "key": "F014/neg.s32",
-      "family_id": "F014",
+      "key": "s-int-misc/neg.s32",
+      "family_id": "s-int-misc",
       "form_id": "neg.s32",
       "class": "SALU",
       "format": 0,
@@ -339,8 +340,8 @@
       "machine_word": "0x0000000000000181"
     },
     {
-      "key": "F015/div.u",
-      "family_id": "F015",
+      "key": "s-div-rem/div.u",
+      "family_id": "s-div-rem",
       "form_id": "div.u",
       "class": "SALU",
       "format": 1,
@@ -348,8 +349,8 @@
       "machine_word": "0x0000000000000611"
     },
     {
-      "key": "F015/div.s",
-      "family_id": "F015",
+      "key": "s-div-rem/div.s",
+      "family_id": "s-div-rem",
       "form_id": "div.s",
       "class": "SALU",
       "format": 1,
@@ -357,8 +358,8 @@
       "machine_word": "0x0000000000000691"
     },
     {
-      "key": "F015/rem.u",
-      "family_id": "F015",
+      "key": "s-div-rem/rem.u",
+      "family_id": "s-div-rem",
       "form_id": "rem.u",
       "class": "SALU",
       "format": 1,
@@ -366,8 +367,8 @@
       "machine_word": "0x0000000000000711"
     },
     {
-      "key": "F015/rem.s",
-      "family_id": "F015",
+      "key": "s-div-rem/rem.s",
+      "family_id": "s-div-rem",
       "form_id": "rem.s",
       "class": "SALU",
       "format": 1,
@@ -375,8 +376,8 @@
       "machine_word": "0x0000000000000791"
     },
     {
-      "key": "F016/and",
-      "family_id": "F016",
+      "key": "s-bitwise/and",
+      "family_id": "s-bitwise",
       "form_id": "and",
       "class": "SALU",
       "format": 1,
@@ -384,8 +385,8 @@
       "machine_word": "0x0000000000000811"
     },
     {
-      "key": "F016/or",
-      "family_id": "F016",
+      "key": "s-bitwise/or",
+      "family_id": "s-bitwise",
       "form_id": "or",
       "class": "SALU",
       "format": 1,
@@ -393,8 +394,8 @@
       "machine_word": "0x0000000000000891"
     },
     {
-      "key": "F016/xor",
-      "family_id": "F016",
+      "key": "s-bitwise/xor",
+      "family_id": "s-bitwise",
       "form_id": "xor",
       "class": "SALU",
       "format": 1,
@@ -402,8 +403,8 @@
       "machine_word": "0x0000000000000911"
     },
     {
-      "key": "F016/not",
-      "family_id": "F016",
+      "key": "s-bitwise/not",
+      "family_id": "s-bitwise",
       "form_id": "not",
       "class": "SALU",
       "format": 0,
@@ -411,8 +412,8 @@
       "machine_word": "0x0000000000000201"
     },
     {
-      "key": "F016/brev.b32",
-      "family_id": "F016",
+      "key": "s-bitwise/brev.b32",
+      "family_id": "s-bitwise",
       "form_id": "brev.b32",
       "class": "SALU",
       "format": 0,
@@ -420,8 +421,8 @@
       "machine_word": "0x0000000000000281"
     },
     {
-      "key": "F016/bfe.b32",
-      "family_id": "F016",
+      "key": "s-bitwise/bfe.b32",
+      "family_id": "s-bitwise",
       "form_id": "bfe.b32",
       "class": "SALU",
       "format": 2,
@@ -429,8 +430,8 @@
       "machine_word": "0x00000000000001A1"
     },
     {
-      "key": "F016/bfi.b32",
-      "family_id": "F016",
+      "key": "s-bitwise/bfi.b32",
+      "family_id": "s-bitwise",
       "form_id": "bfi.b32",
       "class": "SALU",
       "format": 2,
@@ -438,8 +439,8 @@
       "machine_word": "0x0000000000000221"
     },
     {
-      "key": "F017/shl",
-      "family_id": "F017",
+      "key": "s-shift-rotate/shl",
+      "family_id": "s-shift-rotate",
       "form_id": "shl",
       "class": "SALU",
       "format": 4,
@@ -447,8 +448,8 @@
       "machine_word": "0x0000000000000441"
     },
     {
-      "key": "F017/shr",
-      "family_id": "F017",
+      "key": "s-shift-rotate/shr",
+      "family_id": "s-shift-rotate",
       "form_id": "shr",
       "class": "SALU",
       "format": 4,
@@ -456,8 +457,8 @@
       "machine_word": "0x00000000000004C1"
     },
     {
-      "key": "F017/sar",
-      "family_id": "F017",
+      "key": "s-shift-rotate/sar",
+      "family_id": "s-shift-rotate",
       "form_id": "sar",
       "class": "SALU",
       "format": 4,
@@ -465,8 +466,8 @@
       "machine_word": "0x0000000000000541"
     },
     {
-      "key": "F017/rotl",
-      "family_id": "F017",
+      "key": "s-shift-rotate/rotl",
+      "family_id": "s-shift-rotate",
       "form_id": "rotl",
       "class": "SALU",
       "format": 4,
@@ -474,8 +475,8 @@
       "machine_word": "0x00000000000005C1"
     },
     {
-      "key": "F017/rotr",
-      "family_id": "F017",
+      "key": "s-shift-rotate/rotr",
+      "family_id": "s-shift-rotate",
       "form_id": "rotr",
       "class": "SALU",
       "format": 4,
@@ -483,8 +484,8 @@
       "machine_word": "0x0000000000000641"
     },
     {
-      "key": "F018/clz",
-      "family_id": "F018",
+      "key": "s-bitcount/clz",
+      "family_id": "s-bitcount",
       "form_id": "clz",
       "class": "SALU",
       "format": 0,
@@ -492,8 +493,8 @@
       "machine_word": "0x0000000000000301"
     },
     {
-      "key": "F018/ctz",
-      "family_id": "F018",
+      "key": "s-bitcount/ctz",
+      "family_id": "s-bitcount",
       "form_id": "ctz",
       "class": "SALU",
       "format": 0,
@@ -501,8 +502,8 @@
       "machine_word": "0x0000000000000381"
     },
     {
-      "key": "F018/popc",
-      "family_id": "F018",
+      "key": "s-bitcount/popc",
+      "family_id": "s-bitcount",
       "form_id": "popc",
       "class": "SALU",
       "format": 0,
@@ -510,8 +511,8 @@
       "machine_word": "0x0000000000000401"
     },
     {
-      "key": "F019/pack.u16x2",
-      "family_id": "F019",
+      "key": "s-pack/pack.u16x2",
+      "family_id": "s-pack",
       "form_id": "pack.u16x2",
       "class": "SALU",
       "format": 1,
@@ -519,8 +520,8 @@
       "machine_word": "0x0000000000000991"
     },
     {
-      "key": "F019/unpack.lo16",
-      "family_id": "F019",
+      "key": "s-pack/unpack.lo16",
+      "family_id": "s-pack",
       "form_id": "unpack.lo16",
       "class": "SALU",
       "format": 0,
@@ -528,8 +529,8 @@
       "machine_word": "0x0000000000000481"
     },
     {
-      "key": "F019/unpack.hi16",
-      "family_id": "F019",
+      "key": "s-pack/unpack.hi16",
+      "family_id": "s-pack",
       "form_id": "unpack.hi16",
       "class": "SALU",
       "format": 0,
@@ -537,8 +538,8 @@
       "machine_word": "0x0000000000000501"
     },
     {
-      "key": "F020/equal",
-      "family_id": "F020",
+      "key": "s-compare/equal",
+      "family_id": "s-compare",
       "form_id": "equal",
       "class": "SALU",
       "format": 3,
@@ -546,8 +547,8 @@
       "machine_word": "0x0000000000000031"
     },
     {
-      "key": "F020/not-equal",
-      "family_id": "F020",
+      "key": "s-compare/not-equal",
+      "family_id": "s-compare",
       "form_id": "not-equal",
       "class": "SALU",
       "format": 3,
@@ -555,8 +556,8 @@
       "machine_word": "0x00000000000000B1"
     },
     {
-      "key": "F020/signed-less",
-      "family_id": "F020",
+      "key": "s-compare/signed-less",
+      "family_id": "s-compare",
       "form_id": "signed-less",
       "class": "SALU",
       "format": 3,
@@ -564,8 +565,8 @@
       "machine_word": "0x0000000000000131"
     },
     {
-      "key": "F020/signed-less-or-equal",
-      "family_id": "F020",
+      "key": "s-compare/signed-less-or-equal",
+      "family_id": "s-compare",
       "form_id": "signed-less-or-equal",
       "class": "SALU",
       "format": 3,
@@ -573,8 +574,8 @@
       "machine_word": "0x00000000000001B1"
     },
     {
-      "key": "F020/signed-greater",
-      "family_id": "F020",
+      "key": "s-compare/signed-greater",
+      "family_id": "s-compare",
       "form_id": "signed-greater",
       "class": "SALU",
       "format": 3,
@@ -582,8 +583,8 @@
       "machine_word": "0x0000000000000231"
     },
     {
-      "key": "F020/signed-greater-or-equal",
-      "family_id": "F020",
+      "key": "s-compare/signed-greater-or-equal",
+      "family_id": "s-compare",
       "form_id": "signed-greater-or-equal",
       "class": "SALU",
       "format": 3,
@@ -591,8 +592,8 @@
       "machine_word": "0x00000000000002B1"
     },
     {
-      "key": "F020/unsigned-less",
-      "family_id": "F020",
+      "key": "s-compare/unsigned-less",
+      "family_id": "s-compare",
       "form_id": "unsigned-less",
       "class": "SALU",
       "format": 3,
@@ -600,8 +601,8 @@
       "machine_word": "0x0000000000000331"
     },
     {
-      "key": "F020/unsigned-less-or-equal",
-      "family_id": "F020",
+      "key": "s-compare/unsigned-less-or-equal",
+      "family_id": "s-compare",
       "form_id": "unsigned-less-or-equal",
       "class": "SALU",
       "format": 3,
@@ -609,8 +610,8 @@
       "machine_word": "0x00000000000003B1"
     },
     {
-      "key": "F020/unsigned-greater",
-      "family_id": "F020",
+      "key": "s-compare/unsigned-greater",
+      "family_id": "s-compare",
       "form_id": "unsigned-greater",
       "class": "SALU",
       "format": 3,
@@ -618,8 +619,8 @@
       "machine_word": "0x0000000000000431"
     },
     {
-      "key": "F020/unsigned-greater-or-equal",
-      "family_id": "F020",
+      "key": "s-compare/unsigned-greater-or-equal",
+      "family_id": "s-compare",
       "form_id": "unsigned-greater-or-equal",
       "class": "SALU",
       "format": 3,
@@ -627,8 +628,8 @@
       "machine_word": "0x00000000000004B1"
     },
     {
-      "key": "F020/f32.eq",
-      "family_id": "F020",
+      "key": "s-compare/f32.eq",
+      "family_id": "s-compare",
       "form_id": "f32.eq",
       "class": "SALU",
       "format": 3,
@@ -636,8 +637,8 @@
       "machine_word": "0x0000000000000531"
     },
     {
-      "key": "F020/f32.ne",
-      "family_id": "F020",
+      "key": "s-compare/f32.ne",
+      "family_id": "s-compare",
       "form_id": "f32.ne",
       "class": "SALU",
       "format": 3,
@@ -645,8 +646,8 @@
       "machine_word": "0x00000000000005B1"
     },
     {
-      "key": "F020/f32.lt",
-      "family_id": "F020",
+      "key": "s-compare/f32.lt",
+      "family_id": "s-compare",
       "form_id": "f32.lt",
       "class": "SALU",
       "format": 3,
@@ -654,8 +655,8 @@
       "machine_word": "0x0000000000000631"
     },
     {
-      "key": "F020/f32.le",
-      "family_id": "F020",
+      "key": "s-compare/f32.le",
+      "family_id": "s-compare",
       "form_id": "f32.le",
       "class": "SALU",
       "format": 3,
@@ -663,8 +664,8 @@
       "machine_word": "0x00000000000006B1"
     },
     {
-      "key": "F020/f32.gt",
-      "family_id": "F020",
+      "key": "s-compare/f32.gt",
+      "family_id": "s-compare",
       "form_id": "f32.gt",
       "class": "SALU",
       "format": 3,
@@ -672,8 +673,8 @@
       "machine_word": "0x0000000000000731"
     },
     {
-      "key": "F020/f32.ge",
-      "family_id": "F020",
+      "key": "s-compare/f32.ge",
+      "family_id": "s-compare",
       "form_id": "f32.ge",
       "class": "SALU",
       "format": 3,
@@ -681,8 +682,8 @@
       "machine_word": "0x00000000000007B1"
     },
     {
-      "key": "F020/f32.ord",
-      "family_id": "F020",
+      "key": "s-compare/f32.ord",
+      "family_id": "s-compare",
       "form_id": "f32.ord",
       "class": "SALU",
       "format": 3,
@@ -690,8 +691,8 @@
       "machine_word": "0x0000000000000831"
     },
     {
-      "key": "F020/f32.uno",
-      "family_id": "F020",
+      "key": "s-compare/f32.uno",
+      "family_id": "s-compare",
       "form_id": "f32.uno",
       "class": "SALU",
       "format": 3,
@@ -699,8 +700,8 @@
       "machine_word": "0x00000000000008B1"
     },
     {
-      "key": "F021/b32",
-      "family_id": "F021",
+      "key": "s-select/b32",
+      "family_id": "s-select",
       "form_id": "b32",
       "class": "SALU",
       "format": 1,
@@ -708,8 +709,8 @@
       "machine_word": "0x0000000000000A11"
     },
     {
-      "key": "F021/b64",
-      "family_id": "F021",
+      "key": "s-select/b64",
+      "family_id": "s-select",
       "form_id": "b64",
       "class": "SALU",
       "format": 1,
@@ -717,8 +718,8 @@
       "machine_word": "0x0000000000000A91"
     },
     {
-      "key": "F022/s32.f32",
-      "family_id": "F022",
+      "key": "s-cvt/s32.f32",
+      "family_id": "s-cvt",
       "form_id": "s32.f32",
       "class": "SALU",
       "format": 0,
@@ -726,8 +727,8 @@
       "machine_word": "0x0000000000000581"
     },
     {
-      "key": "F022/u32.f32",
-      "family_id": "F022",
+      "key": "s-cvt/u32.f32",
+      "family_id": "s-cvt",
       "form_id": "u32.f32",
       "class": "SALU",
       "format": 0,
@@ -735,8 +736,8 @@
       "machine_word": "0x0000000000000601"
     },
     {
-      "key": "F022/f32.s32",
-      "family_id": "F022",
+      "key": "s-cvt/f32.s32",
+      "family_id": "s-cvt",
       "form_id": "f32.s32",
       "class": "SALU",
       "format": 0,
@@ -744,8 +745,8 @@
       "machine_word": "0x0000000000000681"
     },
     {
-      "key": "F022/f32.u32",
-      "family_id": "F022",
+      "key": "s-cvt/f32.u32",
+      "family_id": "s-cvt",
       "form_id": "f32.u32",
       "class": "SALU",
       "format": 0,
@@ -753,8 +754,8 @@
       "machine_word": "0x0000000000000701"
     },
     {
-      "key": "F022/u16.u32",
-      "family_id": "F022",
+      "key": "s-cvt/u16.u32",
+      "family_id": "s-cvt",
       "form_id": "u16.u32",
       "class": "SALU",
       "format": 0,
@@ -762,8 +763,8 @@
       "machine_word": "0x0000000000000781"
     },
     {
-      "key": "F022/s16.s32",
-      "family_id": "F022",
+      "key": "s-cvt/s16.s32",
+      "family_id": "s-cvt",
       "form_id": "s16.s32",
       "class": "SALU",
       "format": 0,
@@ -771,8 +772,8 @@
       "machine_word": "0x0000000000000801"
     },
     {
-      "key": "F023/add",
-      "family_id": "F023",
+      "key": "s-f32-arith/add",
+      "family_id": "s-f32-arith",
       "form_id": "add",
       "class": "SALU",
       "format": 1,
@@ -780,8 +781,8 @@
       "machine_word": "0x0000000000000B11"
     },
     {
-      "key": "F023/sub",
-      "family_id": "F023",
+      "key": "s-f32-arith/sub",
+      "family_id": "s-f32-arith",
       "form_id": "sub",
       "class": "SALU",
       "format": 1,
@@ -789,8 +790,8 @@
       "machine_word": "0x0000000000000B91"
     },
     {
-      "key": "F023/mul",
-      "family_id": "F023",
+      "key": "s-f32-arith/mul",
+      "family_id": "s-f32-arith",
       "form_id": "mul",
       "class": "SALU",
       "format": 1,
@@ -798,8 +799,8 @@
       "machine_word": "0x0000000000000C11"
     },
     {
-      "key": "F023/fma",
-      "family_id": "F023",
+      "key": "s-f32-arith/fma",
+      "family_id": "s-f32-arith",
       "form_id": "fma",
       "class": "SALU",
       "format": 2,
@@ -807,8 +808,8 @@
       "machine_word": "0x00000000000002A1"
     },
     {
-      "key": "F023/min",
-      "family_id": "F023",
+      "key": "s-f32-arith/min",
+      "family_id": "s-f32-arith",
       "form_id": "min",
       "class": "SALU",
       "format": 1,
@@ -816,8 +817,8 @@
       "machine_word": "0x0000000000000C91"
     },
     {
-      "key": "F023/max",
-      "family_id": "F023",
+      "key": "s-f32-arith/max",
+      "family_id": "s-f32-arith",
       "form_id": "max",
       "class": "SALU",
       "format": 1,
@@ -825,8 +826,8 @@
       "machine_word": "0x0000000000000D11"
     },
     {
-      "key": "F023/sqrt",
-      "family_id": "F023",
+      "key": "s-f32-arith/sqrt",
+      "family_id": "s-f32-arith",
       "form_id": "sqrt",
       "class": "SALU",
       "format": 0,
@@ -834,8 +835,8 @@
       "machine_word": "0x0000000000000881"
     },
     {
-      "key": "F023/abs.f32",
-      "family_id": "F023",
+      "key": "s-f32-arith/abs.f32",
+      "family_id": "s-f32-arith",
       "form_id": "abs.f32",
       "class": "SALU",
       "format": 0,
@@ -843,8 +844,8 @@
       "machine_word": "0x0000000000000901"
     },
     {
-      "key": "F023/neg.f32",
-      "family_id": "F023",
+      "key": "s-f32-arith/neg.f32",
+      "family_id": "s-f32-arith",
       "form_id": "neg.f32",
       "class": "SALU",
       "format": 0,
@@ -852,8 +853,8 @@
       "machine_word": "0x0000000000000981"
     },
     {
-      "key": "F024/div",
-      "family_id": "F024",
+      "key": "s-f32-div/div",
+      "family_id": "s-f32-div",
       "form_id": "div",
       "class": "SALU",
       "format": 1,
@@ -861,8 +862,8 @@
       "machine_word": "0x0000000000000D91"
     },
     {
-      "key": "F024/rcp",
-      "family_id": "F024",
+      "key": "s-f32-div/rcp",
+      "family_id": "s-f32-div",
       "form_id": "rcp",
       "class": "SALU",
       "format": 0,
@@ -870,8 +871,8 @@
       "machine_word": "0x0000000000000A01"
     },
     {
-      "key": "F025/b32.reg",
-      "family_id": "F025",
+      "key": "v-mov/b32.reg",
+      "family_id": "v-mov",
       "form_id": "b32.reg",
       "class": "VALU",
       "format": 0,
@@ -879,8 +880,8 @@
       "machine_word": "0x0000000000000002"
     },
     {
-      "key": "F025/b32.imm",
-      "family_id": "F025",
+      "key": "v-mov/b32.imm",
+      "family_id": "v-mov",
       "form_id": "b32.imm",
       "class": "VALU",
       "format": 4,
@@ -888,8 +889,8 @@
       "machine_word": "0x0000000000000042"
     },
     {
-      "key": "F025/b64.reg",
-      "family_id": "F025",
+      "key": "v-mov/b64.reg",
+      "family_id": "v-mov",
       "form_id": "b64.reg",
       "class": "VALU",
       "format": 0,
@@ -897,8 +898,8 @@
       "machine_word": "0x0000000000000082"
     },
     {
-      "key": "F025/b64.imm",
-      "family_id": "F025",
+      "key": "v-mov/b64.imm",
+      "family_id": "v-mov",
       "form_id": "b64.imm",
       "class": "VALU",
       "format": 4,
@@ -906,8 +907,8 @@
       "machine_word": "0x00000000000000C2"
     },
     {
-      "key": "F026/u32.reg",
-      "family_id": "F026",
+      "key": "v-add/u32.reg",
+      "family_id": "v-add",
       "form_id": "u32.reg",
       "class": "VALU",
       "format": 1,
@@ -915,8 +916,8 @@
       "machine_word": "0x0000000000000012"
     },
     {
-      "key": "F026/u32.imm",
-      "family_id": "F026",
+      "key": "v-add/u32.imm",
+      "family_id": "v-add",
       "form_id": "u32.imm",
       "class": "VALU",
       "format": 4,
@@ -924,8 +925,8 @@
       "machine_word": "0x0000000000000142"
     },
     {
-      "key": "F026/u64.reg",
-      "family_id": "F026",
+      "key": "v-add/u64.reg",
+      "family_id": "v-add",
       "form_id": "u64.reg",
       "class": "VALU",
       "format": 1,
@@ -933,8 +934,8 @@
       "machine_word": "0x0000000000000092"
     },
     {
-      "key": "F026/u64.imm",
-      "family_id": "F026",
+      "key": "v-add/u64.imm",
+      "family_id": "v-add",
       "form_id": "u64.imm",
       "class": "VALU",
       "format": 4,
@@ -942,8 +943,8 @@
       "machine_word": "0x00000000000001C2"
     },
     {
-      "key": "F027/u32.reg",
-      "family_id": "F027",
+      "key": "v-sub/u32.reg",
+      "family_id": "v-sub",
       "form_id": "u32.reg",
       "class": "VALU",
       "format": 1,
@@ -951,8 +952,8 @@
       "machine_word": "0x0000000000000112"
     },
     {
-      "key": "F027/u32.imm",
-      "family_id": "F027",
+      "key": "v-sub/u32.imm",
+      "family_id": "v-sub",
       "form_id": "u32.imm",
       "class": "VALU",
       "format": 4,
@@ -960,8 +961,8 @@
       "machine_word": "0x0000000000000242"
     },
     {
-      "key": "F027/u64.reg",
-      "family_id": "F027",
+      "key": "v-sub/u64.reg",
+      "family_id": "v-sub",
       "form_id": "u64.reg",
       "class": "VALU",
       "format": 1,
@@ -969,8 +970,8 @@
       "machine_word": "0x0000000000000192"
     },
     {
-      "key": "F027/u64.imm",
-      "family_id": "F027",
+      "key": "v-sub/u64.imm",
+      "family_id": "v-sub",
       "form_id": "u64.imm",
       "class": "VALU",
       "format": 4,
@@ -978,8 +979,8 @@
       "machine_word": "0x00000000000002C2"
     },
     {
-      "key": "F028/u32.reg",
-      "family_id": "F028",
+      "key": "v-mul/u32.reg",
+      "family_id": "v-mul",
       "form_id": "u32.reg",
       "class": "VALU",
       "format": 1,
@@ -987,8 +988,8 @@
       "machine_word": "0x0000000000000212"
     },
     {
-      "key": "F028/u32.imm",
-      "family_id": "F028",
+      "key": "v-mul/u32.imm",
+      "family_id": "v-mul",
       "form_id": "u32.imm",
       "class": "VALU",
       "format": 4,
@@ -996,8 +997,8 @@
       "machine_word": "0x0000000000000342"
     },
     {
-      "key": "F028/u64.reg",
-      "family_id": "F028",
+      "key": "v-mul/u64.reg",
+      "family_id": "v-mul",
       "form_id": "u64.reg",
       "class": "VALU",
       "format": 1,
@@ -1005,8 +1006,8 @@
       "machine_word": "0x0000000000000292"
     },
     {
-      "key": "F028/u64.imm",
-      "family_id": "F028",
+      "key": "v-mul/u64.imm",
+      "family_id": "v-mul",
       "form_id": "u64.imm",
       "class": "VALU",
       "format": 4,
@@ -1014,8 +1015,8 @@
       "machine_word": "0x00000000000003C2"
     },
     {
-      "key": "F029/u32",
-      "family_id": "F029",
+      "key": "v-mad/u32",
+      "family_id": "v-mad",
       "form_id": "u32",
       "class": "VALU",
       "format": 2,
@@ -1023,8 +1024,8 @@
       "machine_word": "0x0000000000000022"
     },
     {
-      "key": "F030/u32",
-      "family_id": "F030",
+      "key": "v-mul-wide/u32",
+      "family_id": "v-mul-wide",
       "form_id": "u32",
       "class": "VALU",
       "format": 1,
@@ -1032,8 +1033,8 @@
       "machine_word": "0x0000000000000312"
     },
     {
-      "key": "F030/s32",
-      "family_id": "F030",
+      "key": "v-mul-wide/s32",
+      "family_id": "v-mul-wide",
       "form_id": "s32",
       "class": "VALU",
       "format": 1,
@@ -1041,8 +1042,8 @@
       "machine_word": "0x0000000000000392"
     },
     {
-      "key": "F031/u32",
-      "family_id": "F031",
+      "key": "v-mad-wide/u32",
+      "family_id": "v-mad-wide",
       "form_id": "u32",
       "class": "VALU",
       "format": 2,
@@ -1050,8 +1051,8 @@
       "machine_word": "0x00000000000000A2"
     },
     {
-      "key": "F031/s32",
-      "family_id": "F031",
+      "key": "v-mad-wide/s32",
+      "family_id": "v-mad-wide",
       "form_id": "s32",
       "class": "VALU",
       "format": 2,
@@ -1059,8 +1060,8 @@
       "machine_word": "0x0000000000000122"
     },
     {
-      "key": "F032/min.s32",
-      "family_id": "F032",
+      "key": "v-int-misc/min.s32",
+      "family_id": "v-int-misc",
       "form_id": "min.s32",
       "class": "VALU",
       "format": 1,
@@ -1068,8 +1069,8 @@
       "machine_word": "0x0000000000000412"
     },
     {
-      "key": "F032/min.u32",
-      "family_id": "F032",
+      "key": "v-int-misc/min.u32",
+      "family_id": "v-int-misc",
       "form_id": "min.u32",
       "class": "VALU",
       "format": 1,
@@ -1077,8 +1078,8 @@
       "machine_word": "0x0000000000000492"
     },
     {
-      "key": "F032/max.s32",
-      "family_id": "F032",
+      "key": "v-int-misc/max.s32",
+      "family_id": "v-int-misc",
       "form_id": "max.s32",
       "class": "VALU",
       "format": 1,
@@ -1086,8 +1087,8 @@
       "machine_word": "0x0000000000000512"
     },
     {
-      "key": "F032/max.u32",
-      "family_id": "F032",
+      "key": "v-int-misc/max.u32",
+      "family_id": "v-int-misc",
       "form_id": "max.u32",
       "class": "VALU",
       "format": 1,
@@ -1095,8 +1096,8 @@
       "machine_word": "0x0000000000000592"
     },
     {
-      "key": "F032/abs.s32",
-      "family_id": "F032",
+      "key": "v-int-misc/abs.s32",
+      "family_id": "v-int-misc",
       "form_id": "abs.s32",
       "class": "VALU",
       "format": 0,
@@ -1104,8 +1105,8 @@
       "machine_word": "0x0000000000000102"
     },
     {
-      "key": "F032/neg.s32",
-      "family_id": "F032",
+      "key": "v-int-misc/neg.s32",
+      "family_id": "v-int-misc",
       "form_id": "neg.s32",
       "class": "VALU",
       "format": 0,
@@ -1113,8 +1114,8 @@
       "machine_word": "0x0000000000000182"
     },
     {
-      "key": "F033/div.u",
-      "family_id": "F033",
+      "key": "v-div-rem/div.u",
+      "family_id": "v-div-rem",
       "form_id": "div.u",
       "class": "VALU",
       "format": 1,
@@ -1122,8 +1123,8 @@
       "machine_word": "0x0000000000000612"
     },
     {
-      "key": "F033/div.s",
-      "family_id": "F033",
+      "key": "v-div-rem/div.s",
+      "family_id": "v-div-rem",
       "form_id": "div.s",
       "class": "VALU",
       "format": 1,
@@ -1131,8 +1132,8 @@
       "machine_word": "0x0000000000000692"
     },
     {
-      "key": "F033/rem.u",
-      "family_id": "F033",
+      "key": "v-div-rem/rem.u",
+      "family_id": "v-div-rem",
       "form_id": "rem.u",
       "class": "VALU",
       "format": 1,
@@ -1140,8 +1141,8 @@
       "machine_word": "0x0000000000000712"
     },
     {
-      "key": "F033/rem.s",
-      "family_id": "F033",
+      "key": "v-div-rem/rem.s",
+      "family_id": "v-div-rem",
       "form_id": "rem.s",
       "class": "VALU",
       "format": 1,
@@ -1149,8 +1150,8 @@
       "machine_word": "0x0000000000000792"
     },
     {
-      "key": "F034/and",
-      "family_id": "F034",
+      "key": "v-bitwise/and",
+      "family_id": "v-bitwise",
       "form_id": "and",
       "class": "VALU",
       "format": 1,
@@ -1158,8 +1159,8 @@
       "machine_word": "0x0000000000000812"
     },
     {
-      "key": "F034/or",
-      "family_id": "F034",
+      "key": "v-bitwise/or",
+      "family_id": "v-bitwise",
       "form_id": "or",
       "class": "VALU",
       "format": 1,
@@ -1167,8 +1168,8 @@
       "machine_word": "0x0000000000000892"
     },
     {
-      "key": "F034/xor",
-      "family_id": "F034",
+      "key": "v-bitwise/xor",
+      "family_id": "v-bitwise",
       "form_id": "xor",
       "class": "VALU",
       "format": 1,
@@ -1176,8 +1177,8 @@
       "machine_word": "0x0000000000000912"
     },
     {
-      "key": "F034/not",
-      "family_id": "F034",
+      "key": "v-bitwise/not",
+      "family_id": "v-bitwise",
       "form_id": "not",
       "class": "VALU",
       "format": 0,
@@ -1185,8 +1186,8 @@
       "machine_word": "0x0000000000000202"
     },
     {
-      "key": "F034/brev.b32",
-      "family_id": "F034",
+      "key": "v-bitwise/brev.b32",
+      "family_id": "v-bitwise",
       "form_id": "brev.b32",
       "class": "VALU",
       "format": 0,
@@ -1194,8 +1195,8 @@
       "machine_word": "0x0000000000000282"
     },
     {
-      "key": "F034/bfe.b32",
-      "family_id": "F034",
+      "key": "v-bitwise/bfe.b32",
+      "family_id": "v-bitwise",
       "form_id": "bfe.b32",
       "class": "VALU",
       "format": 2,
@@ -1203,8 +1204,8 @@
       "machine_word": "0x00000000000001A2"
     },
     {
-      "key": "F034/bfi.b32",
-      "family_id": "F034",
+      "key": "v-bitwise/bfi.b32",
+      "family_id": "v-bitwise",
       "form_id": "bfi.b32",
       "class": "VALU",
       "format": 2,
@@ -1212,8 +1213,8 @@
       "machine_word": "0x0000000000000222"
     },
     {
-      "key": "F035/shl",
-      "family_id": "F035",
+      "key": "v-shift-rotate/shl",
+      "family_id": "v-shift-rotate",
       "form_id": "shl",
       "class": "VALU",
       "format": 4,
@@ -1221,8 +1222,8 @@
       "machine_word": "0x0000000000000442"
     },
     {
-      "key": "F035/shr",
-      "family_id": "F035",
+      "key": "v-shift-rotate/shr",
+      "family_id": "v-shift-rotate",
       "form_id": "shr",
       "class": "VALU",
       "format": 4,
@@ -1230,8 +1231,8 @@
       "machine_word": "0x00000000000004C2"
     },
     {
-      "key": "F035/sar",
-      "family_id": "F035",
+      "key": "v-shift-rotate/sar",
+      "family_id": "v-shift-rotate",
       "form_id": "sar",
       "class": "VALU",
       "format": 4,
@@ -1239,8 +1240,8 @@
       "machine_word": "0x0000000000000542"
     },
     {
-      "key": "F035/rotl",
-      "family_id": "F035",
+      "key": "v-shift-rotate/rotl",
+      "family_id": "v-shift-rotate",
       "form_id": "rotl",
       "class": "VALU",
       "format": 4,
@@ -1248,8 +1249,8 @@
       "machine_word": "0x00000000000005C2"
     },
     {
-      "key": "F035/rotr",
-      "family_id": "F035",
+      "key": "v-shift-rotate/rotr",
+      "family_id": "v-shift-rotate",
       "form_id": "rotr",
       "class": "VALU",
       "format": 4,
@@ -1257,8 +1258,53 @@
       "machine_word": "0x0000000000000642"
     },
     {
-      "key": "F036/clz",
-      "family_id": "F036",
+      "key": "v-shift-rotate/shl.reg",
+      "family_id": "v-shift-rotate",
+      "form_id": "shl.reg",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 35,
+      "machine_word": "0x0000000000001192"
+    },
+    {
+      "key": "v-shift-rotate/shr.reg",
+      "family_id": "v-shift-rotate",
+      "form_id": "shr.reg",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 36,
+      "machine_word": "0x0000000000001212"
+    },
+    {
+      "key": "v-shift-rotate/sar.reg",
+      "family_id": "v-shift-rotate",
+      "form_id": "sar.reg",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 37,
+      "machine_word": "0x0000000000001292"
+    },
+    {
+      "key": "v-shift-rotate/rotl.reg",
+      "family_id": "v-shift-rotate",
+      "form_id": "rotl.reg",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 38,
+      "machine_word": "0x0000000000001312"
+    },
+    {
+      "key": "v-shift-rotate/rotr.reg",
+      "family_id": "v-shift-rotate",
+      "form_id": "rotr.reg",
+      "class": "VALU",
+      "format": 1,
+      "opcode": 39,
+      "machine_word": "0x0000000000001392"
+    },
+    {
+      "key": "v-bitcount/clz",
+      "family_id": "v-bitcount",
       "form_id": "clz",
       "class": "VALU",
       "format": 0,
@@ -1266,8 +1312,8 @@
       "machine_word": "0x0000000000000302"
     },
     {
-      "key": "F036/ctz",
-      "family_id": "F036",
+      "key": "v-bitcount/ctz",
+      "family_id": "v-bitcount",
       "form_id": "ctz",
       "class": "VALU",
       "format": 0,
@@ -1275,8 +1321,8 @@
       "machine_word": "0x0000000000000382"
     },
     {
-      "key": "F036/popc",
-      "family_id": "F036",
+      "key": "v-bitcount/popc",
+      "family_id": "v-bitcount",
       "form_id": "popc",
       "class": "VALU",
       "format": 0,
@@ -1284,8 +1330,8 @@
       "machine_word": "0x0000000000000402"
     },
     {
-      "key": "F037/pack.u16x2",
-      "family_id": "F037",
+      "key": "v-pack/pack.u16x2",
+      "family_id": "v-pack",
       "form_id": "pack.u16x2",
       "class": "VALU",
       "format": 1,
@@ -1293,8 +1339,8 @@
       "machine_word": "0x0000000000000992"
     },
     {
-      "key": "F037/unpack.lo16",
-      "family_id": "F037",
+      "key": "v-pack/unpack.lo16",
+      "family_id": "v-pack",
       "form_id": "unpack.lo16",
       "class": "VALU",
       "format": 0,
@@ -1302,8 +1348,8 @@
       "machine_word": "0x0000000000000482"
     },
     {
-      "key": "F037/unpack.hi16",
-      "family_id": "F037",
+      "key": "v-pack/unpack.hi16",
+      "family_id": "v-pack",
       "form_id": "unpack.hi16",
       "class": "VALU",
       "format": 0,
@@ -1311,8 +1357,8 @@
       "machine_word": "0x0000000000000502"
     },
     {
-      "key": "F038/equal",
-      "family_id": "F038",
+      "key": "v-compare/equal",
+      "family_id": "v-compare",
       "form_id": "equal",
       "class": "VALU",
       "format": 3,
@@ -1320,8 +1366,8 @@
       "machine_word": "0x0000000000000032"
     },
     {
-      "key": "F038/not-equal",
-      "family_id": "F038",
+      "key": "v-compare/not-equal",
+      "family_id": "v-compare",
       "form_id": "not-equal",
       "class": "VALU",
       "format": 3,
@@ -1329,8 +1375,8 @@
       "machine_word": "0x00000000000000B2"
     },
     {
-      "key": "F038/signed-less",
-      "family_id": "F038",
+      "key": "v-compare/signed-less",
+      "family_id": "v-compare",
       "form_id": "signed-less",
       "class": "VALU",
       "format": 3,
@@ -1338,8 +1384,8 @@
       "machine_word": "0x0000000000000132"
     },
     {
-      "key": "F038/signed-less-or-equal",
-      "family_id": "F038",
+      "key": "v-compare/signed-less-or-equal",
+      "family_id": "v-compare",
       "form_id": "signed-less-or-equal",
       "class": "VALU",
       "format": 3,
@@ -1347,8 +1393,8 @@
       "machine_word": "0x00000000000001B2"
     },
     {
-      "key": "F038/unsigned-less",
-      "family_id": "F038",
+      "key": "v-compare/unsigned-less",
+      "family_id": "v-compare",
       "form_id": "unsigned-less",
       "class": "VALU",
       "format": 3,
@@ -1356,8 +1402,8 @@
       "machine_word": "0x0000000000000232"
     },
     {
-      "key": "F038/unsigned-less-or-equal",
-      "family_id": "F038",
+      "key": "v-compare/unsigned-less-or-equal",
+      "family_id": "v-compare",
       "form_id": "unsigned-less-or-equal",
       "class": "VALU",
       "format": 3,
@@ -1365,8 +1411,8 @@
       "machine_word": "0x00000000000002B2"
     },
     {
-      "key": "F038/ordered-equal_f32",
-      "family_id": "F038",
+      "key": "v-compare/ordered-equal_f32",
+      "family_id": "v-compare",
       "form_id": "ordered-equal_f32",
       "class": "VALU",
       "format": 3,
@@ -1374,8 +1420,8 @@
       "machine_word": "0x0000000000000332"
     },
     {
-      "key": "F038/ordered-less_f32",
-      "family_id": "F038",
+      "key": "v-compare/ordered-less_f32",
+      "family_id": "v-compare",
       "form_id": "ordered-less_f32",
       "class": "VALU",
       "format": 3,
@@ -1383,8 +1429,8 @@
       "machine_word": "0x00000000000003B2"
     },
     {
-      "key": "F038/f32.ne",
-      "family_id": "F038",
+      "key": "v-compare/f32.ne",
+      "family_id": "v-compare",
       "form_id": "f32.ne",
       "class": "VALU",
       "format": 3,
@@ -1392,8 +1438,8 @@
       "machine_word": "0x0000000000000432"
     },
     {
-      "key": "F038/f32.le",
-      "family_id": "F038",
+      "key": "v-compare/f32.le",
+      "family_id": "v-compare",
       "form_id": "f32.le",
       "class": "VALU",
       "format": 3,
@@ -1401,8 +1447,8 @@
       "machine_word": "0x00000000000004B2"
     },
     {
-      "key": "F038/f32.gt",
-      "family_id": "F038",
+      "key": "v-compare/f32.gt",
+      "family_id": "v-compare",
       "form_id": "f32.gt",
       "class": "VALU",
       "format": 3,
@@ -1410,8 +1456,8 @@
       "machine_word": "0x0000000000000532"
     },
     {
-      "key": "F038/f32.ge",
-      "family_id": "F038",
+      "key": "v-compare/f32.ge",
+      "family_id": "v-compare",
       "form_id": "f32.ge",
       "class": "VALU",
       "format": 3,
@@ -1419,8 +1465,8 @@
       "machine_word": "0x00000000000005B2"
     },
     {
-      "key": "F038/gt.s32",
-      "family_id": "F038",
+      "key": "v-compare/gt.s32",
+      "family_id": "v-compare",
       "form_id": "gt.s32",
       "class": "VALU",
       "format": 3,
@@ -1428,8 +1474,8 @@
       "machine_word": "0x0000000000000632"
     },
     {
-      "key": "F038/ge.s32",
-      "family_id": "F038",
+      "key": "v-compare/ge.s32",
+      "family_id": "v-compare",
       "form_id": "ge.s32",
       "class": "VALU",
       "format": 3,
@@ -1437,8 +1483,8 @@
       "machine_word": "0x00000000000006B2"
     },
     {
-      "key": "F038/gt.u32",
-      "family_id": "F038",
+      "key": "v-compare/gt.u32",
+      "family_id": "v-compare",
       "form_id": "gt.u32",
       "class": "VALU",
       "format": 3,
@@ -1446,8 +1492,8 @@
       "machine_word": "0x0000000000000732"
     },
     {
-      "key": "F038/ge.u32",
-      "family_id": "F038",
+      "key": "v-compare/ge.u32",
+      "family_id": "v-compare",
       "form_id": "ge.u32",
       "class": "VALU",
       "format": 3,
@@ -1455,8 +1501,8 @@
       "machine_word": "0x00000000000007B2"
     },
     {
-      "key": "F038/f32.ord",
-      "family_id": "F038",
+      "key": "v-compare/f32.ord",
+      "family_id": "v-compare",
       "form_id": "f32.ord",
       "class": "VALU",
       "format": 3,
@@ -1464,8 +1510,8 @@
       "machine_word": "0x0000000000000832"
     },
     {
-      "key": "F038/f32.uno",
-      "family_id": "F038",
+      "key": "v-compare/f32.uno",
+      "family_id": "v-compare",
       "form_id": "f32.uno",
       "class": "VALU",
       "format": 3,
@@ -1473,8 +1519,8 @@
       "machine_word": "0x00000000000008B2"
     },
     {
-      "key": "F039/b32",
-      "family_id": "F039",
+      "key": "v-select/b32",
+      "family_id": "v-select",
       "form_id": "b32",
       "class": "VALU",
       "format": 2,
@@ -1482,8 +1528,8 @@
       "machine_word": "0x00000000000002A2"
     },
     {
-      "key": "F039/b64",
-      "family_id": "F039",
+      "key": "v-select/b64",
+      "family_id": "v-select",
       "form_id": "b64",
       "class": "VALU",
       "format": 2,
@@ -1491,8 +1537,8 @@
       "machine_word": "0x0000000000000322"
     },
     {
-      "key": "F040/s32.f32",
-      "family_id": "F040",
+      "key": "v-cvt/s32.f32",
+      "family_id": "v-cvt",
       "form_id": "s32.f32",
       "class": "VALU",
       "format": 0,
@@ -1500,8 +1546,8 @@
       "machine_word": "0x0000000000000582"
     },
     {
-      "key": "F040/u32.f32",
-      "family_id": "F040",
+      "key": "v-cvt/u32.f32",
+      "family_id": "v-cvt",
       "form_id": "u32.f32",
       "class": "VALU",
       "format": 0,
@@ -1509,8 +1555,8 @@
       "machine_word": "0x0000000000000602"
     },
     {
-      "key": "F040/f32.s32",
-      "family_id": "F040",
+      "key": "v-cvt/f32.s32",
+      "family_id": "v-cvt",
       "form_id": "f32.s32",
       "class": "VALU",
       "format": 0,
@@ -1518,8 +1564,8 @@
       "machine_word": "0x0000000000000682"
     },
     {
-      "key": "F040/f32.u32",
-      "family_id": "F040",
+      "key": "v-cvt/f32.u32",
+      "family_id": "v-cvt",
       "form_id": "f32.u32",
       "class": "VALU",
       "format": 0,
@@ -1527,8 +1573,8 @@
       "machine_word": "0x0000000000000702"
     },
     {
-      "key": "F040/u16.u32",
-      "family_id": "F040",
+      "key": "v-cvt/u16.u32",
+      "family_id": "v-cvt",
       "form_id": "u16.u32",
       "class": "VALU",
       "format": 0,
@@ -1536,8 +1582,8 @@
       "machine_word": "0x0000000000000782"
     },
     {
-      "key": "F040/s16.s32",
-      "family_id": "F040",
+      "key": "v-cvt/s16.s32",
+      "family_id": "v-cvt",
       "form_id": "s16.s32",
       "class": "VALU",
       "format": 0,
@@ -1545,8 +1591,8 @@
       "machine_word": "0x0000000000000802"
     },
     {
-      "key": "F041/add",
-      "family_id": "F041",
+      "key": "v-f32-arith/add",
+      "family_id": "v-f32-arith",
       "form_id": "add",
       "class": "VALU",
       "format": 1,
@@ -1554,8 +1600,8 @@
       "machine_word": "0x0000000000000A12"
     },
     {
-      "key": "F041/sub",
-      "family_id": "F041",
+      "key": "v-f32-arith/sub",
+      "family_id": "v-f32-arith",
       "form_id": "sub",
       "class": "VALU",
       "format": 1,
@@ -1563,8 +1609,8 @@
       "machine_word": "0x0000000000000A92"
     },
     {
-      "key": "F041/mul",
-      "family_id": "F041",
+      "key": "v-f32-arith/mul",
+      "family_id": "v-f32-arith",
       "form_id": "mul",
       "class": "VALU",
       "format": 1,
@@ -1572,8 +1618,8 @@
       "machine_word": "0x0000000000000B12"
     },
     {
-      "key": "F041/fma",
-      "family_id": "F041",
+      "key": "v-f32-arith/fma",
+      "family_id": "v-f32-arith",
       "form_id": "fma",
       "class": "VALU",
       "format": 2,
@@ -1581,8 +1627,8 @@
       "machine_word": "0x00000000000003A2"
     },
     {
-      "key": "F041/min",
-      "family_id": "F041",
+      "key": "v-f32-arith/min",
+      "family_id": "v-f32-arith",
       "form_id": "min",
       "class": "VALU",
       "format": 1,
@@ -1590,8 +1636,8 @@
       "machine_word": "0x0000000000000B92"
     },
     {
-      "key": "F041/max",
-      "family_id": "F041",
+      "key": "v-f32-arith/max",
+      "family_id": "v-f32-arith",
       "form_id": "max",
       "class": "VALU",
       "format": 1,
@@ -1599,8 +1645,8 @@
       "machine_word": "0x0000000000000C12"
     },
     {
-      "key": "F041/sqrt",
-      "family_id": "F041",
+      "key": "v-f32-arith/sqrt",
+      "family_id": "v-f32-arith",
       "form_id": "sqrt",
       "class": "VALU",
       "format": 0,
@@ -1608,8 +1654,8 @@
       "machine_word": "0x0000000000000882"
     },
     {
-      "key": "F041/abs.f32",
-      "family_id": "F041",
+      "key": "v-f32-arith/abs.f32",
+      "family_id": "v-f32-arith",
       "form_id": "abs.f32",
       "class": "VALU",
       "format": 0,
@@ -1617,8 +1663,8 @@
       "machine_word": "0x0000000000000902"
     },
     {
-      "key": "F041/neg.f32",
-      "family_id": "F041",
+      "key": "v-f32-arith/neg.f32",
+      "family_id": "v-f32-arith",
       "form_id": "neg.f32",
       "class": "VALU",
       "format": 0,
@@ -1626,8 +1672,8 @@
       "machine_word": "0x0000000000000982"
     },
     {
-      "key": "F042/div",
-      "family_id": "F042",
+      "key": "v-f32-div/div",
+      "family_id": "v-f32-div",
       "form_id": "div",
       "class": "VALU",
       "format": 1,
@@ -1635,8 +1681,8 @@
       "machine_word": "0x0000000000000C92"
     },
     {
-      "key": "F042/rcp",
-      "family_id": "F042",
+      "key": "v-f32-div/rcp",
+      "family_id": "v-f32-div",
       "form_id": "rcp",
       "class": "VALU",
       "format": 0,
@@ -1644,8 +1690,8 @@
       "machine_word": "0x0000000000000A02"
     },
     {
-      "key": "F043/add",
-      "family_id": "F043",
+      "key": "v-f16-arith/add",
+      "family_id": "v-f16-arith",
       "form_id": "add",
       "class": "VALU",
       "format": 1,
@@ -1653,8 +1699,8 @@
       "machine_word": "0x0000000000000D12"
     },
     {
-      "key": "F043/sub",
-      "family_id": "F043",
+      "key": "v-f16-arith/sub",
+      "family_id": "v-f16-arith",
       "form_id": "sub",
       "class": "VALU",
       "format": 1,
@@ -1662,8 +1708,8 @@
       "machine_word": "0x0000000000000D92"
     },
     {
-      "key": "F043/mul",
-      "family_id": "F043",
+      "key": "v-f16-arith/mul",
+      "family_id": "v-f16-arith",
       "form_id": "mul",
       "class": "VALU",
       "format": 1,
@@ -1671,8 +1717,8 @@
       "machine_word": "0x0000000000000E12"
     },
     {
-      "key": "F043/fma",
-      "family_id": "F043",
+      "key": "v-f16-arith/fma",
+      "family_id": "v-f16-arith",
       "form_id": "fma",
       "class": "VALU",
       "format": 2,
@@ -1680,8 +1726,8 @@
       "machine_word": "0x0000000000000422"
     },
     {
-      "key": "F043/min",
-      "family_id": "F043",
+      "key": "v-f16-arith/min",
+      "family_id": "v-f16-arith",
       "form_id": "min",
       "class": "VALU",
       "format": 1,
@@ -1689,8 +1735,8 @@
       "machine_word": "0x0000000000000E92"
     },
     {
-      "key": "F043/max",
-      "family_id": "F043",
+      "key": "v-f16-arith/max",
+      "family_id": "v-f16-arith",
       "form_id": "max",
       "class": "VALU",
       "format": 1,
@@ -1698,8 +1744,8 @@
       "machine_word": "0x0000000000000F12"
     },
     {
-      "key": "F043/div",
-      "family_id": "F043",
+      "key": "v-f16-arith/div",
+      "family_id": "v-f16-arith",
       "form_id": "div",
       "class": "VALU",
       "format": 1,
@@ -1707,8 +1753,8 @@
       "machine_word": "0x0000000000000F92"
     },
     {
-      "key": "F043/sqrt",
-      "family_id": "F043",
+      "key": "v-f16-arith/sqrt",
+      "family_id": "v-f16-arith",
       "form_id": "sqrt",
       "class": "VALU",
       "format": 0,
@@ -1716,8 +1762,8 @@
       "machine_word": "0x0000000000000A82"
     },
     {
-      "key": "F043/abs",
-      "family_id": "F043",
+      "key": "v-f16-arith/abs",
+      "family_id": "v-f16-arith",
       "form_id": "abs",
       "class": "VALU",
       "format": 0,
@@ -1725,8 +1771,8 @@
       "machine_word": "0x0000000000000B02"
     },
     {
-      "key": "F043/neg",
-      "family_id": "F043",
+      "key": "v-f16-arith/neg",
+      "family_id": "v-f16-arith",
       "form_id": "neg",
       "class": "VALU",
       "format": 0,
@@ -1734,8 +1780,8 @@
       "machine_word": "0x0000000000000B82"
     },
     {
-      "key": "F044/f32.f16",
-      "family_id": "F044",
+      "key": "v-f16-cvt/f32.f16",
+      "family_id": "v-f16-cvt",
       "form_id": "f32.f16",
       "class": "VALU",
       "format": 0,
@@ -1743,8 +1789,8 @@
       "machine_word": "0x0000000000000C02"
     },
     {
-      "key": "F044/f16.f32",
-      "family_id": "F044",
+      "key": "v-f16-cvt/f16.f32",
+      "family_id": "v-f16-cvt",
       "form_id": "f16.f32",
       "class": "VALU",
       "format": 0,
@@ -1752,8 +1798,8 @@
       "machine_word": "0x0000000000000C82"
     },
     {
-      "key": "F045/and",
-      "family_id": "F045",
+      "key": "v-pred-logic/and",
+      "family_id": "v-pred-logic",
       "form_id": "and",
       "class": "VALU",
       "format": 1,
@@ -1761,8 +1807,8 @@
       "machine_word": "0x0000000000001012"
     },
     {
-      "key": "F045/or",
-      "family_id": "F045",
+      "key": "v-pred-logic/or",
+      "family_id": "v-pred-logic",
       "form_id": "or",
       "class": "VALU",
       "format": 1,
@@ -1770,8 +1816,8 @@
       "machine_word": "0x0000000000001092"
     },
     {
-      "key": "F045/xor",
-      "family_id": "F045",
+      "key": "v-pred-logic/xor",
+      "family_id": "v-pred-logic",
       "form_id": "xor",
       "class": "VALU",
       "format": 1,
@@ -1779,8 +1825,8 @@
       "machine_word": "0x0000000000001112"
     },
     {
-      "key": "F045/not",
-      "family_id": "F045",
+      "key": "v-pred-logic/not",
+      "family_id": "v-pred-logic",
       "form_id": "not",
       "class": "VALU",
       "format": 0,
@@ -1788,8 +1834,8 @@
       "machine_word": "0x0000000000000D02"
     },
     {
-      "key": "F046/global.u32.base",
-      "family_id": "F046",
+      "key": "s-ld/global.u32.base",
+      "family_id": "s-ld",
       "form_id": "global.u32.base",
       "class": "MEMORY",
       "format": 0,
@@ -1797,8 +1843,8 @@
       "machine_word": "0x0000000000000003"
     },
     {
-      "key": "F046/global.u64.base",
-      "family_id": "F046",
+      "key": "s-ld/global.u64.base",
+      "family_id": "s-ld",
       "form_id": "global.u64.base",
       "class": "MEMORY",
       "format": 0,
@@ -1806,8 +1852,8 @@
       "machine_word": "0x0000000000000083"
     },
     {
-      "key": "F046/global.u32.index",
-      "family_id": "F046",
+      "key": "s-ld/global.u32.index",
+      "family_id": "s-ld",
       "form_id": "global.u32.index",
       "class": "MEMORY",
       "format": 6,
@@ -1815,8 +1861,8 @@
       "machine_word": "0x0000000000000063"
     },
     {
-      "key": "F046/shared.u32",
-      "family_id": "F046",
+      "key": "s-ld/shared.u32",
+      "family_id": "s-ld",
       "form_id": "shared.u32",
       "class": "MEMORY",
       "format": 0,
@@ -1824,8 +1870,8 @@
       "machine_word": "0x0000000000000103"
     },
     {
-      "key": "F046/const.u32",
-      "family_id": "F046",
+      "key": "s-ld/const.u32",
+      "family_id": "s-ld",
       "form_id": "const.u32",
       "class": "MEMORY",
       "format": 0,
@@ -1833,8 +1879,8 @@
       "machine_word": "0x0000000000000183"
     },
     {
-      "key": "F046/param.u32",
-      "family_id": "F046",
+      "key": "s-ld/param.u32",
+      "family_id": "s-ld",
       "form_id": "param.u32",
       "class": "MEMORY",
       "format": 0,
@@ -1842,17 +1888,8 @@
       "machine_word": "0x0000000000000203"
     },
     {
-      "key": "F046/generic.u32.index",
-      "family_id": "F046",
-      "form_id": "generic.u32.index",
-      "class": "MEMORY",
-      "format": 6,
-      "opcode": 1,
-      "machine_word": "0x00000000000000E3"
-    },
-    {
-      "key": "F047/global.u32.base",
-      "family_id": "F047",
+      "key": "s-st/global.u32.base",
+      "family_id": "s-st",
       "form_id": "global.u32.base",
       "class": "MEMORY",
       "format": 0,
@@ -1860,8 +1897,8 @@
       "machine_word": "0x0000000000000283"
     },
     {
-      "key": "F047/global.u64.base",
-      "family_id": "F047",
+      "key": "s-st/global.u64.base",
+      "family_id": "s-st",
       "form_id": "global.u64.base",
       "class": "MEMORY",
       "format": 0,
@@ -1869,8 +1906,8 @@
       "machine_word": "0x0000000000000303"
     },
     {
-      "key": "F047/global.u32.index",
-      "family_id": "F047",
+      "key": "s-st/global.u32.index",
+      "family_id": "s-st",
       "form_id": "global.u32.index",
       "class": "MEMORY",
       "format": 6,
@@ -1878,8 +1915,8 @@
       "machine_word": "0x0000000000000163"
     },
     {
-      "key": "F047/shared.u32",
-      "family_id": "F047",
+      "key": "s-st/shared.u32",
+      "family_id": "s-st",
       "form_id": "shared.u32",
       "class": "MEMORY",
       "format": 0,
@@ -1887,17 +1924,8 @@
       "machine_word": "0x0000000000000383"
     },
     {
-      "key": "F047/generic.u32.index",
-      "family_id": "F047",
-      "form_id": "generic.u32.index",
-      "class": "MEMORY",
-      "format": 6,
-      "opcode": 3,
-      "machine_word": "0x00000000000001E3"
-    },
-    {
-      "key": "F048/global.u32.uniform_base",
-      "family_id": "F048",
+      "key": "v-ld/global.u32.uniform_base",
+      "family_id": "v-ld",
       "form_id": "global.u32.uniform_base",
       "class": "MEMORY",
       "format": 1,
@@ -1905,8 +1933,8 @@
       "machine_word": "0x0000000000000013"
     },
     {
-      "key": "F048/global.u32.lane_address",
-      "family_id": "F048",
+      "key": "v-ld/global.u32.lane_address",
+      "family_id": "v-ld",
       "form_id": "global.u32.lane_address",
       "class": "MEMORY",
       "format": 1,
@@ -1914,8 +1942,8 @@
       "machine_word": "0x0000000000000093"
     },
     {
-      "key": "F048/global.u32.sv_mix",
-      "family_id": "F048",
+      "key": "v-ld/global.u32.sv_mix",
+      "family_id": "v-ld",
       "form_id": "global.u32.sv_mix",
       "class": "MEMORY",
       "format": 1,
@@ -1923,8 +1951,8 @@
       "machine_word": "0x0000000000000113"
     },
     {
-      "key": "F048/global.u64.uniform_base",
-      "family_id": "F048",
+      "key": "v-ld/global.u64.uniform_base",
+      "family_id": "v-ld",
       "form_id": "global.u64.uniform_base",
       "class": "MEMORY",
       "format": 1,
@@ -1932,8 +1960,8 @@
       "machine_word": "0x0000000000000193"
     },
     {
-      "key": "F048/global.u64.lane_address",
-      "family_id": "F048",
+      "key": "v-ld/global.u64.lane_address",
+      "family_id": "v-ld",
       "form_id": "global.u64.lane_address",
       "class": "MEMORY",
       "format": 1,
@@ -1941,8 +1969,8 @@
       "machine_word": "0x0000000000000213"
     },
     {
-      "key": "F048/global.u64.sv_mix",
-      "family_id": "F048",
+      "key": "v-ld/global.u64.sv_mix",
+      "family_id": "v-ld",
       "form_id": "global.u64.sv_mix",
       "class": "MEMORY",
       "format": 1,
@@ -1950,62 +1978,8 @@
       "machine_word": "0x0000000000000293"
     },
     {
-      "key": "F048/generic.u32.uniform_base",
-      "family_id": "F048",
-      "form_id": "generic.u32.uniform_base",
-      "class": "MEMORY",
-      "format": 1,
-      "opcode": 6,
-      "machine_word": "0x0000000000000313"
-    },
-    {
-      "key": "F048/generic.u32.lane_address",
-      "family_id": "F048",
-      "form_id": "generic.u32.lane_address",
-      "class": "MEMORY",
-      "format": 1,
-      "opcode": 7,
-      "machine_word": "0x0000000000000393"
-    },
-    {
-      "key": "F048/generic.u32.sv_mix",
-      "family_id": "F048",
-      "form_id": "generic.u32.sv_mix",
-      "class": "MEMORY",
-      "format": 1,
-      "opcode": 8,
-      "machine_word": "0x0000000000000413"
-    },
-    {
-      "key": "F048/generic.u64.uniform_base",
-      "family_id": "F048",
-      "form_id": "generic.u64.uniform_base",
-      "class": "MEMORY",
-      "format": 1,
-      "opcode": 9,
-      "machine_word": "0x0000000000000493"
-    },
-    {
-      "key": "F048/generic.u64.lane_address",
-      "family_id": "F048",
-      "form_id": "generic.u64.lane_address",
-      "class": "MEMORY",
-      "format": 1,
-      "opcode": 10,
-      "machine_word": "0x0000000000000513"
-    },
-    {
-      "key": "F048/generic.u64.sv_mix",
-      "family_id": "F048",
-      "form_id": "generic.u64.sv_mix",
-      "class": "MEMORY",
-      "format": 1,
-      "opcode": 11,
-      "machine_word": "0x0000000000000593"
-    },
-    {
-      "key": "F048/const.u32.uniform_base",
-      "family_id": "F048",
+      "key": "v-ld/const.u32.uniform_base",
+      "family_id": "v-ld",
       "form_id": "const.u32.uniform_base",
       "class": "MEMORY",
       "format": 1,
@@ -2013,8 +1987,8 @@
       "machine_word": "0x0000000000000613"
     },
     {
-      "key": "F048/const.u32.lane_address",
-      "family_id": "F048",
+      "key": "v-ld/const.u32.lane_address",
+      "family_id": "v-ld",
       "form_id": "const.u32.lane_address",
       "class": "MEMORY",
       "format": 1,
@@ -2022,8 +1996,8 @@
       "machine_word": "0x0000000000000693"
     },
     {
-      "key": "F048/const.u32.sv_mix",
-      "family_id": "F048",
+      "key": "v-ld/const.u32.sv_mix",
+      "family_id": "v-ld",
       "form_id": "const.u32.sv_mix",
       "class": "MEMORY",
       "format": 1,
@@ -2031,8 +2005,8 @@
       "machine_word": "0x0000000000000713"
     },
     {
-      "key": "F048/const.u64.uniform_base",
-      "family_id": "F048",
+      "key": "v-ld/const.u64.uniform_base",
+      "family_id": "v-ld",
       "form_id": "const.u64.uniform_base",
       "class": "MEMORY",
       "format": 1,
@@ -2040,8 +2014,8 @@
       "machine_word": "0x0000000000000793"
     },
     {
-      "key": "F048/const.u64.lane_address",
-      "family_id": "F048",
+      "key": "v-ld/const.u64.lane_address",
+      "family_id": "v-ld",
       "form_id": "const.u64.lane_address",
       "class": "MEMORY",
       "format": 1,
@@ -2049,8 +2023,8 @@
       "machine_word": "0x0000000000000813"
     },
     {
-      "key": "F048/const.u64.sv_mix",
-      "family_id": "F048",
+      "key": "v-ld/const.u64.sv_mix",
+      "family_id": "v-ld",
       "form_id": "const.u64.sv_mix",
       "class": "MEMORY",
       "format": 1,
@@ -2058,8 +2032,8 @@
       "machine_word": "0x0000000000000893"
     },
     {
-      "key": "F048/param.u32.uniform_base",
-      "family_id": "F048",
+      "key": "v-ld/param.u32.uniform_base",
+      "family_id": "v-ld",
       "form_id": "param.u32.uniform_base",
       "class": "MEMORY",
       "format": 1,
@@ -2067,8 +2041,8 @@
       "machine_word": "0x0000000000000913"
     },
     {
-      "key": "F048/param.u32.lane_address",
-      "family_id": "F048",
+      "key": "v-ld/param.u32.lane_address",
+      "family_id": "v-ld",
       "form_id": "param.u32.lane_address",
       "class": "MEMORY",
       "format": 1,
@@ -2076,8 +2050,8 @@
       "machine_word": "0x0000000000000993"
     },
     {
-      "key": "F048/param.u32.sv_mix",
-      "family_id": "F048",
+      "key": "v-ld/param.u32.sv_mix",
+      "family_id": "v-ld",
       "form_id": "param.u32.sv_mix",
       "class": "MEMORY",
       "format": 1,
@@ -2085,8 +2059,8 @@
       "machine_word": "0x0000000000000A13"
     },
     {
-      "key": "F048/param.u64.uniform_base",
-      "family_id": "F048",
+      "key": "v-ld/param.u64.uniform_base",
+      "family_id": "v-ld",
       "form_id": "param.u64.uniform_base",
       "class": "MEMORY",
       "format": 1,
@@ -2094,8 +2068,8 @@
       "machine_word": "0x0000000000000A93"
     },
     {
-      "key": "F048/param.u64.lane_address",
-      "family_id": "F048",
+      "key": "v-ld/param.u64.lane_address",
+      "family_id": "v-ld",
       "form_id": "param.u64.lane_address",
       "class": "MEMORY",
       "format": 1,
@@ -2103,8 +2077,8 @@
       "machine_word": "0x0000000000000B13"
     },
     {
-      "key": "F048/param.u64.sv_mix",
-      "family_id": "F048",
+      "key": "v-ld/param.u64.sv_mix",
+      "family_id": "v-ld",
       "form_id": "param.u64.sv_mix",
       "class": "MEMORY",
       "format": 1,
@@ -2112,8 +2086,8 @@
       "machine_word": "0x0000000000000B93"
     },
     {
-      "key": "F048/shared.u32.uniform_base",
-      "family_id": "F048",
+      "key": "v-ld/shared.u32.uniform_base",
+      "family_id": "v-ld",
       "form_id": "shared.u32.uniform_base",
       "class": "MEMORY",
       "format": 2,
@@ -2121,8 +2095,8 @@
       "machine_word": "0x0000000000000023"
     },
     {
-      "key": "F048/shared.u32.lane_address",
-      "family_id": "F048",
+      "key": "v-ld/shared.u32.lane_address",
+      "family_id": "v-ld",
       "form_id": "shared.u32.lane_address",
       "class": "MEMORY",
       "format": 2,
@@ -2130,8 +2104,8 @@
       "machine_word": "0x00000000000000A3"
     },
     {
-      "key": "F048/shared.u32.sv_mix",
-      "family_id": "F048",
+      "key": "v-ld/shared.u32.sv_mix",
+      "family_id": "v-ld",
       "form_id": "shared.u32.sv_mix",
       "class": "MEMORY",
       "format": 2,
@@ -2139,8 +2113,8 @@
       "machine_word": "0x0000000000000123"
     },
     {
-      "key": "F048/shared.u64.uniform_base",
-      "family_id": "F048",
+      "key": "v-ld/shared.u64.uniform_base",
+      "family_id": "v-ld",
       "form_id": "shared.u64.uniform_base",
       "class": "MEMORY",
       "format": 2,
@@ -2148,8 +2122,8 @@
       "machine_word": "0x00000000000001A3"
     },
     {
-      "key": "F048/shared.u64.lane_address",
-      "family_id": "F048",
+      "key": "v-ld/shared.u64.lane_address",
+      "family_id": "v-ld",
       "form_id": "shared.u64.lane_address",
       "class": "MEMORY",
       "format": 2,
@@ -2157,8 +2131,8 @@
       "machine_word": "0x0000000000000223"
     },
     {
-      "key": "F048/shared.u64.sv_mix",
-      "family_id": "F048",
+      "key": "v-ld/shared.u64.sv_mix",
+      "family_id": "v-ld",
       "form_id": "shared.u64.sv_mix",
       "class": "MEMORY",
       "format": 2,
@@ -2166,8 +2140,8 @@
       "machine_word": "0x00000000000002A3"
     },
     {
-      "key": "F048/local.u32.lane_address",
-      "family_id": "F048",
+      "key": "v-ld/local.u32.lane_address",
+      "family_id": "v-ld",
       "form_id": "local.u32.lane_address",
       "class": "MEMORY",
       "format": 3,
@@ -2175,8 +2149,8 @@
       "machine_word": "0x0000000000000033"
     },
     {
-      "key": "F048/local.u64.lane_address",
-      "family_id": "F048",
+      "key": "v-ld/local.u64.lane_address",
+      "family_id": "v-ld",
       "form_id": "local.u64.lane_address",
       "class": "MEMORY",
       "format": 3,
@@ -2184,8 +2158,8 @@
       "machine_word": "0x00000000000000B3"
     },
     {
-      "key": "F049/global.u32.uniform_base",
-      "family_id": "F049",
+      "key": "v-st/global.u32.uniform_base",
+      "family_id": "v-st",
       "form_id": "global.u32.uniform_base",
       "class": "MEMORY",
       "format": 1,
@@ -2193,8 +2167,8 @@
       "machine_word": "0x0000000000000C13"
     },
     {
-      "key": "F049/global.u32.lane_address",
-      "family_id": "F049",
+      "key": "v-st/global.u32.lane_address",
+      "family_id": "v-st",
       "form_id": "global.u32.lane_address",
       "class": "MEMORY",
       "format": 1,
@@ -2202,8 +2176,8 @@
       "machine_word": "0x0000000000000C93"
     },
     {
-      "key": "F049/global.u32.sv_mix",
-      "family_id": "F049",
+      "key": "v-st/global.u32.sv_mix",
+      "family_id": "v-st",
       "form_id": "global.u32.sv_mix",
       "class": "MEMORY",
       "format": 1,
@@ -2211,8 +2185,8 @@
       "machine_word": "0x0000000000000D13"
     },
     {
-      "key": "F049/global.u64.uniform_base",
-      "family_id": "F049",
+      "key": "v-st/global.u64.uniform_base",
+      "family_id": "v-st",
       "form_id": "global.u64.uniform_base",
       "class": "MEMORY",
       "format": 1,
@@ -2220,8 +2194,8 @@
       "machine_word": "0x0000000000000D93"
     },
     {
-      "key": "F049/global.u64.lane_address",
-      "family_id": "F049",
+      "key": "v-st/global.u64.lane_address",
+      "family_id": "v-st",
       "form_id": "global.u64.lane_address",
       "class": "MEMORY",
       "format": 1,
@@ -2229,8 +2203,8 @@
       "machine_word": "0x0000000000000E13"
     },
     {
-      "key": "F049/global.u64.sv_mix",
-      "family_id": "F049",
+      "key": "v-st/global.u64.sv_mix",
+      "family_id": "v-st",
       "form_id": "global.u64.sv_mix",
       "class": "MEMORY",
       "format": 1,
@@ -2238,62 +2212,8 @@
       "machine_word": "0x0000000000000E93"
     },
     {
-      "key": "F049/generic.u32.uniform_base",
-      "family_id": "F049",
-      "form_id": "generic.u32.uniform_base",
-      "class": "MEMORY",
-      "format": 1,
-      "opcode": 30,
-      "machine_word": "0x0000000000000F13"
-    },
-    {
-      "key": "F049/generic.u32.lane_address",
-      "family_id": "F049",
-      "form_id": "generic.u32.lane_address",
-      "class": "MEMORY",
-      "format": 1,
-      "opcode": 31,
-      "machine_word": "0x0000000000000F93"
-    },
-    {
-      "key": "F049/generic.u32.sv_mix",
-      "family_id": "F049",
-      "form_id": "generic.u32.sv_mix",
-      "class": "MEMORY",
-      "format": 1,
-      "opcode": 32,
-      "machine_word": "0x0000000000001013"
-    },
-    {
-      "key": "F049/generic.u64.uniform_base",
-      "family_id": "F049",
-      "form_id": "generic.u64.uniform_base",
-      "class": "MEMORY",
-      "format": 1,
-      "opcode": 33,
-      "machine_word": "0x0000000000001093"
-    },
-    {
-      "key": "F049/generic.u64.lane_address",
-      "family_id": "F049",
-      "form_id": "generic.u64.lane_address",
-      "class": "MEMORY",
-      "format": 1,
-      "opcode": 34,
-      "machine_word": "0x0000000000001113"
-    },
-    {
-      "key": "F049/generic.u64.sv_mix",
-      "family_id": "F049",
-      "form_id": "generic.u64.sv_mix",
-      "class": "MEMORY",
-      "format": 1,
-      "opcode": 35,
-      "machine_word": "0x0000000000001193"
-    },
-    {
-      "key": "F049/shared.u32.uniform_base",
-      "family_id": "F049",
+      "key": "v-st/shared.u32.uniform_base",
+      "family_id": "v-st",
       "form_id": "shared.u32.uniform_base",
       "class": "MEMORY",
       "format": 2,
@@ -2301,8 +2221,8 @@
       "machine_word": "0x0000000000000323"
     },
     {
-      "key": "F049/shared.u32.lane_address",
-      "family_id": "F049",
+      "key": "v-st/shared.u32.lane_address",
+      "family_id": "v-st",
       "form_id": "shared.u32.lane_address",
       "class": "MEMORY",
       "format": 2,
@@ -2310,8 +2230,8 @@
       "machine_word": "0x00000000000003A3"
     },
     {
-      "key": "F049/shared.u32.sv_mix",
-      "family_id": "F049",
+      "key": "v-st/shared.u32.sv_mix",
+      "family_id": "v-st",
       "form_id": "shared.u32.sv_mix",
       "class": "MEMORY",
       "format": 2,
@@ -2319,8 +2239,8 @@
       "machine_word": "0x0000000000000423"
     },
     {
-      "key": "F049/shared.u64.uniform_base",
-      "family_id": "F049",
+      "key": "v-st/shared.u64.uniform_base",
+      "family_id": "v-st",
       "form_id": "shared.u64.uniform_base",
       "class": "MEMORY",
       "format": 2,
@@ -2328,8 +2248,8 @@
       "machine_word": "0x00000000000004A3"
     },
     {
-      "key": "F049/shared.u64.lane_address",
-      "family_id": "F049",
+      "key": "v-st/shared.u64.lane_address",
+      "family_id": "v-st",
       "form_id": "shared.u64.lane_address",
       "class": "MEMORY",
       "format": 2,
@@ -2337,8 +2257,8 @@
       "machine_word": "0x0000000000000523"
     },
     {
-      "key": "F049/shared.u64.sv_mix",
-      "family_id": "F049",
+      "key": "v-st/shared.u64.sv_mix",
+      "family_id": "v-st",
       "form_id": "shared.u64.sv_mix",
       "class": "MEMORY",
       "format": 2,
@@ -2346,8 +2266,8 @@
       "machine_word": "0x00000000000005A3"
     },
     {
-      "key": "F049/local.u32.lane_address",
-      "family_id": "F049",
+      "key": "v-st/local.u32.lane_address",
+      "family_id": "v-st",
       "form_id": "local.u32.lane_address",
       "class": "MEMORY",
       "format": 3,
@@ -2355,8 +2275,8 @@
       "machine_word": "0x0000000000000133"
     },
     {
-      "key": "F049/local.u64.lane_address",
-      "family_id": "F049",
+      "key": "v-st/local.u64.lane_address",
+      "family_id": "v-st",
       "form_id": "local.u64.lane_address",
       "class": "MEMORY",
       "format": 3,
@@ -2364,8 +2284,8 @@
       "machine_word": "0x00000000000001B3"
     },
     {
-      "key": "F050/load.u32.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/load.u32.global.satom",
+      "family_id": "s-atom",
       "form_id": "load.u32.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2373,8 +2293,8 @@
       "machine_word": "0x2000000000000043"
     },
     {
-      "key": "F050/store.u32.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/store.u32.global.satom",
+      "family_id": "s-atom",
       "form_id": "store.u32.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2382,8 +2302,8 @@
       "machine_word": "0x20000000000000C3"
     },
     {
-      "key": "F050/add.u32.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/add.u32.global.satom",
+      "family_id": "s-atom",
       "form_id": "add.u32.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2391,8 +2311,8 @@
       "machine_word": "0x2000000000000143"
     },
     {
-      "key": "F050/xchg.u32.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/xchg.u32.global.satom",
+      "family_id": "s-atom",
       "form_id": "xchg.u32.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2400,8 +2320,8 @@
       "machine_word": "0x20000000000001C3"
     },
     {
-      "key": "F050/and.u32.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/and.u32.global.satom",
+      "family_id": "s-atom",
       "form_id": "and.u32.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2409,8 +2329,8 @@
       "machine_word": "0x2000000000000243"
     },
     {
-      "key": "F050/or.u32.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/or.u32.global.satom",
+      "family_id": "s-atom",
       "form_id": "or.u32.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2418,8 +2338,8 @@
       "machine_word": "0x20000000000002C3"
     },
     {
-      "key": "F050/xor.u32.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/xor.u32.global.satom",
+      "family_id": "s-atom",
       "form_id": "xor.u32.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2427,8 +2347,8 @@
       "machine_word": "0x2000000000000343"
     },
     {
-      "key": "F050/min.u32.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/min.u32.global.satom",
+      "family_id": "s-atom",
       "form_id": "min.u32.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2436,8 +2356,8 @@
       "machine_word": "0x20000000000003C3"
     },
     {
-      "key": "F050/max.u32.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/max.u32.global.satom",
+      "family_id": "s-atom",
       "form_id": "max.u32.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2445,8 +2365,8 @@
       "machine_word": "0x2000000000000443"
     },
     {
-      "key": "F050/cas.u32.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/cas.u32.global.satom",
+      "family_id": "s-atom",
       "form_id": "cas.u32.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2454,8 +2374,8 @@
       "machine_word": "0x20000000000004C3"
     },
     {
-      "key": "F050/load.u64.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/load.u64.global.satom",
+      "family_id": "s-atom",
       "form_id": "load.u64.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2463,8 +2383,8 @@
       "machine_word": "0x2000000000000543"
     },
     {
-      "key": "F050/store.u64.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/store.u64.global.satom",
+      "family_id": "s-atom",
       "form_id": "store.u64.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2472,8 +2392,8 @@
       "machine_word": "0x20000000000005C3"
     },
     {
-      "key": "F050/add.u64.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/add.u64.global.satom",
+      "family_id": "s-atom",
       "form_id": "add.u64.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2481,8 +2401,8 @@
       "machine_word": "0x2000000000000643"
     },
     {
-      "key": "F050/xchg.u64.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/xchg.u64.global.satom",
+      "family_id": "s-atom",
       "form_id": "xchg.u64.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2490,8 +2410,8 @@
       "machine_word": "0x20000000000006C3"
     },
     {
-      "key": "F050/and.u64.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/and.u64.global.satom",
+      "family_id": "s-atom",
       "form_id": "and.u64.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2499,8 +2419,8 @@
       "machine_word": "0x2000000000000743"
     },
     {
-      "key": "F050/or.u64.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/or.u64.global.satom",
+      "family_id": "s-atom",
       "form_id": "or.u64.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2508,8 +2428,8 @@
       "machine_word": "0x20000000000007C3"
     },
     {
-      "key": "F050/xor.u64.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/xor.u64.global.satom",
+      "family_id": "s-atom",
       "form_id": "xor.u64.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2517,8 +2437,8 @@
       "machine_word": "0x2000000000000843"
     },
     {
-      "key": "F050/min.u64.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/min.u64.global.satom",
+      "family_id": "s-atom",
       "form_id": "min.u64.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2526,8 +2446,8 @@
       "machine_word": "0x20000000000008C3"
     },
     {
-      "key": "F050/max.u64.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/max.u64.global.satom",
+      "family_id": "s-atom",
       "form_id": "max.u64.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2535,8 +2455,8 @@
       "machine_word": "0x2000000000000943"
     },
     {
-      "key": "F050/cas.u64.global.satom",
-      "family_id": "F050",
+      "key": "s-atom/cas.u64.global.satom",
+      "family_id": "s-atom",
       "form_id": "cas.u64.global.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2544,8 +2464,8 @@
       "machine_word": "0x20000000000009C3"
     },
     {
-      "key": "F050/load.u32.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/load.u32.shared.satom",
+      "family_id": "s-atom",
       "form_id": "load.u32.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2553,8 +2473,8 @@
       "machine_word": "0x0000000000000A43"
     },
     {
-      "key": "F050/store.u32.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/store.u32.shared.satom",
+      "family_id": "s-atom",
       "form_id": "store.u32.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2562,8 +2482,8 @@
       "machine_word": "0x0000000000000AC3"
     },
     {
-      "key": "F050/add.u32.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/add.u32.shared.satom",
+      "family_id": "s-atom",
       "form_id": "add.u32.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2571,8 +2491,8 @@
       "machine_word": "0x0000000000000B43"
     },
     {
-      "key": "F050/xchg.u32.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/xchg.u32.shared.satom",
+      "family_id": "s-atom",
       "form_id": "xchg.u32.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2580,8 +2500,8 @@
       "machine_word": "0x0000000000000BC3"
     },
     {
-      "key": "F050/and.u32.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/and.u32.shared.satom",
+      "family_id": "s-atom",
       "form_id": "and.u32.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2589,8 +2509,8 @@
       "machine_word": "0x0000000000000C43"
     },
     {
-      "key": "F050/or.u32.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/or.u32.shared.satom",
+      "family_id": "s-atom",
       "form_id": "or.u32.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2598,8 +2518,8 @@
       "machine_word": "0x0000000000000CC3"
     },
     {
-      "key": "F050/xor.u32.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/xor.u32.shared.satom",
+      "family_id": "s-atom",
       "form_id": "xor.u32.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2607,8 +2527,8 @@
       "machine_word": "0x0000000000000D43"
     },
     {
-      "key": "F050/min.u32.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/min.u32.shared.satom",
+      "family_id": "s-atom",
       "form_id": "min.u32.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2616,8 +2536,8 @@
       "machine_word": "0x0000000000000DC3"
     },
     {
-      "key": "F050/max.u32.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/max.u32.shared.satom",
+      "family_id": "s-atom",
       "form_id": "max.u32.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2625,8 +2545,8 @@
       "machine_word": "0x0000000000000E43"
     },
     {
-      "key": "F050/cas.u32.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/cas.u32.shared.satom",
+      "family_id": "s-atom",
       "form_id": "cas.u32.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2634,8 +2554,8 @@
       "machine_word": "0x0000000000000EC3"
     },
     {
-      "key": "F050/load.u64.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/load.u64.shared.satom",
+      "family_id": "s-atom",
       "form_id": "load.u64.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2643,8 +2563,8 @@
       "machine_word": "0x0000000000000F43"
     },
     {
-      "key": "F050/store.u64.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/store.u64.shared.satom",
+      "family_id": "s-atom",
       "form_id": "store.u64.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2652,8 +2572,8 @@
       "machine_word": "0x0000000000000FC3"
     },
     {
-      "key": "F050/add.u64.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/add.u64.shared.satom",
+      "family_id": "s-atom",
       "form_id": "add.u64.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2661,8 +2581,8 @@
       "machine_word": "0x0000000000001043"
     },
     {
-      "key": "F050/xchg.u64.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/xchg.u64.shared.satom",
+      "family_id": "s-atom",
       "form_id": "xchg.u64.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2670,8 +2590,8 @@
       "machine_word": "0x00000000000010C3"
     },
     {
-      "key": "F050/and.u64.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/and.u64.shared.satom",
+      "family_id": "s-atom",
       "form_id": "and.u64.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2679,8 +2599,8 @@
       "machine_word": "0x0000000000001143"
     },
     {
-      "key": "F050/or.u64.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/or.u64.shared.satom",
+      "family_id": "s-atom",
       "form_id": "or.u64.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2688,8 +2608,8 @@
       "machine_word": "0x00000000000011C3"
     },
     {
-      "key": "F050/xor.u64.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/xor.u64.shared.satom",
+      "family_id": "s-atom",
       "form_id": "xor.u64.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2697,8 +2617,8 @@
       "machine_word": "0x0000000000001243"
     },
     {
-      "key": "F050/min.u64.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/min.u64.shared.satom",
+      "family_id": "s-atom",
       "form_id": "min.u64.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2706,8 +2626,8 @@
       "machine_word": "0x00000000000012C3"
     },
     {
-      "key": "F050/max.u64.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/max.u64.shared.satom",
+      "family_id": "s-atom",
       "form_id": "max.u64.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2715,8 +2635,8 @@
       "machine_word": "0x0000000000001343"
     },
     {
-      "key": "F050/cas.u64.shared.satom",
-      "family_id": "F050",
+      "key": "s-atom/cas.u64.shared.satom",
+      "family_id": "s-atom",
       "form_id": "cas.u64.shared.satom",
       "class": "MEMORY",
       "format": 4,
@@ -2724,8 +2644,8 @@
       "machine_word": "0x00000000000013C3"
     },
     {
-      "key": "F051/load.u32.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/load.u32.global.vatom",
+      "family_id": "v-atom",
       "form_id": "load.u32.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2733,8 +2653,8 @@
       "machine_word": "0x2000000000000053"
     },
     {
-      "key": "F051/store.u32.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/store.u32.global.vatom",
+      "family_id": "v-atom",
       "form_id": "store.u32.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2742,8 +2662,8 @@
       "machine_word": "0x20000000000000D3"
     },
     {
-      "key": "F051/add.u32.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/add.u32.global.vatom",
+      "family_id": "v-atom",
       "form_id": "add.u32.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2751,8 +2671,8 @@
       "machine_word": "0x2000000000000153"
     },
     {
-      "key": "F051/xchg.u32.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/xchg.u32.global.vatom",
+      "family_id": "v-atom",
       "form_id": "xchg.u32.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2760,8 +2680,8 @@
       "machine_word": "0x20000000000001D3"
     },
     {
-      "key": "F051/and.u32.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/and.u32.global.vatom",
+      "family_id": "v-atom",
       "form_id": "and.u32.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2769,8 +2689,8 @@
       "machine_word": "0x2000000000000253"
     },
     {
-      "key": "F051/or.u32.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/or.u32.global.vatom",
+      "family_id": "v-atom",
       "form_id": "or.u32.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2778,8 +2698,8 @@
       "machine_word": "0x20000000000002D3"
     },
     {
-      "key": "F051/xor.u32.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/xor.u32.global.vatom",
+      "family_id": "v-atom",
       "form_id": "xor.u32.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2787,8 +2707,8 @@
       "machine_word": "0x2000000000000353"
     },
     {
-      "key": "F051/min.u32.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/min.u32.global.vatom",
+      "family_id": "v-atom",
       "form_id": "min.u32.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2796,8 +2716,8 @@
       "machine_word": "0x20000000000003D3"
     },
     {
-      "key": "F051/max.u32.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/max.u32.global.vatom",
+      "family_id": "v-atom",
       "form_id": "max.u32.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2805,8 +2725,8 @@
       "machine_word": "0x2000000000000453"
     },
     {
-      "key": "F051/cas.u32.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/cas.u32.global.vatom",
+      "family_id": "v-atom",
       "form_id": "cas.u32.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2814,8 +2734,8 @@
       "machine_word": "0x20000000000004D3"
     },
     {
-      "key": "F051/load.u64.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/load.u64.global.vatom",
+      "family_id": "v-atom",
       "form_id": "load.u64.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2823,8 +2743,8 @@
       "machine_word": "0x2000000000000553"
     },
     {
-      "key": "F051/store.u64.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/store.u64.global.vatom",
+      "family_id": "v-atom",
       "form_id": "store.u64.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2832,8 +2752,8 @@
       "machine_word": "0x20000000000005D3"
     },
     {
-      "key": "F051/add.u64.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/add.u64.global.vatom",
+      "family_id": "v-atom",
       "form_id": "add.u64.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2841,8 +2761,8 @@
       "machine_word": "0x2000000000000653"
     },
     {
-      "key": "F051/xchg.u64.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/xchg.u64.global.vatom",
+      "family_id": "v-atom",
       "form_id": "xchg.u64.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2850,8 +2770,8 @@
       "machine_word": "0x20000000000006D3"
     },
     {
-      "key": "F051/and.u64.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/and.u64.global.vatom",
+      "family_id": "v-atom",
       "form_id": "and.u64.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2859,8 +2779,8 @@
       "machine_word": "0x2000000000000753"
     },
     {
-      "key": "F051/or.u64.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/or.u64.global.vatom",
+      "family_id": "v-atom",
       "form_id": "or.u64.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2868,8 +2788,8 @@
       "machine_word": "0x20000000000007D3"
     },
     {
-      "key": "F051/xor.u64.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/xor.u64.global.vatom",
+      "family_id": "v-atom",
       "form_id": "xor.u64.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2877,8 +2797,8 @@
       "machine_word": "0x2000000000000853"
     },
     {
-      "key": "F051/min.u64.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/min.u64.global.vatom",
+      "family_id": "v-atom",
       "form_id": "min.u64.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2886,8 +2806,8 @@
       "machine_word": "0x20000000000008D3"
     },
     {
-      "key": "F051/max.u64.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/max.u64.global.vatom",
+      "family_id": "v-atom",
       "form_id": "max.u64.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2895,8 +2815,8 @@
       "machine_word": "0x2000000000000953"
     },
     {
-      "key": "F051/cas.u64.global.vatom",
-      "family_id": "F051",
+      "key": "v-atom/cas.u64.global.vatom",
+      "family_id": "v-atom",
       "form_id": "cas.u64.global.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2904,8 +2824,8 @@
       "machine_word": "0x20000000000009D3"
     },
     {
-      "key": "F051/load.u32.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/load.u32.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "load.u32.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2913,8 +2833,8 @@
       "machine_word": "0x0000000000000A53"
     },
     {
-      "key": "F051/store.u32.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/store.u32.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "store.u32.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2922,8 +2842,8 @@
       "machine_word": "0x0000000000000AD3"
     },
     {
-      "key": "F051/add.u32.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/add.u32.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "add.u32.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2931,8 +2851,8 @@
       "machine_word": "0x0000000000000B53"
     },
     {
-      "key": "F051/xchg.u32.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/xchg.u32.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "xchg.u32.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2940,8 +2860,8 @@
       "machine_word": "0x0000000000000BD3"
     },
     {
-      "key": "F051/and.u32.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/and.u32.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "and.u32.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2949,8 +2869,8 @@
       "machine_word": "0x0000000000000C53"
     },
     {
-      "key": "F051/or.u32.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/or.u32.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "or.u32.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2958,8 +2878,8 @@
       "machine_word": "0x0000000000000CD3"
     },
     {
-      "key": "F051/xor.u32.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/xor.u32.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "xor.u32.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2967,8 +2887,8 @@
       "machine_word": "0x0000000000000D53"
     },
     {
-      "key": "F051/min.u32.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/min.u32.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "min.u32.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2976,8 +2896,8 @@
       "machine_word": "0x0000000000000DD3"
     },
     {
-      "key": "F051/max.u32.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/max.u32.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "max.u32.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2985,8 +2905,8 @@
       "machine_word": "0x0000000000000E53"
     },
     {
-      "key": "F051/cas.u32.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/cas.u32.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "cas.u32.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -2994,8 +2914,8 @@
       "machine_word": "0x0000000000000ED3"
     },
     {
-      "key": "F051/load.u64.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/load.u64.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "load.u64.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -3003,8 +2923,8 @@
       "machine_word": "0x0000000000000F53"
     },
     {
-      "key": "F051/store.u64.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/store.u64.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "store.u64.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -3012,8 +2932,8 @@
       "machine_word": "0x0000000000000FD3"
     },
     {
-      "key": "F051/add.u64.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/add.u64.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "add.u64.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -3021,8 +2941,8 @@
       "machine_word": "0x0000000000001053"
     },
     {
-      "key": "F051/xchg.u64.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/xchg.u64.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "xchg.u64.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -3030,8 +2950,8 @@
       "machine_word": "0x00000000000010D3"
     },
     {
-      "key": "F051/and.u64.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/and.u64.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "and.u64.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -3039,8 +2959,8 @@
       "machine_word": "0x0000000000001153"
     },
     {
-      "key": "F051/or.u64.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/or.u64.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "or.u64.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -3048,8 +2968,8 @@
       "machine_word": "0x00000000000011D3"
     },
     {
-      "key": "F051/xor.u64.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/xor.u64.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "xor.u64.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -3057,8 +2977,8 @@
       "machine_word": "0x0000000000001253"
     },
     {
-      "key": "F051/min.u64.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/min.u64.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "min.u64.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -3066,8 +2986,8 @@
       "machine_word": "0x00000000000012D3"
     },
     {
-      "key": "F051/max.u64.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/max.u64.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "max.u64.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -3075,8 +2995,8 @@
       "machine_word": "0x0000000000001353"
     },
     {
-      "key": "F051/cas.u64.shared.vatom",
-      "family_id": "F051",
+      "key": "v-atom/cas.u64.shared.vatom",
+      "family_id": "v-atom",
       "form_id": "cas.u64.shared.vatom",
       "class": "MEMORY",
       "format": 5,
@@ -3084,8 +3004,8 @@
       "machine_word": "0x00000000000013D3"
     },
     {
-      "key": "F051/load.u32.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/load.u32.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "load.u32.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3093,8 +3013,8 @@
       "machine_word": "0x2000000000000073"
     },
     {
-      "key": "F051/store.u32.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/store.u32.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "store.u32.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3102,8 +3022,8 @@
       "machine_word": "0x20000000000000F3"
     },
     {
-      "key": "F051/add.u32.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/add.u32.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "add.u32.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3111,8 +3031,8 @@
       "machine_word": "0x2000000000000173"
     },
     {
-      "key": "F051/xchg.u32.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/xchg.u32.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "xchg.u32.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3120,8 +3040,8 @@
       "machine_word": "0x20000000000001F3"
     },
     {
-      "key": "F051/and.u32.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/and.u32.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "and.u32.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3129,8 +3049,8 @@
       "machine_word": "0x2000000000000273"
     },
     {
-      "key": "F051/or.u32.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/or.u32.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "or.u32.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3138,8 +3058,8 @@
       "machine_word": "0x20000000000002F3"
     },
     {
-      "key": "F051/xor.u32.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/xor.u32.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "xor.u32.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3147,8 +3067,8 @@
       "machine_word": "0x2000000000000373"
     },
     {
-      "key": "F051/min.u32.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/min.u32.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "min.u32.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3156,8 +3076,8 @@
       "machine_word": "0x20000000000003F3"
     },
     {
-      "key": "F051/max.u32.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/max.u32.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "max.u32.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3165,8 +3085,8 @@
       "machine_word": "0x2000000000000473"
     },
     {
-      "key": "F051/cas.u32.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/cas.u32.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "cas.u32.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3174,8 +3094,8 @@
       "machine_word": "0x20000000000004F3"
     },
     {
-      "key": "F051/load.u64.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/load.u64.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "load.u64.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3183,8 +3103,8 @@
       "machine_word": "0x2000000000000573"
     },
     {
-      "key": "F051/store.u64.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/store.u64.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "store.u64.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3192,8 +3112,8 @@
       "machine_word": "0x20000000000005F3"
     },
     {
-      "key": "F051/add.u64.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/add.u64.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "add.u64.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3201,8 +3121,8 @@
       "machine_word": "0x2000000000000673"
     },
     {
-      "key": "F051/xchg.u64.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/xchg.u64.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "xchg.u64.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3210,8 +3130,8 @@
       "machine_word": "0x20000000000006F3"
     },
     {
-      "key": "F051/and.u64.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/and.u64.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "and.u64.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3219,8 +3139,8 @@
       "machine_word": "0x2000000000000773"
     },
     {
-      "key": "F051/or.u64.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/or.u64.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "or.u64.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3228,8 +3148,8 @@
       "machine_word": "0x20000000000007F3"
     },
     {
-      "key": "F051/xor.u64.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/xor.u64.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "xor.u64.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3237,8 +3157,8 @@
       "machine_word": "0x2000000000000873"
     },
     {
-      "key": "F051/min.u64.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/min.u64.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "min.u64.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3246,8 +3166,8 @@
       "machine_word": "0x20000000000008F3"
     },
     {
-      "key": "F051/max.u64.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/max.u64.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "max.u64.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3255,8 +3175,8 @@
       "machine_word": "0x2000000000000973"
     },
     {
-      "key": "F051/cas.u64.global.vatomx",
-      "family_id": "F051",
+      "key": "v-atom/cas.u64.global.vatomx",
+      "family_id": "v-atom",
       "form_id": "cas.u64.global.vatomx",
       "class": "MEMORY",
       "format": 7,
@@ -3264,8 +3184,8 @@
       "machine_word": "0x20000000000009F3"
     },
     {
-      "key": "F052/direct",
-      "family_id": "F052",
+      "key": "ssy/direct",
+      "family_id": "ssy",
       "form_id": "direct",
       "class": "CONTROL",
       "format": 0,
@@ -3273,8 +3193,8 @@
       "machine_word": "0x0000000000000004"
     },
     {
-      "key": "F053/direct",
-      "family_id": "F053",
+      "key": "bra/direct",
+      "family_id": "bra",
       "form_id": "direct",
       "class": "CONTROL",
       "format": 0,
@@ -3282,8 +3202,8 @@
       "machine_word": "0x0000000000000084"
     },
     {
-      "key": "F054/direct",
-      "family_id": "F054",
+      "key": "bra-p/direct",
+      "family_id": "bra-p",
       "form_id": "direct",
       "class": "CONTROL",
       "format": 0,
@@ -3291,8 +3211,8 @@
       "machine_word": "0x0000000000000104"
     },
     {
-      "key": "F055/base",
-      "family_id": "F055",
+      "key": "join/base",
+      "family_id": "join",
       "form_id": "base",
       "class": "CONTROL",
       "format": 0,
@@ -3300,8 +3220,8 @@
       "machine_word": "0x0000000000000184"
     },
     {
-      "key": "F056/base",
-      "family_id": "F056",
+      "key": "exit/base",
+      "family_id": "exit",
       "form_id": "base",
       "class": "CONTROL",
       "format": 0,
@@ -3309,8 +3229,8 @@
       "machine_word": "0x0000000000000204"
     },
     {
-      "key": "F057/direct",
-      "family_id": "F057",
+      "key": "call/direct",
+      "family_id": "call",
       "form_id": "direct",
       "class": "CONTROL",
       "format": 0,
@@ -3318,8 +3238,8 @@
       "machine_word": "0x0000000000000284"
     },
     {
-      "key": "F057/indirect",
-      "family_id": "F057",
+      "key": "call/indirect",
+      "family_id": "call",
       "form_id": "indirect",
       "class": "CONTROL",
       "format": 0,
@@ -3327,8 +3247,8 @@
       "machine_word": "0x0000000000000304"
     },
     {
-      "key": "F058/base",
-      "family_id": "F058",
+      "key": "ret/base",
+      "family_id": "ret",
       "form_id": "base",
       "class": "CONTROL",
       "format": 0,
@@ -3336,8 +3256,8 @@
       "machine_word": "0x0000000000000384"
     },
     {
-      "key": "F059/indirect",
-      "family_id": "F059",
+      "key": "jump-ind/indirect",
+      "family_id": "jump-ind",
       "form_id": "indirect",
       "class": "CONTROL",
       "format": 0,
@@ -3345,8 +3265,8 @@
       "machine_word": "0x0000000000000404"
     },
     {
-      "key": "F060/cta",
-      "family_id": "F060",
+      "key": "fence/cta",
+      "family_id": "fence",
       "form_id": "cta",
       "class": "SYNC",
       "format": 0,
@@ -3354,8 +3274,8 @@
       "machine_word": "0x0300000000000005"
     },
     {
-      "key": "F060/device",
-      "family_id": "F060",
+      "key": "fence/device",
+      "family_id": "fence",
       "form_id": "device",
       "class": "SYNC",
       "format": 0,
@@ -3363,8 +3283,8 @@
       "machine_word": "0x0340000000000085"
     },
     {
-      "key": "F060/system",
-      "family_id": "F060",
+      "key": "fence/system",
+      "family_id": "fence",
       "form_id": "system",
       "class": "SYNC",
       "format": 0,
@@ -3372,8 +3292,8 @@
       "machine_word": "0x0380000000000105"
     },
     {
-      "key": "F061/cta",
-      "family_id": "F061",
+      "key": "bar-sync/cta",
+      "family_id": "bar-sync",
       "form_id": "cta",
       "class": "SYNC",
       "format": 0,
@@ -3381,26 +3301,8 @@
       "machine_word": "0x0018000000000185"
     },
     {
-      "key": "F062/cta",
-      "family_id": "F062",
-      "form_id": "cta",
-      "class": "SYNC",
-      "format": 0,
-      "opcode": 4,
-      "machine_word": "0x0018000000280205"
-    },
-    {
-      "key": "F063/cta",
-      "family_id": "F063",
-      "form_id": "cta",
-      "class": "SYNC",
-      "format": 0,
-      "opcode": 5,
-      "machine_word": "0x0018000000280285"
-    },
-    {
-      "key": "F064/reg_lane",
-      "family_id": "F064",
+      "key": "x-broadcast/reg_lane",
+      "family_id": "x-broadcast",
       "form_id": "reg_lane",
       "class": "CROSSLANE",
       "format": 0,
@@ -3408,8 +3310,8 @@
       "machine_word": "0x0000000000000006"
     },
     {
-      "key": "F064/imm_lane",
-      "family_id": "F064",
+      "key": "x-broadcast/imm_lane",
+      "family_id": "x-broadcast",
       "form_id": "imm_lane",
       "class": "CROSSLANE",
       "format": 0,
@@ -3417,26 +3319,8 @@
       "machine_word": "0x0000000000000086"
     },
     {
-      "key": "F065/b32",
-      "family_id": "F065",
-      "form_id": "b32",
-      "class": "CROSSLANE",
-      "format": 0,
-      "opcode": 2,
-      "machine_word": "0x0000000000000106"
-    },
-    {
-      "key": "F065/b64",
-      "family_id": "F065",
-      "form_id": "b64",
-      "class": "CROSSLANE",
-      "format": 0,
-      "opcode": 3,
-      "machine_word": "0x0000000000000186"
-    },
-    {
-      "key": "F066/b32",
-      "family_id": "F066",
+      "key": "s-readfirst/b32",
+      "family_id": "s-readfirst",
       "form_id": "b32",
       "class": "CROSSLANE",
       "format": 0,
@@ -3444,8 +3328,8 @@
       "machine_word": "0x0000000000000206"
     },
     {
-      "key": "F066/b64",
-      "family_id": "F066",
+      "key": "s-readfirst/b64",
+      "family_id": "s-readfirst",
       "form_id": "b64",
       "class": "CROSSLANE",
       "format": 0,
@@ -3453,8 +3337,8 @@
       "machine_word": "0x0000000000000286"
     },
     {
-      "key": "F067/any",
-      "family_id": "F067",
+      "key": "v-vote/any",
+      "family_id": "v-vote",
       "form_id": "any",
       "class": "CROSSLANE",
       "format": 0,
@@ -3462,8 +3346,8 @@
       "machine_word": "0x0000000000000306"
     },
     {
-      "key": "F067/all",
-      "family_id": "F067",
+      "key": "v-vote/all",
+      "family_id": "v-vote",
       "form_id": "all",
       "class": "CROSSLANE",
       "format": 0,
@@ -3471,8 +3355,8 @@
       "machine_word": "0x0000000000000386"
     },
     {
-      "key": "F067/ballot",
-      "family_id": "F067",
+      "key": "v-vote/ballot",
+      "family_id": "v-vote",
       "form_id": "ballot",
       "class": "CROSSLANE",
       "format": 0,
@@ -3480,8 +3364,8 @@
       "machine_word": "0x0000000000000406"
     },
     {
-      "key": "F068/idx",
-      "family_id": "F068",
+      "key": "v-shuffle/idx",
+      "family_id": "v-shuffle",
       "form_id": "idx",
       "class": "CROSSLANE",
       "format": 0,
@@ -3489,8 +3373,8 @@
       "machine_word": "0x0000000000000486"
     },
     {
-      "key": "F068/up",
-      "family_id": "F068",
+      "key": "v-shuffle/up",
+      "family_id": "v-shuffle",
       "form_id": "up",
       "class": "CROSSLANE",
       "format": 0,
@@ -3498,8 +3382,8 @@
       "machine_word": "0x0000000000000506"
     },
     {
-      "key": "F068/down",
-      "family_id": "F068",
+      "key": "v-shuffle/down",
+      "family_id": "v-shuffle",
       "form_id": "down",
       "class": "CROSSLANE",
       "format": 0,
@@ -3507,8 +3391,8 @@
       "machine_word": "0x0000000000000586"
     },
     {
-      "key": "F068/down_imm",
-      "family_id": "F068",
+      "key": "v-shuffle/down_imm",
+      "family_id": "v-shuffle",
       "form_id": "down_imm",
       "class": "CROSSLANE",
       "format": 0,
@@ -3516,8 +3400,8 @@
       "machine_word": "0x0100000000000686"
     },
     {
-      "key": "F068/xor",
-      "family_id": "F068",
+      "key": "v-shuffle/xor",
+      "family_id": "v-shuffle",
       "form_id": "xor",
       "class": "CROSSLANE",
       "format": 0,
@@ -3525,13 +3409,1464 @@
       "machine_word": "0x0000000000000606"
     },
     {
-      "key": "F069/m16n8k16.f16xf16.f32",
-      "family_id": "F069",
+      "key": "mma/m16n8k16.f16xf16.f32",
+      "family_id": "mma",
       "form_id": "m16n8k16.f16xf16.f32",
       "class": "MATRIX",
       "format": 0,
       "opcode": 0,
       "machine_word": "0x0000000000000007"
+    }
+  ],
+  "mixed_source": [
+    {
+      "key": "v-mov/b32.reg#ssrc=1",
+      "family_id": "v-mov",
+      "form_id": "b32.reg",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000002"
+    },
+    {
+      "key": "v-mov/b64.reg#ssrc=1",
+      "family_id": "v-mov",
+      "form_id": "b64.reg",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000082"
+    },
+    {
+      "key": "v-add/u32.reg#ssrc_sel=1",
+      "family_id": "v-add",
+      "form_id": "u32.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000012"
+    },
+    {
+      "key": "v-add/u32.reg#ssrc_sel=2",
+      "family_id": "v-add",
+      "form_id": "u32.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000012"
+    },
+    {
+      "key": "v-add/u64.reg#ssrc_sel=1",
+      "family_id": "v-add",
+      "form_id": "u64.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000092"
+    },
+    {
+      "key": "v-add/u64.reg#ssrc_sel=2",
+      "family_id": "v-add",
+      "form_id": "u64.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000092"
+    },
+    {
+      "key": "v-sub/u32.reg#ssrc_sel=1",
+      "family_id": "v-sub",
+      "form_id": "u32.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000112"
+    },
+    {
+      "key": "v-sub/u32.reg#ssrc_sel=2",
+      "family_id": "v-sub",
+      "form_id": "u32.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000112"
+    },
+    {
+      "key": "v-sub/u64.reg#ssrc_sel=1",
+      "family_id": "v-sub",
+      "form_id": "u64.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000192"
+    },
+    {
+      "key": "v-sub/u64.reg#ssrc_sel=2",
+      "family_id": "v-sub",
+      "form_id": "u64.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000192"
+    },
+    {
+      "key": "v-mul/u32.reg#ssrc_sel=1",
+      "family_id": "v-mul",
+      "form_id": "u32.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000212"
+    },
+    {
+      "key": "v-mul/u32.reg#ssrc_sel=2",
+      "family_id": "v-mul",
+      "form_id": "u32.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000212"
+    },
+    {
+      "key": "v-mul/u64.reg#ssrc_sel=1",
+      "family_id": "v-mul",
+      "form_id": "u64.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000292"
+    },
+    {
+      "key": "v-mul/u64.reg#ssrc_sel=2",
+      "family_id": "v-mul",
+      "form_id": "u64.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000292"
+    },
+    {
+      "key": "v-mad/u32#ssrc_sel=1",
+      "family_id": "v-mad",
+      "form_id": "u32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0008000000000022"
+    },
+    {
+      "key": "v-mad/u32#ssrc_sel=2",
+      "family_id": "v-mad",
+      "form_id": "u32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0010000000000022"
+    },
+    {
+      "key": "v-mad/u32#ssrc_sel=3",
+      "family_id": "v-mad",
+      "form_id": "u32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 3,
+      "scalar_field": "vc",
+      "machine_word": "0x0018000000000022"
+    },
+    {
+      "key": "v-mul-wide/u32#ssrc_sel=1",
+      "family_id": "v-mul-wide",
+      "form_id": "u32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000312"
+    },
+    {
+      "key": "v-mul-wide/u32#ssrc_sel=2",
+      "family_id": "v-mul-wide",
+      "form_id": "u32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000312"
+    },
+    {
+      "key": "v-mul-wide/s32#ssrc_sel=1",
+      "family_id": "v-mul-wide",
+      "form_id": "s32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000392"
+    },
+    {
+      "key": "v-mul-wide/s32#ssrc_sel=2",
+      "family_id": "v-mul-wide",
+      "form_id": "s32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000392"
+    },
+    {
+      "key": "v-mad-wide/u32#ssrc_sel=1",
+      "family_id": "v-mad-wide",
+      "form_id": "u32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x00080000000000A2"
+    },
+    {
+      "key": "v-mad-wide/u32#ssrc_sel=2",
+      "family_id": "v-mad-wide",
+      "form_id": "u32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x00100000000000A2"
+    },
+    {
+      "key": "v-mad-wide/u32#ssrc_sel=3",
+      "family_id": "v-mad-wide",
+      "form_id": "u32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 3,
+      "scalar_field": "vc",
+      "machine_word": "0x00180000000000A2"
+    },
+    {
+      "key": "v-mad-wide/s32#ssrc_sel=1",
+      "family_id": "v-mad-wide",
+      "form_id": "s32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0008000000000122"
+    },
+    {
+      "key": "v-mad-wide/s32#ssrc_sel=2",
+      "family_id": "v-mad-wide",
+      "form_id": "s32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0010000000000122"
+    },
+    {
+      "key": "v-mad-wide/s32#ssrc_sel=3",
+      "family_id": "v-mad-wide",
+      "form_id": "s32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 3,
+      "scalar_field": "vc",
+      "machine_word": "0x0018000000000122"
+    },
+    {
+      "key": "v-int-misc/min.s32#ssrc_sel=1",
+      "family_id": "v-int-misc",
+      "form_id": "min.s32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000412"
+    },
+    {
+      "key": "v-int-misc/min.s32#ssrc_sel=2",
+      "family_id": "v-int-misc",
+      "form_id": "min.s32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000412"
+    },
+    {
+      "key": "v-int-misc/min.u32#ssrc_sel=1",
+      "family_id": "v-int-misc",
+      "form_id": "min.u32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000492"
+    },
+    {
+      "key": "v-int-misc/min.u32#ssrc_sel=2",
+      "family_id": "v-int-misc",
+      "form_id": "min.u32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000492"
+    },
+    {
+      "key": "v-int-misc/max.s32#ssrc_sel=1",
+      "family_id": "v-int-misc",
+      "form_id": "max.s32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000512"
+    },
+    {
+      "key": "v-int-misc/max.s32#ssrc_sel=2",
+      "family_id": "v-int-misc",
+      "form_id": "max.s32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000512"
+    },
+    {
+      "key": "v-int-misc/max.u32#ssrc_sel=1",
+      "family_id": "v-int-misc",
+      "form_id": "max.u32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000592"
+    },
+    {
+      "key": "v-int-misc/max.u32#ssrc_sel=2",
+      "family_id": "v-int-misc",
+      "form_id": "max.u32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000592"
+    },
+    {
+      "key": "v-int-misc/abs.s32#ssrc=1",
+      "family_id": "v-int-misc",
+      "form_id": "abs.s32",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000102"
+    },
+    {
+      "key": "v-int-misc/neg.s32#ssrc=1",
+      "family_id": "v-int-misc",
+      "form_id": "neg.s32",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000182"
+    },
+    {
+      "key": "v-div-rem/div.u#ssrc_sel=1",
+      "family_id": "v-div-rem",
+      "form_id": "div.u",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000612"
+    },
+    {
+      "key": "v-div-rem/div.u#ssrc_sel=2",
+      "family_id": "v-div-rem",
+      "form_id": "div.u",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000612"
+    },
+    {
+      "key": "v-div-rem/div.s#ssrc_sel=1",
+      "family_id": "v-div-rem",
+      "form_id": "div.s",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000692"
+    },
+    {
+      "key": "v-div-rem/div.s#ssrc_sel=2",
+      "family_id": "v-div-rem",
+      "form_id": "div.s",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000692"
+    },
+    {
+      "key": "v-div-rem/rem.u#ssrc_sel=1",
+      "family_id": "v-div-rem",
+      "form_id": "rem.u",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000712"
+    },
+    {
+      "key": "v-div-rem/rem.u#ssrc_sel=2",
+      "family_id": "v-div-rem",
+      "form_id": "rem.u",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000712"
+    },
+    {
+      "key": "v-div-rem/rem.s#ssrc_sel=1",
+      "family_id": "v-div-rem",
+      "form_id": "rem.s",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000792"
+    },
+    {
+      "key": "v-div-rem/rem.s#ssrc_sel=2",
+      "family_id": "v-div-rem",
+      "form_id": "rem.s",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000792"
+    },
+    {
+      "key": "v-bitwise/and#ssrc_sel=1",
+      "family_id": "v-bitwise",
+      "form_id": "and",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000812"
+    },
+    {
+      "key": "v-bitwise/and#ssrc_sel=2",
+      "family_id": "v-bitwise",
+      "form_id": "and",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000812"
+    },
+    {
+      "key": "v-bitwise/or#ssrc_sel=1",
+      "family_id": "v-bitwise",
+      "form_id": "or",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000892"
+    },
+    {
+      "key": "v-bitwise/or#ssrc_sel=2",
+      "family_id": "v-bitwise",
+      "form_id": "or",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000892"
+    },
+    {
+      "key": "v-bitwise/xor#ssrc_sel=1",
+      "family_id": "v-bitwise",
+      "form_id": "xor",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000912"
+    },
+    {
+      "key": "v-bitwise/xor#ssrc_sel=2",
+      "family_id": "v-bitwise",
+      "form_id": "xor",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000912"
+    },
+    {
+      "key": "v-bitwise/not#ssrc=1",
+      "family_id": "v-bitwise",
+      "form_id": "not",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000202"
+    },
+    {
+      "key": "v-bitwise/brev.b32#ssrc=1",
+      "family_id": "v-bitwise",
+      "form_id": "brev.b32",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000282"
+    },
+    {
+      "key": "v-bitwise/bfe.b32#ssrc_sel=1",
+      "family_id": "v-bitwise",
+      "form_id": "bfe.b32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x00080000000001A2"
+    },
+    {
+      "key": "v-bitwise/bfe.b32#ssrc_sel=2",
+      "family_id": "v-bitwise",
+      "form_id": "bfe.b32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x00100000000001A2"
+    },
+    {
+      "key": "v-bitwise/bfe.b32#ssrc_sel=3",
+      "family_id": "v-bitwise",
+      "form_id": "bfe.b32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 3,
+      "scalar_field": "vc",
+      "machine_word": "0x00180000000001A2"
+    },
+    {
+      "key": "v-bitwise/bfi.b32#ssrc_sel=1",
+      "family_id": "v-bitwise",
+      "form_id": "bfi.b32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0008000000000222"
+    },
+    {
+      "key": "v-bitwise/bfi.b32#ssrc_sel=2",
+      "family_id": "v-bitwise",
+      "form_id": "bfi.b32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0010000000000222"
+    },
+    {
+      "key": "v-bitwise/bfi.b32#ssrc_sel=3",
+      "family_id": "v-bitwise",
+      "form_id": "bfi.b32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 3,
+      "scalar_field": "vc",
+      "machine_word": "0x0018000000000222"
+    },
+    {
+      "key": "v-shift-rotate/shl.reg#ssrc_sel=1",
+      "family_id": "v-shift-rotate",
+      "form_id": "shl.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000001192"
+    },
+    {
+      "key": "v-shift-rotate/shl.reg#ssrc_sel=2",
+      "family_id": "v-shift-rotate",
+      "form_id": "shl.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000001192"
+    },
+    {
+      "key": "v-shift-rotate/shr.reg#ssrc_sel=1",
+      "family_id": "v-shift-rotate",
+      "form_id": "shr.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000001212"
+    },
+    {
+      "key": "v-shift-rotate/shr.reg#ssrc_sel=2",
+      "family_id": "v-shift-rotate",
+      "form_id": "shr.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000001212"
+    },
+    {
+      "key": "v-shift-rotate/sar.reg#ssrc_sel=1",
+      "family_id": "v-shift-rotate",
+      "form_id": "sar.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000001292"
+    },
+    {
+      "key": "v-shift-rotate/sar.reg#ssrc_sel=2",
+      "family_id": "v-shift-rotate",
+      "form_id": "sar.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000001292"
+    },
+    {
+      "key": "v-shift-rotate/rotl.reg#ssrc_sel=1",
+      "family_id": "v-shift-rotate",
+      "form_id": "rotl.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000001312"
+    },
+    {
+      "key": "v-shift-rotate/rotl.reg#ssrc_sel=2",
+      "family_id": "v-shift-rotate",
+      "form_id": "rotl.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000001312"
+    },
+    {
+      "key": "v-shift-rotate/rotr.reg#ssrc_sel=1",
+      "family_id": "v-shift-rotate",
+      "form_id": "rotr.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000001392"
+    },
+    {
+      "key": "v-shift-rotate/rotr.reg#ssrc_sel=2",
+      "family_id": "v-shift-rotate",
+      "form_id": "rotr.reg",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000001392"
+    },
+    {
+      "key": "v-bitcount/clz#ssrc=1",
+      "family_id": "v-bitcount",
+      "form_id": "clz",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000302"
+    },
+    {
+      "key": "v-bitcount/ctz#ssrc=1",
+      "family_id": "v-bitcount",
+      "form_id": "ctz",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000382"
+    },
+    {
+      "key": "v-bitcount/popc#ssrc=1",
+      "family_id": "v-bitcount",
+      "form_id": "popc",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000402"
+    },
+    {
+      "key": "v-pack/pack.u16x2#ssrc_sel=1",
+      "family_id": "v-pack",
+      "form_id": "pack.u16x2",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000992"
+    },
+    {
+      "key": "v-pack/pack.u16x2#ssrc_sel=2",
+      "family_id": "v-pack",
+      "form_id": "pack.u16x2",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000992"
+    },
+    {
+      "key": "v-pack/unpack.lo16#ssrc=1",
+      "family_id": "v-pack",
+      "form_id": "unpack.lo16",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000482"
+    },
+    {
+      "key": "v-pack/unpack.hi16#ssrc=1",
+      "family_id": "v-pack",
+      "form_id": "unpack.hi16",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000502"
+    },
+    {
+      "key": "v-compare/equal#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "equal",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000032"
+    },
+    {
+      "key": "v-compare/equal#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "equal",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000032"
+    },
+    {
+      "key": "v-compare/not-equal#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "not-equal",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x00000800000000B2"
+    },
+    {
+      "key": "v-compare/not-equal#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "not-equal",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x00001000000000B2"
+    },
+    {
+      "key": "v-compare/signed-less#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "signed-less",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000132"
+    },
+    {
+      "key": "v-compare/signed-less#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "signed-less",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000132"
+    },
+    {
+      "key": "v-compare/signed-less-or-equal#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "signed-less-or-equal",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x00000800000001B2"
+    },
+    {
+      "key": "v-compare/signed-less-or-equal#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "signed-less-or-equal",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x00001000000001B2"
+    },
+    {
+      "key": "v-compare/unsigned-less#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "unsigned-less",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000232"
+    },
+    {
+      "key": "v-compare/unsigned-less#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "unsigned-less",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000232"
+    },
+    {
+      "key": "v-compare/unsigned-less-or-equal#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "unsigned-less-or-equal",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x00000800000002B2"
+    },
+    {
+      "key": "v-compare/unsigned-less-or-equal#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "unsigned-less-or-equal",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x00001000000002B2"
+    },
+    {
+      "key": "v-compare/ordered-equal_f32#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "ordered-equal_f32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000332"
+    },
+    {
+      "key": "v-compare/ordered-equal_f32#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "ordered-equal_f32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000332"
+    },
+    {
+      "key": "v-compare/ordered-less_f32#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "ordered-less_f32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x00000800000003B2"
+    },
+    {
+      "key": "v-compare/ordered-less_f32#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "ordered-less_f32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x00001000000003B2"
+    },
+    {
+      "key": "v-compare/f32.ne#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "f32.ne",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000432"
+    },
+    {
+      "key": "v-compare/f32.ne#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "f32.ne",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000432"
+    },
+    {
+      "key": "v-compare/f32.le#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "f32.le",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x00000800000004B2"
+    },
+    {
+      "key": "v-compare/f32.le#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "f32.le",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x00001000000004B2"
+    },
+    {
+      "key": "v-compare/f32.gt#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "f32.gt",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000532"
+    },
+    {
+      "key": "v-compare/f32.gt#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "f32.gt",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000532"
+    },
+    {
+      "key": "v-compare/f32.ge#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "f32.ge",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x00000800000005B2"
+    },
+    {
+      "key": "v-compare/f32.ge#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "f32.ge",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x00001000000005B2"
+    },
+    {
+      "key": "v-compare/gt.s32#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "gt.s32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000632"
+    },
+    {
+      "key": "v-compare/gt.s32#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "gt.s32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000632"
+    },
+    {
+      "key": "v-compare/ge.s32#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "ge.s32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x00000800000006B2"
+    },
+    {
+      "key": "v-compare/ge.s32#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "ge.s32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x00001000000006B2"
+    },
+    {
+      "key": "v-compare/gt.u32#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "gt.u32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000732"
+    },
+    {
+      "key": "v-compare/gt.u32#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "gt.u32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000732"
+    },
+    {
+      "key": "v-compare/ge.u32#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "ge.u32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x00000800000007B2"
+    },
+    {
+      "key": "v-compare/ge.u32#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "ge.u32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x00001000000007B2"
+    },
+    {
+      "key": "v-compare/f32.ord#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "f32.ord",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000832"
+    },
+    {
+      "key": "v-compare/f32.ord#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "f32.ord",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000832"
+    },
+    {
+      "key": "v-compare/f32.uno#ssrc_sel=1",
+      "family_id": "v-compare",
+      "form_id": "f32.uno",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x00000800000008B2"
+    },
+    {
+      "key": "v-compare/f32.uno#ssrc_sel=2",
+      "family_id": "v-compare",
+      "form_id": "f32.uno",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x00001000000008B2"
+    },
+    {
+      "key": "v-select/b32#ssrc_sel=1",
+      "family_id": "v-select",
+      "form_id": "b32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x00080000000002A2"
+    },
+    {
+      "key": "v-select/b32#ssrc_sel=2",
+      "family_id": "v-select",
+      "form_id": "b32",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x00100000000002A2"
+    },
+    {
+      "key": "v-select/b64#ssrc_sel=1",
+      "family_id": "v-select",
+      "form_id": "b64",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0008000000000322"
+    },
+    {
+      "key": "v-select/b64#ssrc_sel=2",
+      "family_id": "v-select",
+      "form_id": "b64",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0010000000000322"
+    },
+    {
+      "key": "v-cvt/s32.f32#ssrc=1",
+      "family_id": "v-cvt",
+      "form_id": "s32.f32",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000582"
+    },
+    {
+      "key": "v-cvt/u32.f32#ssrc=1",
+      "family_id": "v-cvt",
+      "form_id": "u32.f32",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000602"
+    },
+    {
+      "key": "v-cvt/f32.s32#ssrc=1",
+      "family_id": "v-cvt",
+      "form_id": "f32.s32",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000682"
+    },
+    {
+      "key": "v-cvt/f32.u32#ssrc=1",
+      "family_id": "v-cvt",
+      "form_id": "f32.u32",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000702"
+    },
+    {
+      "key": "v-cvt/u16.u32#ssrc=1",
+      "family_id": "v-cvt",
+      "form_id": "u16.u32",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000782"
+    },
+    {
+      "key": "v-cvt/s16.s32#ssrc=1",
+      "family_id": "v-cvt",
+      "form_id": "s16.s32",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000802"
+    },
+    {
+      "key": "v-f32-arith/add#ssrc_sel=1",
+      "family_id": "v-f32-arith",
+      "form_id": "add",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000A12"
+    },
+    {
+      "key": "v-f32-arith/add#ssrc_sel=2",
+      "family_id": "v-f32-arith",
+      "form_id": "add",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000A12"
+    },
+    {
+      "key": "v-f32-arith/sub#ssrc_sel=1",
+      "family_id": "v-f32-arith",
+      "form_id": "sub",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000A92"
+    },
+    {
+      "key": "v-f32-arith/sub#ssrc_sel=2",
+      "family_id": "v-f32-arith",
+      "form_id": "sub",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000A92"
+    },
+    {
+      "key": "v-f32-arith/mul#ssrc_sel=1",
+      "family_id": "v-f32-arith",
+      "form_id": "mul",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000B12"
+    },
+    {
+      "key": "v-f32-arith/mul#ssrc_sel=2",
+      "family_id": "v-f32-arith",
+      "form_id": "mul",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000B12"
+    },
+    {
+      "key": "v-f32-arith/fma#ssrc_sel=1",
+      "family_id": "v-f32-arith",
+      "form_id": "fma",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x00080000000003A2"
+    },
+    {
+      "key": "v-f32-arith/fma#ssrc_sel=2",
+      "family_id": "v-f32-arith",
+      "form_id": "fma",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x00100000000003A2"
+    },
+    {
+      "key": "v-f32-arith/fma#ssrc_sel=3",
+      "family_id": "v-f32-arith",
+      "form_id": "fma",
+      "selector_field": "ssrc_sel",
+      "selector_code": 3,
+      "scalar_field": "vc",
+      "machine_word": "0x00180000000003A2"
+    },
+    {
+      "key": "v-f32-arith/min#ssrc_sel=1",
+      "family_id": "v-f32-arith",
+      "form_id": "min",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000B92"
+    },
+    {
+      "key": "v-f32-arith/min#ssrc_sel=2",
+      "family_id": "v-f32-arith",
+      "form_id": "min",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000B92"
+    },
+    {
+      "key": "v-f32-arith/max#ssrc_sel=1",
+      "family_id": "v-f32-arith",
+      "form_id": "max",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000C12"
+    },
+    {
+      "key": "v-f32-arith/max#ssrc_sel=2",
+      "family_id": "v-f32-arith",
+      "form_id": "max",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000C12"
+    },
+    {
+      "key": "v-f32-arith/sqrt#ssrc=1",
+      "family_id": "v-f32-arith",
+      "form_id": "sqrt",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000882"
+    },
+    {
+      "key": "v-f32-arith/abs.f32#ssrc=1",
+      "family_id": "v-f32-arith",
+      "form_id": "abs.f32",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000902"
+    },
+    {
+      "key": "v-f32-arith/neg.f32#ssrc=1",
+      "family_id": "v-f32-arith",
+      "form_id": "neg.f32",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000982"
+    },
+    {
+      "key": "v-f32-div/div#ssrc_sel=1",
+      "family_id": "v-f32-div",
+      "form_id": "div",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000C92"
+    },
+    {
+      "key": "v-f32-div/div#ssrc_sel=2",
+      "family_id": "v-f32-div",
+      "form_id": "div",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000C92"
+    },
+    {
+      "key": "v-f32-div/rcp#ssrc=1",
+      "family_id": "v-f32-div",
+      "form_id": "rcp",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000A02"
+    },
+    {
+      "key": "v-f16-arith/add#ssrc_sel=1",
+      "family_id": "v-f16-arith",
+      "form_id": "add",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000D12"
+    },
+    {
+      "key": "v-f16-arith/add#ssrc_sel=2",
+      "family_id": "v-f16-arith",
+      "form_id": "add",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000D12"
+    },
+    {
+      "key": "v-f16-arith/sub#ssrc_sel=1",
+      "family_id": "v-f16-arith",
+      "form_id": "sub",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000D92"
+    },
+    {
+      "key": "v-f16-arith/sub#ssrc_sel=2",
+      "family_id": "v-f16-arith",
+      "form_id": "sub",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000D92"
+    },
+    {
+      "key": "v-f16-arith/mul#ssrc_sel=1",
+      "family_id": "v-f16-arith",
+      "form_id": "mul",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000E12"
+    },
+    {
+      "key": "v-f16-arith/mul#ssrc_sel=2",
+      "family_id": "v-f16-arith",
+      "form_id": "mul",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000E12"
+    },
+    {
+      "key": "v-f16-arith/fma#ssrc_sel=1",
+      "family_id": "v-f16-arith",
+      "form_id": "fma",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0008000000000422"
+    },
+    {
+      "key": "v-f16-arith/fma#ssrc_sel=2",
+      "family_id": "v-f16-arith",
+      "form_id": "fma",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0010000000000422"
+    },
+    {
+      "key": "v-f16-arith/fma#ssrc_sel=3",
+      "family_id": "v-f16-arith",
+      "form_id": "fma",
+      "selector_field": "ssrc_sel",
+      "selector_code": 3,
+      "scalar_field": "vc",
+      "machine_word": "0x0018000000000422"
+    },
+    {
+      "key": "v-f16-arith/min#ssrc_sel=1",
+      "family_id": "v-f16-arith",
+      "form_id": "min",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000E92"
+    },
+    {
+      "key": "v-f16-arith/min#ssrc_sel=2",
+      "family_id": "v-f16-arith",
+      "form_id": "min",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000E92"
+    },
+    {
+      "key": "v-f16-arith/max#ssrc_sel=1",
+      "family_id": "v-f16-arith",
+      "form_id": "max",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000F12"
+    },
+    {
+      "key": "v-f16-arith/max#ssrc_sel=2",
+      "family_id": "v-f16-arith",
+      "form_id": "max",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000F12"
+    },
+    {
+      "key": "v-f16-arith/div#ssrc_sel=1",
+      "family_id": "v-f16-arith",
+      "form_id": "div",
+      "selector_field": "ssrc_sel",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000080000000F92"
+    },
+    {
+      "key": "v-f16-arith/div#ssrc_sel=2",
+      "family_id": "v-f16-arith",
+      "form_id": "div",
+      "selector_field": "ssrc_sel",
+      "selector_code": 2,
+      "scalar_field": "vb",
+      "machine_word": "0x0000100000000F92"
+    },
+    {
+      "key": "v-f16-arith/sqrt#ssrc=1",
+      "family_id": "v-f16-arith",
+      "form_id": "sqrt",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000A82"
+    },
+    {
+      "key": "v-f16-arith/abs#ssrc=1",
+      "family_id": "v-f16-arith",
+      "form_id": "abs",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000B02"
+    },
+    {
+      "key": "v-f16-arith/neg#ssrc=1",
+      "family_id": "v-f16-arith",
+      "form_id": "neg",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000B82"
+    },
+    {
+      "key": "v-f16-cvt/f32.f16#ssrc=1",
+      "family_id": "v-f16-cvt",
+      "form_id": "f32.f16",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000C02"
+    },
+    {
+      "key": "v-f16-cvt/f16.f32#ssrc=1",
+      "family_id": "v-f16-cvt",
+      "form_id": "f16.f32",
+      "selector_field": "ssrc",
+      "selector_code": 1,
+      "scalar_field": "va",
+      "machine_word": "0x0000000800000C82"
     }
   ]
 }

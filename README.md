@@ -41,9 +41,11 @@ py tools\validate_isa.py
 验证器先真正执行 `isa/vtx1/schema.json`（JSON Schema Draft 2020-12），然后检查：
 
 - 实际 family/form 数量是否等于 YAML 自己声明的 `counts`；
+- family ID 是否都是语义化 slug（例如 `v-add`、`bar-sync`）；
+- form 是否没有重复书写 `class`、`format`、`fields` 这些可派生字段；
 - YAML 中 7 种 `execution_domain` 和 8 种指令 `class` 是否完整、合法；
 - 每个 form 的 `(class, format, opcode)` 是否唯一；
-- format 是否在对应 class 的 `format_registry` 中注册；
+- form 的 `encoding_format` 是否在对应 class 的 `format_registry` 中注册；
 - MEMORY 的 format 6/`SMEMX`、format 7/`VATOMX` 及其 mixed 字段布局；
 - class、format、opcode、guard header 的位置和固定值；
 - 每个 64 位编码是否无空洞、无重叠；
@@ -58,17 +60,15 @@ py tools\validate_isa.py
   `legal_orders/legal_scopes` 合法集合、具体 example 编码和 CAS 双数据操作数；
 - VMEM 的 `uniform_base`、`lane_address`、`sv_mix` 地址合同，其中 SV 索引必须
   `zero_extend(vaddr)`；
-- `V_BCAST.B64` 的 SGPR64→VGPR64 与 `S_READFIRST.B64` 的 VGPR64→SGPR64 跨域规则；
-- 每 CTA 恰好 8 个命名 barrier 槽，以及 canonical `BAR.SYNC.CTA`、
-  `BAR.ARRIVE.CTA`、`BAR.WAIT.CTA` 的 F061–F063 三元组和 slot3 编码；
-- split barrier token 必须在 VGPR 中，绑定 CTA、`linear_tid`、slot 和 generation；
-  WAIT 必须显式携带 barrier id，阻塞记录保留 owner snapshot 和 resume PC；
-- barrier generation 是从 0 开始的数学非负整数，每次退休严格加 1、永不回绕；
-  有限实现必须保持 as-if non-wrapping，旧 token 身份永远不能重新有效；
-- 自动枚举所有写 VGPR 的 form：标签默认 clear，唯一例外是 `V_MOV.B32`
-  register form 复制源标签和 `BAR.ARRIVE.CTA` 创建 token 标签；
+- `vsrc32`/`vsrc64` 混合源只出现在 `V1/V2/V3/VCMP` 的 `vector` form 上，selector
+  字段在这些 form 中可变、在其他 form 中是 must-zero 洞；
+- 混合源 `V_MOV.B64` 的 SGPR64→VGPR64 与 `S_READFIRST.B64` 的 VGPR64→SGPR64
+  寄存器对规则；
+- 每 CTA 恰好 8 个 barrier 槽，`BAR.SYNC.CTA` 是唯一屏障指令，其三元组和 slot3
+  编码正确，且 `barrier_contract` 只描述 owner 身份、`live_owner_set`、等待记录
+  和 idle 槽；
 - MEMORY `address_template` 的字段引用，以及唯一 MMA 的 32-lane `matrix_contract`；
-- 示例和 392 个 all-form 向量是否满足 fixed/must-zero/reserved 约束。
+- 示例、all-form 向量和 selector 向量是否满足 fixed/must-zero/reserved 约束。
 
 成功报告会显示 YAML 中的实际计数。失败时进程返回非零退出码，并打印具体 form
 和字段位置。调试另一份 YAML 时可以指定路径；若它没有配套向量，可暂时跳过向量：
@@ -87,8 +87,9 @@ py tools\build_spec.py
 附录。每个 form 都显示执行域、编码格式、语义组、`(class, format, opcode)`
 三元组、guard policy、required state、operands、semantics、faults 和 64 位机器字。
 atomic form 还显示合法 order/scope modifier 集合；MEMORY form 显示含 mode/scale 的
-`address_template`；MMA form 会完整展开唯一的 `matrix_contract`。附录首页同时列出
-descriptor/barrier contract，每个写 VGPR 的 form 还显示派生的 `VGPR tag effect`。
+`address_template`；MMA form 会完整展开唯一的 `matrix_contract`。含混合源操作数的
+form 会显示 `Scalar source selector` 表，逐个列出 selector 码对应的 SGPR 源位置。
+附录首页同时列出 descriptor/barrier contract。
 
 每次构建开始时只按精确文件名清理旧产物，不会使用通配符，也不会删除 `dist/` 中
 其他无关文件。当前会清理：
@@ -113,10 +114,11 @@ family/form 数。HTML 自带 CSS 和目录；中文 PDF 带可见目录及书�
 py -m unittest discover -s tests -v
 ```
 
-测试覆盖 schema、计数、全部 392 个向量、7 个执行域、8 个 class、编码三元组、
-SMEMX/VATOMX mixed 格式、header、64 位覆盖、guard、scalar-ready、控制状态、
-V_BCAST/X_BROADCAST、atomic modifier/CAS、VMEM 地址模式、寄存器对语法、call
-descriptor、SSY call stack、scope reserved、atomic 具体示例、SV zero-extension、
-B64 跨域、命名 barrier 的 8 槽/三元组/token/slot0/7/等待记录/owner/代际规则、
-generation 永不回绕与旧 token 永不复活、docs08 静态门禁、VGPR 标签策略闭合、
-fault priority、VP、唯一 MMA 合同、机器字以及完整构建和精确 stale 清理。
+测试覆盖 schema、计数、每个 form 的唯一向量、7 个执行域、8 个 class、编码三元组、
+派生字段不得手写、SMEMX/VATOMX mixed 格式、header、64 位覆盖、guard、scalar-ready、
+控制状态、混合源 selector 模型与 selector 向量、X_BROADCAST、atomic modifier/CAS、
+VMEM 地址模式、寄存器对语法、call descriptor、SSY call stack、scope reserved、
+atomic 具体示例、SV zero-extension、B64 跨域搬运、`BAR.SYNC.CTA` 是唯一屏障、
+简化后的 `barrier_contract`、故障表去掉 `BARRIER_FAULT` 并改名 `DIVERGENCE_FAULT`、
+docs08 静态门禁、fault priority、VP、唯一 MMA 合同、机器字以及完整构建和精确
+stale 清理。

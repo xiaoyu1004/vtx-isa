@@ -224,10 +224,10 @@ guard 合法性只能在译码出 form 后，根据该 form 的 `execution_domai
 典型反例说明为什么不能按 class 判断：
 
 - `V_GETREG` 位于 `SYS` class，但其 form 是 `execution_domain: vector`、`guard_policy: optional`，所以允许非 PT；
-- `V_BCAST` 位于 `CROSSLANE` class、使用 `COLL` format，但它是普通 `vector` form，不是 warp collective，因此同样允许 `guard_policy: optional`；
+- `V_SHUFFLE.DOWN.B32` 位于 `CROSSLANE` class、使用 `COLL` format，是真正的 `warp_collective` form，必须 `required_pt`；
 - `S_READFIRST` 也位于 `CROSSLANE/COLL`，但它是 `scalar` form，必须 `required_pt` 并检查 scalar-ready。
 
-所有 `execution_domain: cta_sync`、`warp_collective`、`warp_matrix` 的 form 都必须 `guard_policy: required_pt`。因此 SYNC form、真正的 COLL 集合 form 和唯一 MMA form 仍只能使用 PT；`V_BCAST` 不因复用 COLL payload 就变成集合 form。
+所有 `execution_domain: cta_sync`、`warp_collective`、`warp_matrix` 的 form 都必须 `guard_policy: required_pt`。因此 SYNC form、全部 COLL 集合 form 和唯一 MMA form 都只能使用 PT。
 
 每个 `execution_domain: scalar` 的 form 都必须声明 `guard_policy: required_pt` 和 `required_state: scalar_ready`，并在读取任何动态源前检查：
 
@@ -237,7 +237,7 @@ active_mask == live_mask
 reconv_stack 中不存在 phase 为 FIRST 或 SECOND 的帧
 ```
 
-三个条件必须同时成立。条件不满足产生 `SCALAR_STATE_FAULT`，且不得读取 SGPR、SCC 或内存源。`ARMED` 帧本身不破坏 scalar-ready。
+三个条件必须同时成立。条件不满足产生 `DIVERGENCE_FAULT`，且不得读取 SGPR、SCC 或内存源。`ARMED` 帧本身不破坏 scalar-ready。
 
 CONTROL form 的状态要求逐 form 声明，不能由 machine class 推导：
 
@@ -288,13 +288,36 @@ guard 为假只抑制该 lane 的架构效果，不抑制静态译码。未知 o
 
 | format | P 位布局 |
 |---|---|
-| `V1` | `[7:0] vd, [15:8] va, [44:16] x29` |
-| `V2` | `[7:0] vd, [15:8] va, [23:16] vb, [44:24] x21` |
-| `V3` | `[7:0] vd, [15:8] va, [23:16] vb, [31:24] vc, [44:32] x13` |
-| `VCMP` | `[3:0] vpd, [7:4] zero4, [15:8] va, [23:16] vb, [44:24] x21` |
+| `V1` | `[7:0] vd, [15:8] va, [16] ssrc, [44:17] x28` |
+| `V2` | `[7:0] vd, [15:8] va, [23:16] vb, [25:24] ssrc_sel, [44:26] x19` |
+| `V3` | `[7:0] vd, [15:8] va, [23:16] vb, [31:24] vc, [33:32] ssrc_sel, [44:34] x11` |
+| `VCMP` | `[3:0] vpd, [7:4] zero4, [15:8] va, [23:16] vb, [25:24] ssrc_sel, [44:26] x19` |
 | `VIMM` | `[7:0] vd, [15:8] va, [39:16] imm24, [44:40] x5` |
 
 `VCMP` 通过 `vpd` 显式选择并写 `vp0..vp15`，且 `zero4` 必须为零；它不写 SCC。`VIMM` 的目标是 VGPR；需要“比较寄存器与立即数”的程序必须使用明确分配的比较立即数 opcode/格式，若清单未分配则先物化常量，汇编器不得擅自把 `VIMM.vd` 解释为谓词目标。
+
+这四种 VALU 格式与 SALU 的对应格式的唯一结构差别，就是它们从扩展字段里切出一个 scalar-source selector。`V1` 用 1 位的 `ssrc`，`V2`、`V3`、`VCMP` 用 2 位的 `ssrc_sel`。selector 不改变源槽的位置和宽度，只改变那 8 位寄存器号在哪个寄存器文件里解释：
+
+| format | selector 字段 | 合法值 | 含义 |
+|---|---|---|---|
+| `V1` | `ssrc` | 0 | `va` 读 VGPR |
+| `V1` | `ssrc` | 1 | `va` 读 SGPR |
+| `V2`、`VCMP` | `ssrc_sel` | 0 / 1 / 2 | 无标量源 / `va` 读 SGPR / `vb` 读 SGPR |
+| `V2`、`VCMP` | `ssrc_sel` | 3 | 保留，`ILLEGAL_INSTRUCTION` |
+| `V3` | `ssrc_sel` | 0 / 1 / 2 / 3 | 无标量源 / `va` / `vb` / `vc` 读 SGPR |
+
+因此一条 VALU 指令最多只有一个 SGPR 源。清单中把可以这样切换的源操作数写成 `vsrc32` 或 `vsrc64` 类型；只有 `execution_domain: vector` 且格式属于 `V1/V2/V3/VCMP` 的 form 才允许出现这两种类型。目标操作数永远是 VGPR 或 `vpN`，不受 selector 影响。
+
+不含 `vsrc*` 操作数的 VALU form（例如 `VIMM` 系列，或所有源都固定为 VGPR 的 form）必须把 selector 字段编码为零；它在这些 form 里是 must-zero 洞，非零就是 `ILLEGAL_INSTRUCTION`。
+
+`vsrc64` 的两个寄存器文件都要求偶数对齐的完整寄存器对，语法上必须写全，例如：
+
+```text
+V_MOV.B64 v2:v3, v4:v5      # ssrc=0
+V_MOV.B64 v2:v3, s4:s5      # ssrc=1
+```
+
+汇编器由源操作数的前缀唯一确定 selector 值：写 `sN` 就置对应的 selector 码，写 `vN` 就保持该位置为 VGPR。同一条指令里出现两个 `sN` 源没有可用编码，必须报错，而不是自行插入搬运指令。
 
 ### 6.5.4 MEMORY
 
@@ -363,7 +386,7 @@ V_LD.LOCAL.U32 v0, [v2 + 16]
 V_ST.LOCAL.U32 [v2 + 16], v0
 ```
 
-所有 LOCAL form 的 `sbase` 必须为零；LOCAL 禁止 SGPR base、SGPR+VGPR indexed 地址和 64 位 VGPR base。`VSHMEM` 的合法地址 form 由 shared-memory 清单单独固定，不得借用 VMEM 的 global/generic 64 位 base 规则。
+所有 LOCAL form 的 `sbase` 必须为零；LOCAL 禁止 SGPR base、SGPR+VGPR indexed 地址和 64 位 VGPR base。`VSHMEM` 的合法地址 form 由 shared-memory 清单单独固定，不得借用 VMEM 的 global 64 位 base 规则。
 
 `SATOM/VATOM`：
 
@@ -430,7 +453,7 @@ scope 名称统一使用 `DEVICE`，不得输出或接受 `GPU` 作为 canonical
 
 合法矩阵为：
 
-| operation 类别 | 合法 order | global/generic 合法 scope | shared 合法 scope |
+| operation 类别 | 合法 order | global 合法 scope | shared 合法 scope |
 |---|---|---|---|
 | LOAD | `RELAXED`, `ACQUIRE` | `CTA`, `DEVICE`, `SYSTEM` | `CTA` |
 | STORE | `RELAXED`, `RELEASE` | `CTA`, `DEVICE`, `SYSTEM` | `CTA` |
@@ -492,21 +515,17 @@ frame.owner_call_depth = call_stack.depth
 | `[38:37]` | `order2` |
 | `[44:39]` | `x6` |
 
-`a/b` 是 opcode 指定类别的寄存器槽。屏障槽 `slot3` 可表达 0..7。三条 BAR 都把 `slot3` 作为显式 `barrier_id`；`BAR.ARRIVE.CTA` 和 `BAR.WAIT.CTA` 的 `a` 都编码 VGPR 号。非屏障同步指令必须把 `slot3` 置零。scope/order 只在相应 opcode 明确定义时有效，否则必须为零。
+`a/b` 是 opcode 指定类别的寄存器槽。屏障槽 `slot3` 可表达 0..7。唯一使用它的指令是 `BAR.SYNC.CTA`，其中 `slot3` 是显式 `barrier_id`；非屏障同步指令必须把 `slot3` 置零。scope/order 只在相应 opcode 明确定义时有效，否则必须为零。
 
-命名屏障保留原有 family ID 和译码三元组，规范编码固定为：
+屏障的规范编码只有一条：
 
 | family | `(class,format,opcode)` | canonical 汇编 | payload 非零字段 | 示例机器字 |
 |---|---|---|---|---|
-| `F061` | `(5,0,3)` | `BAR.SYNC.CTA id` | `slot3=id` | `BAR.SYNC.CTA 3` → `0x0018000000000185` |
-| `F062` | `(5,0,4)` | `BAR.ARRIVE.CTA vd,id` | `a=vd, slot3=id` | `BAR.ARRIVE.CTA v5,3` → `0x0018000000280205` |
-| `F063` | `(5,0,5)` | `BAR.WAIT.CTA id,vs` | `a=vs, slot3=id` | `BAR.WAIT.CTA 3,v5` → `0x0018000000280285` |
+| `bar-sync` | `(5,0,3)` | `BAR.SYNC.CTA id` | `slot3=id` | `BAR.SYNC.CTA 3` → `0x0018000000000185` |
 
-表中未列出的 `b/imm16/scope2/order2/x6` 都必须为零。`a` 只是 8 位 VGPR 编号；token 的隐藏身份字段恰好是 `{CTA identity,linear_tid,slot,logical generation}`，另有隐藏 valid 状态。它们不进入机器字，也不能用立即数编码。logical generation 属于数学非负整数 `N`，没有 U64 位宽或编码字段；有限实现必须以 epoch、capability ID、安全回收或等效办法做到架构上永不回绕。`linear_tid=warp_id*32+lane_id`，wrong-owner 比较也使用这个值。
+`a/b/imm16/scope2/order2/x6` 都必须为零。屏障不写寄存器，也不读寄存器源，所以 SYNC payload 里没有屏障寄存器槽；`(5,0,4)` 和 `(5,0,5)` 在 1.0 Draft 中未分配，译码为 `ILLEGAL_INSTRUCTION`。
 
-`BarrierWaitRecord {warp_id,owner_snapshot,resume_pc}`、warp blocked record 和槽内 waiter 映射都是执行状态，不占 SYNC payload。`resume_pc` 固定为该动态 BAR 的 `old_PC+8`，不能由汇编显式提供。
-
-YAML 根 `barrier_contract.vgpr_tag_write_policy` 是标签写回的机器可读闭包：生成器先枚举所有含 VGPR `write/read_write` 目标的 form，并对每个目标 VGPR32 槽应用 `default_action=clear`。只有列出的 F025 `b32.reg`/`V_MOV.B32` 使用 `copy_source_tag`，F062 `cta`/`BAR.ARRIVE.CTA` 使用 `create_tag`。任何未列出的 form 都不能靠助记符或实现特例保留 barrier-token 标签。
+`BarrierWaitRecord {warp_id,owner_snapshot,resume_pc}`、warp blocked record、槽内 waiter 映射和 CTA 的 `live_owner_set` 都是执行状态，不占 SYNC payload。`resume_pc` 固定为该动态屏障指令的 `old_PC+8`，不能由汇编显式提供。
 
 ### 6.5.7 COLL
 
@@ -519,16 +538,17 @@ YAML 根 `barrier_contract.vgpr_tag_write_policy` 是标签写回的机器可读
 | `[39:32]` | `imm8` |
 | `[44:40]` | `x5` |
 
-`smask` 是保存 lane mask、标量源或标量目标的 SGPR 号，不是 8 位 lane mask 本身。真正的 `warp_collective` form 按 opcode 语义确定参与者并要求 header guard 为 PT；`V_BCAST` 是复用 COLL 格式的 `vector` form，可以使用 optional guard。
+`smask` 是保存 lane mask、标量源或标量目标的 SGPR 号，不是 8 位 lane mask 本身。COLL 格式只承载 `warp_collective` 和 `scalar` form，它们都要求 header guard 为 PT。COLL 没有 scalar-source selector：需要把统一值送进各 lane 的场合用 `V1` 的混合源 `V_MOV`，不用跨 lane 格式。
 
-`V_BCAST.B64` 和 `S_READFIRST.B64` 的 64 位两端都必须显式写完整、偶数对齐且不越界的寄存器对：
+`S_READFIRST.B64` 的 64 位两端都必须显式写完整、偶数对齐且不越界的寄存器对：
 
 ```text
-V_BCAST.B64 v2:v3, s4:s5
 S_READFIRST.B64 s6:s7, v8:v9
 ```
 
-`V_BCAST.B64` 的 `vd` 编码 VGPR 目标对基址，`smask` 编码 SGPR 源对基址，`va/vb/imm8/x5` 必须为零；它是 `execution_domain: vector`、`guard_policy: optional`。`S_READFIRST.B64` 的 `smask` 编码 SGPR 目标对基址，`va` 编码 VGPR 源对基址，`vd/vb/imm8/x5` 必须为零；它是 `execution_domain: scalar`、`guard_policy: required_pt`、`required_state: scalar_ready`。后者必须从同一个最低编号 active lane 原子快照两个 32 位半部，禁止两个半部分别选择 lane。
+它的 `smask` 编码 SGPR 目标对基址，`va` 编码 VGPR 源对基址，`vd/vb/imm8/x5` 必须为零；它是 `execution_domain: scalar`、`guard_policy: required_pt`、`required_state: scalar_ready`。它必须从同一个最低编号 active lane 原子快照两个 32 位半部，禁止两个半部分别选择 lane。
+
+反方向的 SGPR64 到各 lane VGPR64 搬运由 `V1` 格式的 `V_MOV.B64 vE:v(E+1), sA:s(A+1)`（`ssrc=1`）完成，见 6.5.3。
 
 `V_SHUFFLE.DOWN.B32` 有两个保留相同 width 编码的 form：
 
@@ -721,10 +741,11 @@ canonical 文本遵守以下规则：
 - 直接控制目标优先显示符号；无符号时显示相对 `next_pc` 的有符号位移，不显示其他目标表示；
 - 64 位操作数必须显示完整寄存器对，其他寄存器组必须显示完整范围或使用其专用片段语法；
 - 原子助记符必须严格按 `<op>.<type>.<space>.<order>.<scope>` 排列，交换操作只写 `XCHG`；
-- 命名屏障只显示为 `BAR.SYNC.CTA id`、`BAR.ARRIVE.CTA vd,id`、`BAR.WAIT.CTA id,vs`；id 必须显式出现，split token 寄存器必须写作 `vN`；
+- 屏障只显示为 `BAR.SYNC.CTA id`，id 必须显式出现；
+- 混合源操作数按实际寄存器文件显示为 `sN`/`sE:s(E+1)` 或 `vN`/`vE:v(E+1)`，反汇编不得把 SGPR 源印成 VGPR 号；
 - 不允许根据助记符拼写、寄存器前缀或字面量大小模糊选择多个候选形式。
 
-汇编器可以接受大小写、显式 `@PT`、零偏移省略等无损语法别名，但必须先归一化到唯一形式。`BARRIER`、`BARRIER_ARRIVE`、`BARRIER_WAIT` 不是 BAR 的兼容名称或 canonical 别名，必须按未知助记符拒绝。需要多条机器指令的伪操作属于宏，不是编码别名；listing 和调试信息必须显示实际展开。
+汇编器可以接受大小写、显式 `@PT`、零偏移省略等无损语法别名，但必须先归一化到唯一形式。`BARRIER`、`BARRIER_ARRIVE`、`BARRIER_WAIT`、`V_BCAST` 都不是任何指令的兼容名称或 canonical 别名，必须按未知助记符拒绝。需要多条机器指令的伪操作属于宏，不是编码别名；listing 和调试信息必须显示实际展开。
 
 若源文本不能唯一确定 `(class, format, opcode)`、数据类型、寄存器类别或立即数解释，汇编器必须报错并列出冲突候选，不得按声明顺序或“最接近”原则选择。
 
@@ -761,7 +782,7 @@ require static_operand_combinations_are_legal(form)      else ILLEGAL_OPERAND
 require direct_target_is_legal_if_checked_now(form)      else ILLEGAL_OPERAND
 
 if form.required_state == scalar_ready:
-    require scalar_ready(warp_state)                     else SCALAR_STATE_FAULT
+    require scalar_ready(warp_state)                     else DIVERGENCE_FAULT
 ```
 
 错误分类固定如下：
@@ -794,40 +815,56 @@ if form.required_state == scalar_ready:
 
 动态地址越界、实际访存未对齐、除零、屏障协议不一致和集合参与者不一致不属于静态编码错误；它们由相应执行语义产生运行时故障。
 
-`SCALAR_STATE_FAULT` 是已成功静态译码后对当前 warp 动态状态的检查结果。它适用于所有 `required_state: scalar_ready` 的 form，包括全部 scalar form，以及 `CALL` direct、`CALL.IND`、`JUMP.IND` 和 `RET`；它不适用于 `BRA/BRA.P`，也不属于非法机器编码。
+`DIVERGENCE_FAULT` 是已成功静态译码后对当前 warp 动态状态的检查结果。它适用于所有 `required_state: scalar_ready` 的 form，包括全部 scalar form，以及 `CALL` direct、`CALL.IND`、`JUMP.IND` 和 `RET`；它不适用于 `BRA/BRA.P`，也不属于非法机器编码。
 
 静态错误检查对整个 warp 只做一次，先于 guard 和 scalar-ready 求值。发生静态错误时不得提交 SGPR、VGPR、VP、SCC、内存、PC、同步或重汇聚状态。
 
 ## 6.12 机器可读清单要求
 
-机器可读 ISA 清单中的每个 form 至少必须给出：
+清单把**物理布局**和**操作数绑定**分开保存，各有唯一归属：
+
+- 根 `format_registry` 拥有物理布局。每个编码格式在这里给出一次自己的 class、payload 位范围和完整字段表（字段名、`lsb`、`width`、`kind`、描述）。
+- 每个 form 拥有操作数绑定。它声明自己属于哪个 `encoding_format`、自己的 `opcode`，以及每个操作数绑定到哪个字段。
+
+因此单个 form 至少必须给出：
 
 ```yaml
-family: IADD
-form: iadd_v2_u32
-class: VALU
-format: V2
+family: v-add                  # 语义分组，语义化 slug
+form: u32                      # family 内唯一
+mnemonic: V_ADD.U32
+syntax: V_ADD.U32 v0, v1, v2
+encoding_format: V2
 opcode: 0x00
-mnemonic: IADD.U32
 execution_domain: vector
 required_state: none
 guard_policy: optional
-fields: [...]
-must_zero: [...]
-operands: [...]
-semantics: [...]
+operands: [...]                # 每项含 name/type/access/field
+semantics: ...
 constraints: [...]
 faults: [...]
+example: {assembly: ..., machine_word: ...}
 ```
+
+form 里**不得**重复 `class`、`format` 或 `fields`：它们由 `encoding_format` 加 `format_registry` 唯一决定，工具必须现场推导。任何绑定不到操作数的 payload 字段自动成为 must-zero 洞，不需要另写 `must_zero` 列表。
+
+只有两类信息无法从 registry 推导，因此允许逐 form 覆盖：
+
+- `field_values`：把某个字段固定成一个常量。例如 `MEMBAR` 三个 form 用它把 `scope2/order2` 钉死成各自的组合。
+- `field_notes`：给某个字段一个 form 专属的描述，用于同一个物理槽在不同 form 中承载不同含义的情况，例如 `V_SHUFFLE.DOWN.B32` 的立即数 delta form。
+
+family ID 是语义化 slug（`^[a-z0-9]+(-[a-z0-9]+)*$`，如 `v-add`、`bar-sync`），不是不透明编号。
 
 生成器必须拒绝：
 
-- 两个 form 重复声明同一 `(class, format, opcode)`；
-- form 缺失 family，或 family 被当成译码字段；
-- 位段重叠、越出 64 位或遗漏 payload 位；
+- 两个 form 重复声明同一 `(encoding_format, opcode)` 或同一译码三元组；
+- form 直接书写 `class`、`format` 或 `fields`；
+- form 引用 `format_registry` 中不存在的 `encoding_format`，或绑定到该格式没有的字段名；
+- `format_registry` 中位段重叠、越出 64 位或遗漏 payload 位；
 - 同一机器字匹配多个形式；
 - 未定义的 `x` 位；
 - opcode 的字段类别与操作数类别不一致；
+- `vsrc32`/`vsrc64` 操作数出现在非 `V1/V2/V3/VCMP` 格式或非 `vector` 执行域的 form 上；
+- 含 `vsrc*` 操作数的 form 把 selector 字段当成 must-zero 洞，或不含 `vsrc*` 的 form 让 selector 变成可变字段；
 - `execution_domain` 不属于本章规定的七值集合；
 - `guard_policy`、`required_state` 或 form 级 guard 矩阵与本章规则不一致；
 - 原子 `order/scope` 被错误拆成额外 opcode/form，或合法矩阵不一致；
@@ -836,4 +873,4 @@ faults: [...]
 - 立即数宽度大于其格式容器；
 - 示例不能 canonical 汇编，或 round-trip 改变机器字。
 
-执行域、machine class、编码格式、family 和 form 必须作为不同概念保存。family 只做语义分组，form 才是唯一译码叶子；每个 form 的 `(class, format, opcode)` 三元组必须全局唯一。生成器不得从 `V2` 自动推导 `IADD` family，不得从 `MEMORY` class 推导 execution domain，也不得从 `FADD` family 反推其 payload 布局。完整指令表、汇编器、反汇编器、验证器和 RTL/CModel 解码表必须由同一份清单生成。
+执行域、machine class、编码格式、family 和 form 必须作为不同概念保存。family 只做语义分组，form 才是唯一译码叶子；每个 form 的 `(class, format, opcode)` 三元组必须全局唯一。生成器不得从 `V2` 自动推导 `v-add` family，不得从 `MEMORY` class 推导 execution domain，也不得从 family 名反推其 payload 布局。完整指令表、汇编器、反汇编器、验证器和 RTL/CModel 解码表必须由同一份清单生成。

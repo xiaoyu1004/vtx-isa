@@ -8,23 +8,24 @@
 ;   s4     = width   U32,        byte offset 16
 ;   s5     = height  U32,        byte offset 20
 ;
-; Descriptor resources: sgpr_count=16, vgpr_count=24, vp_count=3,
+; Descriptor resources: sgpr_count=16, vgpr_count=19, vp_count=3,
 ; reconv_stack_depth=0, static_shared_size=4224.
 ;
 ; Register map:
-;   v0=tx, v1=ty, v2=block_x, v3=block_y, v4=width, v5=height
+;   v0=tx, v1=ty, v2=block_x, v3=block_y
 ;   v6=input_x, v7=input_y_base, v8=row, v9=linear index
 ;   v10=byte offset, v11=value, v12=shared byte offset
 ;   v13=local row, v14=33, v15=output_x, v16=output_y_base
 ;   v17=output_y, v18=shared element index
+;
+; `width` stays in s4 and `height` in s5. Each compare and each V_MAD names at
+; most one of them, which is exactly what the single-SGPR source model allows.
 
 transpose:
     V_GETREG.LANE.U32 v0, LSR_TID_X
     V_GETREG.LANE.U32 v1, LSR_TID_Y
     V_GETREG.UNIFORM.U32 v2, USR_CTA_ID_X
     V_GETREG.UNIFORM.U32 v3, USR_CTA_ID_Y
-    V_BCAST.B32 v4, s4
-    V_BCAST.B32 v5, s5
     V_MOV.B32 v14, 33
 
     V_MUL.U32 v6, v2, 32
@@ -35,10 +36,10 @@ transpose:
     ; Load rows 0, 8, 16 and 24 into shared[32][33].
     V_MOV.B32 v13, v1
     V_MOV.B32 v8, v7
-    V_CMP.LT.U32 vp0, v6, v4
-    V_CMP.LT.U32 vp1, v8, v5
+    V_CMP.LT.U32 vp0, v6, s4
+    V_CMP.LT.U32 vp1, v8, s5
     V_PAND vp2, vp0, vp1
-    V_MAD.U32 v9, v8, v4, v6
+    V_MAD.U32 v9, v8, s4, v6
     V_SHL.B32 v10, v9, 2
     @vp2 V_LD.GLOBAL.U32 v11, [s0:s1 + v10 + 0]
     V_MAD.U32 v12, v13, v14, v0
@@ -47,9 +48,9 @@ transpose:
 
     V_ADD.U32 v13, v1, 8
     V_ADD.U32 v8, v7, 8
-    V_CMP.LT.U32 vp1, v8, v5
+    V_CMP.LT.U32 vp1, v8, s5
     V_PAND vp2, vp0, vp1
-    V_MAD.U32 v9, v8, v4, v6
+    V_MAD.U32 v9, v8, s4, v6
     V_SHL.B32 v10, v9, 2
     @vp2 V_LD.GLOBAL.U32 v11, [s0:s1 + v10 + 0]
     V_MAD.U32 v12, v13, v14, v0
@@ -58,9 +59,9 @@ transpose:
 
     V_ADD.U32 v13, v1, 16
     V_ADD.U32 v8, v7, 16
-    V_CMP.LT.U32 vp1, v8, v5
+    V_CMP.LT.U32 vp1, v8, s5
     V_PAND vp2, vp0, vp1
-    V_MAD.U32 v9, v8, v4, v6
+    V_MAD.U32 v9, v8, s4, v6
     V_SHL.B32 v10, v9, 2
     @vp2 V_LD.GLOBAL.U32 v11, [s0:s1 + v10 + 0]
     V_MAD.U32 v12, v13, v14, v0
@@ -69,9 +70,9 @@ transpose:
 
     V_ADD.U32 v13, v1, 24
     V_ADD.U32 v8, v7, 24
-    V_CMP.LT.U32 vp1, v8, v5
+    V_CMP.LT.U32 vp1, v8, s5
     V_PAND vp2, vp0, vp1
-    V_MAD.U32 v9, v8, v4, v6
+    V_MAD.U32 v9, v8, s4, v6
     V_SHL.B32 v10, v9, 2
     @vp2 V_LD.GLOBAL.U32 v11, [s0:s1 + v10 + 0]
     V_MAD.U32 v12, v13, v14, v0
@@ -85,49 +86,49 @@ transpose:
     V_ADD.U32 v15, v15, v0
     V_MUL.U32 v16, v2, 32
     V_ADD.U32 v16, v16, v1
-    V_CMP.LT.U32 vp0, v15, v5
+    V_CMP.LT.U32 vp0, v15, s5
 
     V_MOV.B32 v13, v1
     V_MOV.B32 v17, v16
-    V_CMP.LT.U32 vp1, v17, v4
+    V_CMP.LT.U32 vp1, v17, s4
     V_PAND vp2, vp0, vp1
     V_MAD.U32 v18, v0, v14, v13
     V_SHL.B32 v12, v18, 2
     @vp2 V_LD.SHARED.U32 v11, [v12 + 0]
-    V_MAD.U32 v9, v17, v5, v15
+    V_MAD.U32 v9, v17, s5, v15
     V_SHL.B32 v10, v9, 2
     @vp2 V_ST.GLOBAL.U32 [s2:s3 + v10 + 0], v11
 
     V_ADD.U32 v13, v1, 8
     V_ADD.U32 v17, v16, 8
-    V_CMP.LT.U32 vp1, v17, v4
+    V_CMP.LT.U32 vp1, v17, s4
     V_PAND vp2, vp0, vp1
     V_MAD.U32 v18, v0, v14, v13
     V_SHL.B32 v12, v18, 2
     @vp2 V_LD.SHARED.U32 v11, [v12 + 0]
-    V_MAD.U32 v9, v17, v5, v15
+    V_MAD.U32 v9, v17, s5, v15
     V_SHL.B32 v10, v9, 2
     @vp2 V_ST.GLOBAL.U32 [s2:s3 + v10 + 0], v11
 
     V_ADD.U32 v13, v1, 16
     V_ADD.U32 v17, v16, 16
-    V_CMP.LT.U32 vp1, v17, v4
+    V_CMP.LT.U32 vp1, v17, s4
     V_PAND vp2, vp0, vp1
     V_MAD.U32 v18, v0, v14, v13
     V_SHL.B32 v12, v18, 2
     @vp2 V_LD.SHARED.U32 v11, [v12 + 0]
-    V_MAD.U32 v9, v17, v5, v15
+    V_MAD.U32 v9, v17, s5, v15
     V_SHL.B32 v10, v9, 2
     @vp2 V_ST.GLOBAL.U32 [s2:s3 + v10 + 0], v11
 
     V_ADD.U32 v13, v1, 24
     V_ADD.U32 v17, v16, 24
-    V_CMP.LT.U32 vp1, v17, v4
+    V_CMP.LT.U32 vp1, v17, s4
     V_PAND vp2, vp0, vp1
     V_MAD.U32 v18, v0, v14, v13
     V_SHL.B32 v12, v18, 2
     @vp2 V_LD.SHARED.U32 v11, [v12 + 0]
-    V_MAD.U32 v9, v17, v5, v15
+    V_MAD.U32 v9, v17, s5, v15
     V_SHL.B32 v10, v9, 2
     @vp2 V_ST.GLOBAL.U32 [s2:s3 + v10 + 0], v11
 

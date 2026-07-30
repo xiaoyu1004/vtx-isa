@@ -158,7 +158,7 @@ s15 = parameter bytes [60, 64)
 
 这份复制对 CTA 中每个 warp 都做一次，所以每个 warp 启动时的 `s0..s15` 相同。超过 64 字节的参数通过只读 param 地址空间和参数加载指令读取。
 
-指针参数除了 64 位数值，还要带地址空间身份。实现必须能区分“数值碰巧一样的普通 U64”和真正的 `GLOBAL_PTR` 或 `CONST_PTR`；普通整数不能伪装成指针。
+`GLOBAL_PTR` 和 `CONST_PTR` 只是参数布局记录上的静态声明，供启动时校验参数块并确定该指针指向哪个窗口。它们不给运行期的寄存器值附加任何身份：写进 SGPR 之后就是普通的 64 位数值。一次访存落在哪个地址空间完全由指令 opcode 决定，与地址值本身无关。
 
 ## 4. 架构寄存器
 
@@ -182,9 +182,7 @@ s15 = parameter bytes [60, 64)
 
 例如，`v3` 不是整个 warp 共用的值。lane 0 的 `v3` 和 lane 1 的 `v3` 是两个独立的 32 位值。
 
-每个真实 lane 的每个 VGPR32 还可以带一个程序不可直接读取的 barrier-token 标签。普通状态是“无标签”。对参与 lane，只要某条 form 写任意 VGPR32 槽，就默认清除该槽旧标签；多槽目标逐槽清除。唯二例外是 `BAR.ARRIVE.CTA` 创建 `{CTA identity,linear_tid,slot,logical generation}` 新标签，以及寄存器型 `V_MOV.B32` 按 lane 完整复制源标签。
-
-因此，`V_MOV.B64`、`V_BCAST`、`X_BROADCAST`、`V_GETREG`、普通或原子 load 的返回目标、全部 ALU/CVT/FP 写回、MMA 输出和其他 VGPR 写目标 form 都走默认清除。标签规则与 pointer provenance 等其他 shadow tag 分开处理；清除 barrier-token 标签不等于擅自清除或制造其他标签。barrier 标签不改变 32 位寄存器容量，也不能由位型伪造。
+VGPR 只保存 32 位位模式。架构不给寄存器附加任何影子状态：没有 barrier token 标签，也没有地址 provenance 标签。任何一条写 VGPR 的 form 只改写这 32 位数值，实现不得让软件观察到额外的隐藏 per-register 状态。
 
 ### 4.3 `vp` 写入规则
 
@@ -272,12 +270,11 @@ LIVE            = live_mask 的只读视图
 
 - 一块 `static_shared_size + requested_dynamic_shared` 字节的 shared memory；
 - 每个真实 lane 一块 `local_size_per_lane` 字节的 local memory；
-- 8 个命名 CTA 屏障槽 `0..7`。每槽初始化为逻辑 `generation=0∈N`、`mode=EMPTY`、`arrived_set=empty`、`consumed_set=empty`、`completed=false`、`waiters=empty`；8 槽共用的固定 owner set 是 CTA 启动时全部真实线程的 `linear_tid`；
+- 8 个 CTA 屏障槽 `0..7`，每槽初始化为 `arrived_set=empty`、`waiters=empty`，也就是 idle；
+- 一个 CTA 级 `live_owner_set`，初值是 CTA 启动时全部真实线程的 `linear_tid`；
 - CTA 和 grid 的坐标及尺寸。
 
-`linear_tid = warp_id*32+lane_id` 是 owner 的唯一集合元素；不存在的尾 lane 不进入 owner set。之后执行 `EXIT` 也不从 owner set 删除 `linear_tid`。所有 VGPR barrier-token 标签启动时无效。shared memory 和 local memory 的初始数据为 `UNSPEC`，除非其他章节对某段存储明确规定清零。
-
-generation 没有 U32/U64 之类的架构位宽。有限硬件状态必须提供“看起来永不回绕”的结果：不得因为物理计数器回到旧位型，就让任何旧、已消费或复制 token 重新匹配当前代。
+`linear_tid = warp_id*32+lane_id` 是 owner 的唯一集合元素；不存在的尾 lane 从一开始就不在 `live_owner_set` 中。`EXIT` 把退出线程的 `linear_tid` 从 `live_owner_set` 移除。shared memory 和 local memory 的初始数据为 `UNSPEC`，除非其他章节对某段存储明确规定清零。
 
 ## 8. 特殊只读信息
 
@@ -310,15 +307,14 @@ vector 读取 lane 相关信息时，每个参与 lane 得到自己的值。`exe
 |---:|---|---|
 | `0x0001` | `ILLEGAL_INSTRUCTION` | 指令字、操作码或保留位非法 |
 | `0x0002` | `ILLEGAL_OPERAND` | 寄存器类别、编号、目标或动态操作数组合非法 |
-| `0x0003` | `SCALAR_STATE_FAULT` | `execution_domain: scalar` 的 form 不满足 scalar-ready，或 `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 的 `required_state: scalar_ready` 不满足 |
-| `0x0004` | `RECONVERGENCE_FAULT` | 重汇聚栈、帧、目标或 `JOIN` 顺序错误 |
+| `0x0003` | `DIVERGENCE_FAULT` | 要求 warp 完全重汇聚的 form 在非 scalar-ready 状态下执行；覆盖全部 `execution_domain: scalar` form，以及 `CALL`、`CALL.IND`、`JUMP.IND`、`RET`、`BAR.SYNC.CTA` 上写明的 `required_state: scalar_ready` |
+| `0x0004` | `RECONVERGENCE_FAULT` | 重汇聚栈、帧、目标或 `JOIN` 顺序错误，调用栈上溢或下溢，以及 `RET` 时仍有未关闭的 callee 帧 |
 | `0x0005` | `MISALIGNED_ACCESS` | 内存访问没有满足对齐要求 |
 | `0x0006` | `MEMORY_BOUNDS` | 地址越过对应地址空间 |
 | `0x0007` | `INTEGER_FAULT` | 除零等已定义整数错误 |
-| `0x0008` | `BARRIER_FAULT` | 屏障模式、到达、token、linear_tid owner、槽或代际规则错误；包括任一 SPLIT 槽中该退出 `linear_tid ∈ arrived_set-consumed_set` |
-| `0x0009` | `COLLECTIVE_FAULT` | warp 集合指令的参与规则错误 |
-| `0x000A` | `SOFTWARE_TRAP` | 程序主动执行 `TRAP` |
-| `0x000B` | `DEADLOCK` | 满足架构死锁条件 |
+| `0x0008` | `COLLECTIVE_FAULT` | warp 集合指令或矩阵指令的参与规则错误 |
+| `0x0009` | `SOFTWARE_TRAP` | 程序主动执行 `TRAP` |
+| `0x000A` | `DEADLOCK` | 满足架构死锁条件 |
 
 故障记录至少包含：
 
@@ -333,7 +329,9 @@ FaultRecord {
 }
 ```
 
-`SCALAR_STATE_FAULT` 是 warp 状态错误，`lane_mask` 必须记录指令入口的 `active_mask`，`address_or_aux` 必须为 0。它覆盖所有 `execution_domain: scalar` form，也覆盖 `warp_control` 类 `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 上明确写出的 `required_state: scalar_ready`。完整触发条件见 `03-execution-model.md`。
+`DIVERGENCE_FAULT` 是 warp 状态错误，`lane_mask` 必须记录指令入口的 `active_mask`，`address_or_aux` 必须为 0。它覆盖所有 `execution_domain: scalar` form，也覆盖 `warp_control` 类 `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 以及 `cta_sync` 类 `BAR.SYNC.CTA` 上明确写出的 `required_state: scalar_ready`。完整触发条件见 `03-execution-model.md`。
+
+`DIVERGENCE_FAULT` 和 `RECONVERGENCE_FAULT` 的分界是固定的：前者只表示“这条 form 需要一个完全重汇聚的 warp，而当前 warp 不是”，它在指令执行前由入口状态检查产生，不改变任何控制状态；后者表示重汇聚状态机或调用栈本身被用错，例如 `JOIN` 与栈顶帧阶段不符、`SSY` 目标非法、调用栈上溢或下溢。同一条动态指令若两者都成立，按 `fault_priority` 先报 `DIVERGENCE_FAULT`。
 
 同一动态指令同时发现多个问题时，必须逐字采用 YAML 的 `fault_priority`：
 
@@ -341,9 +339,8 @@ FaultRecord {
 fault_priority:
 - ILLEGAL_INSTRUCTION
 - ILLEGAL_OPERAND
-- SCALAR_STATE_FAULT
+- DIVERGENCE_FAULT
 - RECONVERGENCE_FAULT
-- BARRIER_FAULT
 - COLLECTIVE_FAULT
 - INTEGER_FAULT
 - MISALIGNED_ACCESS

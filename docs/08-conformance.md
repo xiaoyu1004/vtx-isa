@@ -57,8 +57,8 @@ coverage_tags
 - PC、live mask、active mask 和隐藏控制状态；
 - SGPR、VGPR、1 位 SCC、32 位 `vp0..vp15` 和特殊寄存器快照；
 - scalar-ready 是否成立；
-- 内存空间、allocation、provenance、初值和原子 modification order；
-- barrier 的 linear_tid 集合、BarrierWaitRecord/warp blocked record、token、MMA/collective 会合状态；
+- 内存空间、allocation、初值和原子 modification order；
+- 每槽 `arrived_set`/waiter 映射、CTA 的 `live_owner_set`、warp blocked record、MMA/collective 会合状态；
 - 文本范围、模块字段和启用 feature。
 
 测试不能依赖未初始化值，除非目标就是检查 `UNSPEC` 分类；这类测试不能要求某个具体位型。
@@ -111,7 +111,7 @@ scalar/vector MEMORY 分别显示在 S/V
 CONTROL 显示在 W
 SYNC/MATRIX 分别显示在 SYNC/MMA
 CROSSLANE 中 collective form 通常显示在 X；
-V_BCAST/S_READFIRST 可按数据方向显示在 V/S，但不改变 machine class
+S_READFIRST 可按数据方向显示在 S，但不改变 machine class
 SYS 中的 scalar/vector form 可分别放进 S/V 说明，纯系统 form 保持 SYS
 ```
 
@@ -122,12 +122,12 @@ SYS 中的 scalar/vector form 可分别放进 S/V 说明，纯系统 form 保持
 - `CONTROL` form 在用户可读说明中只能按 W 控制流解释；
 - `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 必须保持 `class=CONTROL`，不能放入 SALU；
 - SYNC、CROSSLANE、MATRIX 不能伪装成 SALU/VALU；
-- `V_BCAST`、`X_BROADCAST`、`S_READFIRST` 的 machine class、`execution_domain` 分别与 YAML 一致；
-- `V_BCAST` 固定为 S→V，`X_BROADCAST` 固定为 lane→lane，`S_READFIRST` 固定为 V→S；
-- `V_BCAST` 与 `V_GETREG` 即使分别编码在 CROSSLANE/SYS，也必须保持 `execution_domain=vector`、`guard_policy=optional`；
+- `X_BROADCAST`、`S_READFIRST` 的 machine class、`execution_domain` 分别与 YAML 一致；
+- `X_BROADCAST` 固定为 lane→lane，`S_READFIRST` 固定为 V→S，混合源固定为 SGPR 文件→各 lane；
+- `V_GETREG` 即使编码在 SYS class，也必须保持 `execution_domain=vector`、`guard_policy=optional`；
 - `S_READFIRST` 必须保持 `execution_domain=scalar`、`guard_policy=required_pt`、`required_state=scalar_ready`；
-- `V_BCAST`、`X_BROADCAST`、`S_READFIRST`、`S_GETREG`、`V_GETREG` 的名称、方向和操作数域固定；
-- 文本 `S_BROADCAST` 被汇编器拒绝；
+- `X_BROADCAST`、`S_READFIRST`、`S_GETREG`、`V_GETREG` 的名称、方向和操作数域固定；
+- 文本 `S_BROADCAST` 和 `V_BCAST` 都被汇编器按未知助记符拒绝；
 - `BRA`、`BRA.P`、`SSY`、`JOIN`、`EXIT`、`CALL`、`CALL.IND`、`JUMP.IND`、`RET` 的 canonical 文本保持这些名称。
 
 ### 8.3.3 译码负例
@@ -180,10 +180,10 @@ assert disassemble(W2, canonical=true) == T
 PC
 live/active mask
 隐藏重汇聚与调用状态
-全部 SGPR、VGPR、每 lane barrier-token 标签、SCC 和 `vpN`
+全部 SGPR、VGPR、SCC 和 `vpN`
 目标内存字节
 原子 modification order
-barrier 和 token 状态
+每槽 arrived_set/waiters 和 CTA live_owner_set
 collective/MMA 状态
 事件日志
 fault record
@@ -213,12 +213,12 @@ fault record
 - S load/store 只产生一个内存事件；
 - S atomic 只在 modification order 中占一个位置；
 - 目标与源完全别名时按入口快照计算；
-- 非 scalar-ready 时固定产生 `SCALAR_STATE_FAULT`，不读取动态源，也不产生任何数据或内存效果；
+- 非 scalar-ready 时固定产生 `DIVERGENCE_FAULT`，不读取动态源，也不产生任何数据或内存效果；
 - `guard_policy` 必须是 `required_pt`；SCC 只在 `S_SELECT` 或 YAML 明确列出的 CONTROL 条件中读取。
 
 这里的“每个 S form”必须覆盖 `SALU`、scalar `MEMORY` 和 scalar `SYS`。不能只测 S ALU 后就声称所有 S 指令通过。
 
-状态优先级还要用毒值验证：静态编码和静态操作数都合法，但动态源会除零、地址会越界或动态特殊寄存器值会非法时，只要入口非 scalar-ready，就只能得到 `SCALAR_STATE_FAULT`，证明实现根本没有读取动态源。所有多故障组合的唯一权威顺序来自 `docs/02-programming-model.md`；本章测试从该顺序生成期望值，不另写第二套优先级。
+状态优先级还要用毒值验证：静态编码和静态操作数都合法，但动态源会除零、地址会越界或动态特殊寄存器值会非法时，只要入口非 scalar-ready，就只能得到 `DIVERGENCE_FAULT`，证明实现根本没有读取动态源。所有多故障组合的唯一权威顺序来自 `docs/02-programming-model.md`；本章测试从该顺序生成期望值，不另写第二套优先级。
 
 所有 `sgpr64`/`vgpr64` 操作数还必须检查 canonical 对语法：
 
@@ -255,7 +255,7 @@ NS4  active_mask == live_mask，但栈中有 SECOND 帧
 SR1..SR3 必须判为 scalar-ready；NS1..NS4 必须判为非 scalar-ready。这个矩阵必须套到每个 S form；所有 NS 用例都期望：
 
 ```text
-code = SCALAR_STATE_FAULT
+code = DIVERGENCE_FAULT
 lane_mask = active_mask
 aux = 0
 ```
@@ -267,38 +267,61 @@ aux = 0
 - SR2 正常读取唯一 lane；
 - SR3 在只有 ARMED 帧时正常读取；
 - 其他 V lane 值不同不构成故障；
-- NS1..NS4 产生 `SCALAR_STATE_FAULT`；
+- NS1..NS4 产生 `DIVERGENCE_FAULT`；
 - 状态故障时不读取 V 源、不写 SGPR、不改 PC、不改隐藏状态。
 
 ## 8.6 跨域与 GETREG
 
-### 8.6.1 V_BCAST
+### 8.6.1 混合源 selector
 
-启用 form 清单必须至少包含 `.B32` 和 `.B64`；缺少任一项即 FAIL。对所有宽度和合法 guard 检查：
+selector 覆盖必须由 YAML 自动生成，不允许手写代表列表：
 
-- form 固定为 `execution_domain: vector`、`guard_policy: optional`，即使 machine class 是 CROSSLANE；
-- `P = E & guard`；PT、`vpN`、`!vpN` 分别覆盖全体、真子集、空集；
-- P 中每个 lane 得到同一个冻结 S 值；
-- 非参与 lane 保持旧 V 目标；
-- S 源与其他指令并行更新的实现仍使用入口快照；
-- 不要求 scalar-ready；
-- 在 NS2..NS4 中仍按入口 E 和 guard 形成 P，不能误报 `SCALAR_STATE_FAULT`；
-- 目标是 V 域，源是 S 域；
-- 反向操作数、V 源或 S 目标被拒绝。
+```text
+mixed_source_forms = 所有含 vsrc32 或 vsrc64 操作数的 form
+for form in mixed_source_forms:
+    assert form.encoding_format in {V1, V2, V3, VCMP}
+    assert form.execution_domain == vector
+    for code in legal_selector_codes(form.encoding_format):
+        assert encode_decode_round_trip(form, code)
+        assert semantic_oracle_passes(form, code)
+for form in 所有其他 form:
+    assert selector 字段（若存在）是 must-zero 洞
+```
 
-`V_BCAST.B64` 必须使用完整偶数连续 S/V 寄存器对，并增加 provenance 用例：
+合法 selector 码取自格式定义：`V1` 是 `{0,1}`，`V2` 和 `VCMP` 是 `{0,1,2}`，`V3` 是 `{0,1,2,3}`。每个 form 的每个合法码都必须有独立正例，缺任一个即 FAIL。
 
-- 把带 global、param、const provenance 的 SGPR64 分别广播到一组参与 lane，逐 lane 比较 64 位数值和完整 `{space, allocation-id, offset}`；
-- guard-false lane 的旧 VGPR64 数值和旧 provenance 都保持；
-- 无 provenance 的普通 B64 只复制位型，不凭数值猜 tag；
-- `V_BCAST.B32` 不产生 provenance；若它覆盖已带 tag 的 64 位槽的一半，按第 4 章检查 tag 清除；
-- 奇数基址、缺半、越界和部分寄存器对写回都必须拒绝或整条回滚。
+对每个混合源 form 和每个非零 selector 码检查：
+
+- 被选中的源位置从 SGPR 文件读取，其余源位置仍从 VGPR 文件读取；
+- 让 `sN` 和 `vN` 取同一个编号但不同内容，证明实现真的换了寄存器文件，而不是照旧读 VGPR；
+- P 中每个 lane 得到同一个冻结标量值；把该 SGPR 的值设成能与逐 lane VGPR 值区分的图样；
+- 非参与 lane 的目标保持旧值；
+- 实现使用入口快照：并行更新 SGPR 不影响本条指令的结果；
+- 不要求 scalar-ready；在 NS2..NS4 中仍按入口 E 和 guard 形成 P，不能误报 `DIVERGENCE_FAULT`；
+- 目标始终是 VGPR 或 `vpN`，不因 selector 变成 SGPR；
+- `P = E & guard`；PT、`vpN`、`!vpN` 分别覆盖全体、真子集、空集。
+
+selector 负例至少覆盖：
+
+- `V2`/`VCMP` 的 `ssrc_sel == 3`：`ILLEGAL_INSTRUCTION`，不读任何源；
+- 不含 `vsrc*` 操作数的 form 把 selector 位置 1：`ILLEGAL_INSTRUCTION`；
+- 汇编文本在一条指令里写两个 `sN` 源：汇编阶段报错，且不得自动插入搬运指令；
+- 汇编文本把 SGPR 写在 form 不允许的源位置（例如 `V2` 只允许 `va`/`vb`，不存在第三个位置）：汇编阶段报错；
+- 反汇编把 SGPR 源印成 `vN`：FAIL。
+
+`vsrc64` 专项：两个寄存器文件都必须使用完整偶数连续寄存器对。
+
+- `V_MOV.B64 vd_pair, s_pair`（`ssrc=1`）逐 lane 比较完整 64 位，两个半部来自同一次冻结快照；
+- `V_MOV.B64 vd_pair, v_pair`（`ssrc=0`）仍是逐 lane VGPR 复制；
+- guard-false lane 的旧 VGPR64 保持；
+- 奇数基址、缺半、越界和部分寄存器对写回都必须拒绝或整条回滚；
+- `V_MOV.B64` → `S_READFIRST.B64` 往返必须逐位保持 64 位值。
 
 ### 8.6.2 S_READFIRST
 
 启用 form 清单必须至少包含 `.B32` 和 `.B64`；缺少任一项即 FAIL。除 scalar-ready 矩阵外，还要检查 form 固定为 `guard_policy: required_pt`，first-lane 选择不受物理调度、lane 执行先后或值大小影响。first 永远是编号最小的 live lane。
 
-`S_READFIRST.B64` 必须让不同 lane 持有数值相同但 provenance 不同，以及数值不同但 provenance 相同的 VGPR64。结果的 64 位值和 tag 都只能来自同一个 first lane。再执行 `V_BCAST.B64` → `S_READFIRST.B64` 往返，必须逐位、逐字段保持 provenance。B64 目标必须整体提交，B32 不得产生 provenance。
+`S_READFIRST.B64` 必须让不同 lane 持有不同的 VGPR64 值，结果的完整 64 位只能来自同一个 first lane，不能一半来自一个 lane、另一半来自另一个 lane。B64 目标必须整体提交。
 
 ### 8.6.3 X_BROADCAST
 
@@ -309,7 +332,7 @@ aux = 0
 - 不同 lane 值能证明实现没有误读 SGPR；
 - 不存在源 lane、选择不一致或参与协议错误时产生 `COLLECTIVE_FAULT`；
 - 故障时所有接收者保持旧目标；
-- 汇编器不能把 `X_BROADCAST` 和 `V_BCAST` 互当别名。
+- 汇编器不能把 `X_BROADCAST` 与混合源 `V_MOV` 互当别名。
 
 ### 8.6.4 S_GETREG / V_GETREG
 
@@ -322,9 +345,9 @@ aux = 0
 - S_GETREG 读取 per-lane 项时报 `ILLEGAL_OPERAND`；
 - 未知编号、错误目标宽度和非法寄存器组。
 
-每个合法 `S_GETREG` form 都必须跑 scalar-ready 矩阵；NS1..NS4 只能得到 `SCALAR_STATE_FAULT`。`V_GETREG` 不套用这项检查。
+每个合法 `S_GETREG` form 都必须跑 scalar-ready 矩阵；NS1..NS4 只能得到 `DIVERGENCE_FAULT`。`V_GETREG` 不套用这项检查。
 
-每个 `V_GETREG` form 必须固定验证 `execution_domain: vector`、`guard_policy: optional`，即使 machine class 是 SYS。PT、`vpN`、`!vpN` 都要覆盖；只允许 P 中 lane 读取快照并写回，guard-false lane 保持原目标。非 scalar-ready 状态下仍按 vector 规则执行，不能误报 `SCALAR_STATE_FAULT`。
+每个 `V_GETREG` form 必须固定验证 `execution_domain: vector`、`guard_policy: optional`，即使 machine class 是 SYS。PT、`vpN`、`!vpN` 都要覆盖；只允许 P 中 lane 读取快照并写回，guard-false lane 保持原目标。非 scalar-ready 状态下仍按 vector 规则执行，不能误报 `DIVERGENCE_FAULT`。
 
 不得用被测 GETREG 实现生成 oracle 的特殊寄存器期望值。
 
@@ -459,7 +482,7 @@ VMEM 字段必须按模板交叉验证：
 
 local 专项必须证明它只有 vector lane-address：同一数值 offset 在不同 lane 指向不同 local allocation。任何 scalar local、uniform-base local、SV-mix local、带非零 `sbase` 的 local 机器字或汇编文本都必须拒绝。
 
-mixed/extended 地址故障逐项覆盖保留 scale/modifier、错误空间/provenance、数学下溢/溢出、allocation 越界和自然对齐失败。普通 SV-mix 的每个合法 scale 都要有正例，未声明 scale 要有负例；SMEMX 和 VATOMX 都要断言 scale 固定为 1。任一参与 lane 失败时事件数必须为零。
+mixed/extended 地址故障逐项覆盖保留 scale/modifier、非法寄存器域组合、数学下溢/溢出、allocation 越界和自然对齐失败。地址空间只由 opcode 决定：必须有一个用例把某个 shared 窗口偏移搬进 SGPR64 再交给 global load，期望结果是 `MEMORY_BOUNDS` 之类的地址故障，而不是任何“指针类型”检查。普通 SV-mix 的每个合法 scale 都要有正例，未声明 scale 要有负例；SMEMX 和 VATOMX 都要断言 scale 固定为 1。任一参与 lane 失败时事件数必须为零。
 
 ### 8.9.2 值、事件和回滚
 
@@ -519,7 +542,7 @@ assert 删除、交换或重复 space/order/scope 会被拒绝
 
 已定义的 modifier 组成非法组合时才期望 `ILLEGAL_OPERAND`，例如 shared 配 DEVICE scope。测试报告必须把这两类负例分栏，不能合并成“任意非法 modifier”。
 
-`VATOMX` 逐字段检查 `vdst/sbase/vindex/vdata0/vdata1/order/scope/x`，并证明它没有 immediate 容器。canonical 名称中的 space 固定为 `GLOBAL`。每 lane 地址必须等于 `SGPR64_base + zero_extend(VGPR32_index[lane])`，scale 固定为 1。任何额外缩放、非零保留 `x`、错误 provenance/空间、越界和未对齐都做负例，任一 lane 失败时所有 lane 零事件回滚。
+`VATOMX` 逐字段检查 `vdst/sbase/vindex/vdata0/vdata1/order/scope/x`，并证明它没有 immediate 容器。canonical 名称中的 space 固定为 `GLOBAL`。每 lane 地址必须等于 `SGPR64_base + zero_extend(VGPR32_index[lane])`，scale 固定为 1。任何额外缩放、非零保留 `x`、非法寄存器域、越界和未对齐都做负例，任一 lane 失败时所有 lane 零事件回滚。
 
 ### 8.10.2 atomic load/store
 
@@ -528,7 +551,7 @@ atomic load 必须：
 - 返回 modification order 中可读的完整旧值；
 - 不追加修改；
 - 不接受 release-only order；
-- U64 不撕裂并一同处理规范 provenance。
+- U64 不撕裂。
 
 atomic store 必须：
 
@@ -559,7 +582,7 @@ BRA、BRA.P、JUMP.IND 至少覆盖：
 
 每步比较 PC、active mask 和隐藏状态摘要。测试接口可以暴露只读调试摘要，但程序本身不能读取隐藏项。
 
-`JUMP.IND` 必须另外跑完整 scalar-ready 矩阵。NS1..NS4 都产生 `SCALAR_STATE_FAULT`，并且不能读取目标 SGPR；直接 `BRA`、`BRA.P` 不套用这项检查。`JUMP.IND` 成功和失败都不得改变调用栈。
+`JUMP.IND` 必须另外跑完整 scalar-ready 矩阵。NS1..NS4 都产生 `DIVERGENCE_FAULT`，并且不能读取目标 SGPR；直接 `BRA`、`BRA.P` 不套用这项检查。`JUMP.IND` 成功和失败都不得改变调用栈。
 
 ### 8.11.2 CALL/RET
 
@@ -576,7 +599,7 @@ BRA、BRA.P、JUMP.IND 至少覆盖：
 9. 返回前仍有未闭合 SSY 区域；
 10. 调用深度超限。
 
-`CALL`、`CALL.IND` 和 `RET` 虽然是 W/CONTROL 指令，也必须跑完整 scalar-ready 矩阵。NS1..NS4 的期望都是 `SCALAR_STATE_FAULT`；状态检查发生在读取间接目标或调用状态之前。失败用例必须证明没有半压栈或半弹栈。
+`CALL`、`CALL.IND` 和 `RET` 虽然是 W/CONTROL 指令，也必须跑完整 scalar-ready 矩阵。NS1..NS4 的期望都是 `DIVERGENCE_FAULT`；状态检查发生在读取间接目标或调用状态之前。失败用例必须证明没有半压栈或半弹栈。
 
 调用栈 oracle 必须独立维护每 warp LIFO，并逐次比较：
 
@@ -607,9 +630,9 @@ SSY/BRA.P/JOIN/EXIT 套件至少执行：
 - 错误 JOIN 目标；
 - 区域交叉；
 - 从区域内部跳到外部；
-- 在 FIRST/SECOND 路径的 JOIN 前执行 CALL，必须先报 `SCALAR_STATE_FAULT`；
+- 在 FIRST/SECOND 路径的 JOIN 前执行 CALL，必须先报 `DIVERGENCE_FAULT`；
 - scalar-ready 时 CALL，callee 内部建立并闭合自己的嵌套区域；
-- 在 FIRST/SECOND 路径执行 RET，必须先报 `SCALAR_STATE_FAULT`；
+- 在 FIRST/SECOND 路径执行 RET，必须先报 `DIVERGENCE_FAULT`；
 - scalar-ready 但控制区域关系仍非法的跨区域 RET。
 
 `owner_call_depth` 必须按 SSY 动态实例精确测试：
@@ -634,72 +657,36 @@ SSY/BRA.P/JOIN/EXIT 套件至少执行：
 先做静态清单和编码门禁：
 
 ```text
-F061 == BAR.SYNC      == (class=5, format=0, opcode=3)
-F062 == BAR.ARRIVE    == (class=5, format=0, opcode=4)
-F063 == BAR.WAIT      == (class=5, format=0, opcode=5)
+bar-sync/cta == BAR.SYNC.CTA == (class=5, format=0, opcode=3)
+(class=5, format=0, opcode=4) 未分配 -> ILLEGAL_INSTRUCTION
+(class=5, format=0, opcode=5) 未分配 -> ILLEGAL_INSTRUCTION
 ```
 
-family/form 总数必须保持 YAML 的运行时去重结果不变。汇编/反汇编只接受 `BAR.SYNC.CTA id`、`BAR.ARRIVE.CTA vd,id`、`BAR.WAIT.CTA id,vs` 作为 canonical；旧拼写和 WAIT 缺 id、S 域 token、id 超出 `0..7` 都必须拒绝。逐位核对三个 YAML 示例机器字，并对 `a/slot3` 的最小值、最大值和交叉值独立重算 64 位机器字；F063 的 `slot3` 必须可非零。
+family/form 总数必须保持 YAML 的运行时去重结果不变。汇编/反汇编只接受 `BAR.SYNC.CTA id` 作为 canonical 屏障文本；`BAR.ARRIVE.CTA`、`BAR.WAIT.CTA`、`BARRIER` 及一切旧拼写都必须按未知助记符拒绝，id 缺失或超出 `0..7` 也必须拒绝。逐位核对 YAML 示例机器字，并对 `slot3` 的最小值、最大值和中间值独立重算 64 位机器字；`a/b/imm16/scope2/order2/x6` 非零必须报 `ILLEGAL_INSTRUCTION`。
 
-每个动态用例都比较 8 槽完整状态：`generation/mode/owner_set/arrived_set/consumed_set/completed/waiters`，并比较每 warp 的 blocked record。generation oracle 必须使用数学非负整数，不能按 U32/U64 截断。所有 owner 集合元素必须是 `linear_tid=warp_id*32+lane_id`，token tag 必须恰好是 `{CTA identity,linear_tid,slot,logical generation}`。测试矩阵至少包含：
+每个动态用例都比较 8 槽完整状态 `arrived_set/waiters`、CTA 的 `live_owner_set`，以及每 warp 的 blocked record。所有集合元素必须是 `linear_tid=warp_id*32+lane_id`。测试矩阵至少包含：
 
 | 类别 | 必测情况 | 强制结果 |
 |---|---|---|
-| 启动 | 满 CTA、尾 warp、槽 0 和槽 7 | 每槽 generation 0、EMPTY、集合/waiter 空；owner_set 恰为真实 `linear_tid` |
-| owner 身份 | 不同 warp 的相同 lane_id、同 warp 不同 lane_id、尾 lane | `(warp_id,lane_id)` 映射到唯一 linear_tid；集合、tag、重复/wrong-owner 都只比较 linear_tid |
-| SYNC 正常 | 单/多 warp，不同到达顺序，active 子路径分批到达 | 每 linear_tid 每代一次 release；每条 record 冻结 `{warp_id,A,old_PC+8}`；到齐时所有记录一起恢复并立即退休 |
-| SPLIT 正常 | ARRIVE 后立刻 WAIT、先做别的工作再 WAIT、WAIT 早于/晚于 completed | ARRIVE 不阻塞且 `PC+8`；早 WAIT 先消费后记录并阻塞整个 warp；晚 WAIT 立即 acquire；全消费后退休 |
-| 多槽/多代 | 0..7 交错，两次以上复用同槽 | 槽互不干扰；退休后 generation 恰加 1，旧 token stale |
-| 物理计数边界 | 跨过实现每个有限 generation/epoch 子计数器的最大值，保留边界前已消费 token 的多个 `V_MOV.B32` 副本 | 逻辑 generation 仍严格 `old+1`、不回绕；旧副本在低位再次相等时仍 `BARRIER_FAULT`，绝不复活 |
-| 模式 | 首个 SYNC、首个 ARRIVE、同代 SYNC→ARRIVE、ARRIVE→SYNC | 首到达选模式；两种混用均整条 `BARRIER_FAULT` |
-| arrival | 同 owner 重复、warp 中最低/最高/多个 lane 重复 | 整条零 arrival、零 VGPR 写、零 PC 效果 |
-| token 身份 | foreign CTA identity、wrong slot、wrong linear_tid owner、wrong generation、malformed、untagged、stale | 每项均 `BARRIER_FAULT`，整条零 consume |
-| token 消费 | 正常一次、同寄存器重复、V_MOV 副本先后消费 | 恰好一次成功；其余 duplicate/stale 并整条回滚 |
-| token 写回 | ARRIVE 的 active、inactive、挂起路径和尾部不存在 lane | 只 active 真实 lane 写自己的 VGPR token，其他目标逐位及标签保持 |
-| tag 传播 | `V_MOV.B32 vd,vs`、原地 MOV、guard 子集、立即数 MOV | 寄存器 MOV 逐 lane 完整复制 bits+tag；非参与保持；立即数写清 tag |
-| tag 清除 | 自动枚举所有 VGPR write/read_write 目标 form | 除根规则两个例外外，每个实际写入 VGPR32 槽的 tag 都清除；非参与槽保持 |
-| warp 原子性 | 一条 ARRIVE/WAIT 中只有一个 active lane 错，其他 lane 合法 | 所有 lane 零 arrival/consume/VGPR/blocked/PC 效果 |
-| blocked record | SYNC/WAIT 阻塞、恢复、尝试第二条 record | 每 warp 至多一条；阻塞/恢复保持 active/live/reconv/call，挂起路径不能切入；恢复只写 resume PC、清记录、置 ready |
-| EXIT | 未 arrival 后 EXIT、槽中 `tid∈arrived-consumed` 但 VGPR tag 已清、已消费但 stale tag 仍在 | 第一种 owner 不缩小且可 DEADLOCK；第二种按槽状态 `BARRIER_FAULT`；第三种可退出 |
-| 分歧 | 当前路径分批 arrival；当前路径阻塞而挂起路径还需 arrival/WAIT | 只把当前 active lane 映射成 A；整个 warp blocked，后者满足既有条件时 DEADLOCK，不得切路径补票 |
-| 内存 | shared release/acquire litmus；同程序换 global/local/param/const/host | shared 禁止旧值结果；其他空间不得因 BAR 额外有序，global 需原子/MEMBAR |
-| CTA 完成 | 所有 warp 完成，分别改变 mode/集合/waiter/completed/generation | 仅 8 槽全 IDLE 才完成；非零 generation 允许，其他任一非 IDLE 状态拒绝完成 |
+| 启动 | 满 CTA、尾 warp、槽 0 和槽 7 | 每槽 idle（arrived_set/waiters 空）；`live_owner_set` 恰为真实 `linear_tid` |
+| owner 身份 | 不同 warp 的相同 lane_id、同 warp 不同 lane_id、尾 lane | `(warp_id,lane_id)` 映射到唯一 linear_tid；所有集合只比较 linear_tid |
+| 正常同步 | 单/多 warp，不同到达顺序 | 每 warp 一次整体 release；每条 record 冻结 `{warp_id,A,old_PC+8}`；`arrived_set == live_owner_set` 时所有记录一起恢复，槽立即清回 idle |
+| 槽复用 | 同一槽连续两次以上屏障，中间夹 shared 读写 | 第二次屏障从空 `arrived_set` 开始；第一次的 waiter/arrival 不残留，也不需要区分代 |
+| 多槽 | 槽 0..7 交错使用 | 槽互不干扰；一个槽阻塞不影响另一个槽的完成判定 |
+| scalar-ready | 在 FIRST/SECOND 路径上执行屏障 | `DIVERGENCE_FAULT`；零 arrival、零 blocked record、PC 不动、槽状态不变 |
+| scalar-ready | SR1/SR2/SR3 三种就绪状态 | 正常到达；只有 ARMED 帧不妨碍屏障 |
+| EXIT 完成 | 部分 warp 已到达并阻塞，剩余 owner 全部 EXIT | `live_owner_set` 缩小后立即重新判定，waiter 被唤醒，槽清回 idle |
+| EXIT 无 release | 退出线程先写 shared 再 EXIT，唤醒的 waiter 读同一地址 | `EXIT` 不建立 release/acquire 边，该读属于数据竞争，不得断言看到新值 |
+| blocked record | 阻塞、恢复、尝试第二条 record | 每 warp 至多一条；阻塞/恢复保持 active/live/reconv/call，挂起路径不能切入；恢复只写 resume PC、清记录、置 ready |
+| DEADLOCK | 一部分 warp 到达槽 N，其余 warp 既不到达也不退出 | `arrived_set` 追不上 `live_owner_set`，按第 3 章第 12 节报告 `DEADLOCK` |
+| 内存 | shared release/acquire litmus；同程序换 global/local/param/const/host | shared 禁止旧值结果；其他空间不得因屏障额外有序，global 需原子/MEMBAR |
+| CTA 完成 | 所有 warp 完成，分别注入非空 arrived_set 或非空 waiters | 仅 8 槽全 idle 才完成；任一非 idle 状态拒绝完成 |
 
-还要对所有 token 故障做组合用例：显式 id 与标签 slot 不同、位值相同但标签不同、标签相同的副本、相同 lane_id 但不同 warp_id、一个 warp 多个 lane 分别触发不同错误。故障优先级取第 2 章权威表；一旦选择 `BARRIER_FAULT`，入口的槽状态、全部 VGPR bits/tag、PC、`LIVE/EXEC`、栈和 blocked record 都保持。
+阻塞/恢复专项必须证明：`BarrierWaitRecord` 只有 `warp_id/owner_snapshot/resume_pc` 三个字段，`owner_snapshot=A` 且 `resume_pc=old_PC+8`；arrival 只提交一次；挂起期间不重复 release；恢复只写记录指定 PC 和 ready，不改 active/live/reconv/call。没有 `expected`、成员 mask 或子集参数的正例；任何测试工具自行缩小 `live_owner_set` 都是 FAIL。
 
-阻塞/恢复专项必须证明：`BarrierWaitRecord` 只有 `warp_id/owner_snapshot/resume_pc` 三个字段，`owner_snapshot=A` 且 `resume_pc=old_PC+8`；arrival 或 consume 只提交一次；挂起期间不重读 VGPR、不重复 release、不重复 consume；恢复只写记录指定 PC 和 ready，不改 active/live/reconv/call。SYNC 完成即退休，SPLIT completed 但未全消费时绝不能退休。没有 `expected`、成员 mask 或子集参数的正例；任何测试工具自行缩小 owner 都是 FAIL。
+还必须断言这些概念在整个实现中不存在：屏障 token 及其寄存器影子标签、槽 generation 计数、`SYNC`/`SPLIT` 模式字段、`consumed_set`，以及 `EXIT` 上的任何屏障前置检查。调试接口暴露其中任何一项即 FAIL。
 
-永不回绕专项不能只跑“很多代”然后比较低位。实现必须列出 token 身份中每个有限 generation/epoch 子计数器的边界，并通过可行的长跑、缩小计数位宽的验证配置、状态注入或形式证明逐个跨越。对每个边界至少执行：
-
-```text
-old = BAR.ARRIVE.CTA 产生的 token
-copy1 = V_MOV.B32(old)
-copy2 = V_MOV.B32(old)
-用 old 或其中一份副本成功 WAIT，使该代最终退休
-反复完成并退休同一 slot，跨过有限内部计数器边界
-继续到物理低位/对象编号可能再次等于 old 的时刻
-assert logical_generation == previous_logical_generation + 1
-assert BAR.WAIT.CTA(slot, copy1/copy2) == BARRIER_FAULT
-assert 槽、VGPR、blocked record、PC 全部零提交
-```
-
-若实现使用 capability ID 或安全回收，还必须制造足够的分配/回收压力，证明编号回收不会重建旧 capability 身份。通过标准是所有观察都等同于 generation 属于 `N` 且从不复用；“测试跑不到回绕点”不能替代证据。
-
-VGPR 标签闭包必须由 YAML 自动生成测试，不允许手写一小份代表列表：
-
-```text
-targets = every form operand whose resolved register_file is VGPR
-          and access is write or read_write
-for each written VGPR32 slot of each target:
-    if (family_id, form_id) == (F025, b32.reg):
-        assert action == copy_source_tag
-    elif (family_id, form_id) == (F062, cta):
-        assert action == create_tag
-    else:
-        assert action == clear
-```
-
-枚举报告必须点名覆盖 `V_MOV.B64`、`V_BCAST`、`X_BROADCAST`、`V_GETREG`、普通/原子 load 返回、ALU、CVT、FP 和 MMA，并断言没有第三个例外。多 VGPR/片段目标逐槽测试；guard-false/inactive lane不写，因此旧 tag 保持。
+寄存器无影子状态必须做正面证明：对任意 VGPR/SGPR 写入序列，只要 32 位（或 64 位对）位型相同，后续所有指令的可观察行为就必须相同。测试通过“同值不同来路”生成对照组，例如同一个位型分别来自立即数 MOV、混合源 MOV、load 返回、ALU 结果和 MMA 输出，随后执行同一段代码，要求逐位一致。任何来路差异都是 FAIL。
 
 跨 lane X 测试必须明确 C/M/P/R，并覆盖：
 
@@ -820,7 +807,8 @@ generated-reference
 scalar-ready
 cross-domain
 vector-optional-guard
-b64-provenance
+mixed-source-selector
+mixed-source-pair64
 wide-mul-mad
 int-mad-minmax-abs-neg
 ctz-rotate-pack
@@ -881,7 +869,9 @@ cross_domain_forms
 scalar_ready_forms
 ```
 
-`scalar_ready_forms` 直接选择全部 `required_state: scalar_ready` 的 form，并反向断言全部 `execution_domain: scalar` form 都在集合中。当前控制侧至少包括 `CALL`、`CALL.IND`、`JUMP.IND`、`RET`。集合中每个 form 都必须带 `scalar-ready` coverage tag，并跑完整 SR/NS 矩阵。
+`scalar_ready_forms` 直接选择全部 `required_state: scalar_ready` 的 form，并反向断言全部 `execution_domain: scalar` form 都在集合中。非 scalar 执行域的成员至少包括 `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 和 `BAR.SYNC.CTA`。集合中每个 form 都必须带 `scalar-ready` coverage tag，并跑完整 SR/NS 矩阵。
+
+`mixed_source_forms` 直接选择全部含 `vsrc32` 或 `vsrc64` 操作数的 form，并断言它们的 `encoding_format` 都属于 `{V1,V2,V3,VCMP}`、`execution_domain` 都是 `vector`。集合中每个 form 都必须带 `mixed-source-selector` tag，含 `vsrc64` 的还必须带 `mixed-source-pair64`，并按 8.6.1 覆盖该格式的每个合法 selector 码。
 
 对 `dual_pairs`，要求 S/V 有共同的数学边界向量，并额外检查执行次数、寄存器域和事件数。compare 的每个关系/类型和 CVT 的每个 `dst-type.src-type` 必须进入 `dual_pairs`，缺任一侧都失败。对 only-form，要求另一域的拼写和编码不存在。对跨域 form，要求源/目标方向与规范完全一致。
 
@@ -918,7 +908,7 @@ scalar_ready_forms
 - 机器 class 只能是 SYS/SALU/VALU/MEMORY/CONTROL/SYNC/CROSSLANE/MATRIX 之一；
 - 用户可读简称不得覆盖或改变机器 class；
 - S/V 域约束不会被绕过；
-- 每个 S form 在非 scalar-ready 时都只产生 `SCALAR_STATE_FAULT`；
+- 每个 S form 在非 scalar-ready 时都只产生 `DIVERGENCE_FAULT`；
 - `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 保持 CONTROL class，并执行 scalar-ready 检查；
 - 故障指令不产生部分提交；
 - CALL/RET 和隐藏重汇聚状态满足 LIFO/结构约束；

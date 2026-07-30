@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import html
 import re
 import sys
@@ -12,11 +13,12 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
+import isa_model
+from isa_model import SELECTOR_LAYOUT, mixed_source_operands
 from validate_isa import (
     DEFAULT_ISA,
     DEFAULT_SCHEMA,
     DEFAULT_VECTORS,
-    enumerate_vgpr_tag_effects,
     form_key,
     format_report,
     get_families,
@@ -130,6 +132,40 @@ def _vector_words(vectors: Any) -> dict[str, str]:
     }
 
 
+def _selector_lines(form: Mapping[str, Any]) -> list[str]:
+    """Render the scalar-source selector table for a mixed-source form."""
+    operands = mixed_source_operands(form)
+    if not operands:
+        return []
+    layout = SELECTOR_LAYOUT.get(str(form.get("encoding_format")))
+    if layout is None:
+        return []
+    selector, choices = layout
+    by_field = {
+        str(operand.get("field")): operand
+        for operand in operands
+    }
+    lines = [
+        "#### Scalar source selector",
+        "",
+        f"| `{selector}` | 标量源 | 说明 |",
+        "|---:|---|---|",
+        "| 0 | — | 所有源都来自 VGPR 文件 |",
+    ]
+    for code in sorted(choices):
+        field = choices[code]
+        operand = by_field.get(field)
+        if operand is None:
+            note = "保留；本形式没有绑定该字段"
+            name = "—"
+        else:
+            note = f"`{field}` 改从 SGPR 文件读取，warp 内广播同一个值"
+            name = str(operand.get("name", field))
+        lines.append(f"| {code} | {_table_cell(name)} | {_table_cell(note)} |")
+    lines.append("")
+    return lines
+
+
 def render_cover(document: Mapping[str, Any]) -> str:
     families = get_families(document) or []
     forms = [
@@ -183,7 +219,6 @@ def render_instruction_reference(
         "",
     ]
     vector_words = _vector_words(vectors)
-    tag_effects = enumerate_vgpr_tag_effects(document)
     for family_index, family in enumerate(families):
         if not isinstance(family, Mapping):
             continue
@@ -220,13 +255,14 @@ def render_instruction_reference(
                     f"- `(class, format, opcode)`：`{triple}`",
                     f"- Guard policy：`{form.get('guard_policy', '—')}`",
                     f"- Required state：`{form.get('required_state', '—')}`",
-                    f"- VGPR tag effect：`{tag_effects.get(form_key(family, form), 'none')}`",
                     "",
                 ]
             )
             syntax = form.get("syntax")
             if syntax:
                 lines.extend([f"**语法：** `{syntax}`", ""])
+
+            lines.extend(_selector_lines(form))
 
             legal_orders = form.get("legal_orders")
             legal_scopes = form.get("legal_scopes")
@@ -987,8 +1023,9 @@ def build(isa_path: Path = DEFAULT_ISA) -> list[Path]:
     if not chapters:
         raise RuntimeError(f"未找到 Markdown 章节：{DOCS_DIR / '*.md'}")
 
-    generated = render_instruction_reference(document, vectors)
-    merged = merge_markdown(chapters, generated, render_cover(document))
+    expanded = isa_model.expand_document(copy.deepcopy(dict(document)))
+    generated = render_instruction_reference(expanded, vectors)
+    merged = merge_markdown(chapters, generated, render_cover(expanded))
     base_title = str(_first(document, ("title", "name", "isa")) or "VTX-1 ISA")
     version = str(_first(document, ("version", "revision")) or "1.0-draft")
     title = base_title if version in base_title else f"{base_title} {version}"

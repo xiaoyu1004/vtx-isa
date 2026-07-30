@@ -7,14 +7,16 @@
 ;   s2:s3 = partials  GLOBAL_PTR, byte offset 8
 ;   s4     = n         U32,        byte offset 16
 ;
-; Descriptor resources: sgpr_count=16, vgpr_count=24, vp_count=3,
+; Descriptor resources: sgpr_count=16, vgpr_count=16, vp_count=3,
 ; reconv_stack_depth=1, static_shared_size=32.
 ;
 ; Register map:
-;   v0=lane, v1=warp, v2=cta, v3=ntid, v4=ncta, v5=n
+;   v0=lane, v1=warp, v2=cta, v3=ntid, v4=ncta
 ;   v6=warp_base, v7=grid_stride, v8=i, v9=byte_offset
 ;   v10=value, v11=sum, v12=shuffle value, v13=zero/warp count
 ;   v14=shared offset, v15=output offset
+;
+; `n` stays in s4 and the VCMP scalar-source selector reads it in place.
 
 reduce:
     V_GETREG.LANE.U32 v0, LSR_LANE_ID
@@ -22,7 +24,6 @@ reduce:
     V_GETREG.UNIFORM.U32 v2, USR_CTA_ID_X
     V_GETREG.UNIFORM.U32 v3, USR_NTID_X
     V_GETREG.UNIFORM.U32 v4, USR_NCTA_X
-    V_BCAST.B32 v5, s4
 
     ; warp_base = cta_id * ntid_x + warp_id * 32
     V_MUL.U32 v6, v2, v3
@@ -34,11 +35,11 @@ reduce:
     ; The loop condition uses a warp-uniform base. Tail lanes are zero-filled.
     SSY reduce_loop_done
 reduce_grid_loop:
-    V_CMP.LT.U32 vp0, v6, v5
+    V_CMP.LT.U32 vp0, v6, s4
     BRA.P !vp0, reduce_loop_done
 
     V_ADD.U32 v8, v6, v0
-    V_CMP.LT.U32 vp1, v8, v5
+    V_CMP.LT.U32 vp1, v8, s4
     V_SHL.B32 v9, v8, 2
     V_MOV.B32 v10, 0x00000000
     @vp1 V_LD.GLOBAL.U32 v10, [s0:s1 + v9 + 0]

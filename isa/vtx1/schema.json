@@ -69,28 +69,11 @@
             "lane_id"
           ]
         },
-        "generation_domain": {
-          "type": "mathematical_nonnegative_integer",
-          "notation": "N",
-          "initial": 0,
-          "retire_step": 1,
-          "monotonic": true,
-          "wraps": false,
-          "finite_implementation_rule": "as_if_non_wrapping",
-          "observable_identity_reuse": "forbidden",
-          "stale_token_revival": "forbidden",
-          "example_mechanisms": [
-            "wider_epoch",
-            "capability_id",
-            "safe_reclamation"
-          ]
+        "live_owner_set": {
+          "initial": "every real linear_tid launched in the CTA",
+          "shrinks_on": "EXIT",
+          "exit_contributes_release": false
         },
-        "token_tag_fields": [
-          "cta_identity",
-          "linear_tid",
-          "slot",
-          "generation"
-        ],
         "wait_record_fields": [
           "warp_id",
           "owner_snapshot",
@@ -98,37 +81,8 @@
         ],
         "max_blocked_records_per_warp": 1,
         "idle_slot": {
-          "mode": "EMPTY",
           "arrived_set_empty": true,
-          "consumed_set_empty": true,
-          "waiters_empty": true,
-          "completed": false,
-          "generation_ignored": true
-        },
-        "vgpr_tag_write_policy": {
-          "target_selection": {
-            "register_file": "VGPR",
-            "accesses": [
-              "write",
-              "read_write"
-            ],
-            "granularity": "each_vgpr32_slot"
-          },
-          "default_action": "clear",
-          "exceptions": [
-            {
-              "family_id": "F025",
-              "form_id": "b32.reg",
-              "mnemonic": "V_MOV.B32",
-              "action": "copy_source_tag"
-            },
-            {
-              "family_id": "F062",
-              "form_id": "cta",
-              "mnemonic": "BAR.ARRIVE.CTA",
-              "action": "create_tag"
-            }
-          ]
+          "waiters_empty": true
         }
       }
     },
@@ -996,8 +950,6 @@
       "required": [
         "address_const_lane",
         "address_const_uniform",
-        "address_generic_lane",
-        "address_generic_uniform",
         "address_global_lane",
         "address_global_uniform",
         "address_local_lane",
@@ -1007,7 +959,6 @@
         "address_shared_uniform",
         "atomic_order",
         "barrier_id",
-        "barrier_token",
         "call_stack",
         "disp30",
         "implicit_state",
@@ -1032,16 +983,12 @@
         "vgpr32",
         "vgpr64",
         "vgpr_index",
-        "vpred"
+        "vpred",
+        "vsrc32",
+        "vsrc64"
       ],
       "properties": {
         "address_const_uniform": {
-          "$ref": "#/$defs/operandType"
-        },
-        "address_generic_lane": {
-          "$ref": "#/$defs/operandType"
-        },
-        "address_generic_uniform": {
           "$ref": "#/$defs/operandType"
         },
         "address_global_lane": {
@@ -1077,7 +1024,7 @@
         "lane_special": {
           "$ref": "#/$defs/operandType"
         },
-        "barrier_token": {
+        "vsrc32": {
           "allOf": [
             {
               "$ref": "#/$defs/operandType"
@@ -1086,26 +1033,50 @@
               "required": [
                 "kind",
                 "bits",
-                "element_bits",
                 "register_file",
                 "range",
                 "description"
               ],
               "properties": {
                 "kind": {
-                  "const": "barrier_token"
+                  "const": "mixed_source"
                 },
                 "bits": {
                   "const": 32
                 },
-                "element_bits": {
-                  "const": 32
+                "register_file": {
+                  "const": "VGPR_OR_SGPR"
+                }
+              }
+            }
+          ]
+        },
+        "vsrc64": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/operandType"
+            },
+            {
+              "required": [
+                "kind",
+                "bits",
+                "register_file",
+                "range",
+                "alignment",
+                "description"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "mixed_source_pair"
+                },
+                "bits": {
+                  "const": 64
                 },
                 "register_file": {
-                  "const": "VGPR"
+                  "const": "VGPR_OR_SGPR"
                 },
-                "range": {
-                  "const": "v0..v255"
+                "alignment": {
+                  "const": 2
                 }
               }
             }
@@ -1225,8 +1196,8 @@
     },
     "faults": {
       "type": "array",
-      "minItems": 11,
-      "maxItems": 11,
+      "minItems": 10,
+      "maxItems": 10,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -1239,7 +1210,7 @@
           "code": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 11
+            "maximum": 10
           },
           "name": {
             "type": "string",
@@ -1256,9 +1227,8 @@
       "const": [
         "ILLEGAL_INSTRUCTION",
         "ILLEGAL_OPERAND",
-        "SCALAR_STATE_FAULT",
+        "DIVERGENCE_FAULT",
         "RECONVERGENCE_FAULT",
-        "BARRIER_FAULT",
         "COLLECTIVE_FAULT",
         "INTEGER_FAULT",
         "MISALIGNED_ACCESS",
@@ -1355,7 +1325,8 @@
             "modifier",
             "extension",
             "reserved",
-            "operand"
+            "operand",
+            "source_select"
           ]
         },
         "description": {
@@ -1404,8 +1375,6 @@
           "enum": [
             "address_const_lane",
             "address_const_uniform",
-            "address_generic_lane",
-            "address_generic_uniform",
             "address_global_lane",
             "address_global_uniform",
             "address_local_lane",
@@ -1415,7 +1384,6 @@
             "address_shared_uniform",
             "atomic_order",
             "barrier_id",
-            "barrier_token",
             "call_stack",
             "disp30",
             "implicit_state",
@@ -1440,7 +1408,9 @@
             "vgpr32",
             "vgpr64",
             "vgpr_index",
-            "vpred"
+            "vpred",
+            "vsrc32",
+            "vsrc64"
           ]
         },
         "access": {
@@ -1495,8 +1465,6 @@
         "syntax",
         "execution_domain",
         "encoding_format",
-        "class",
-        "format",
         "opcode",
         "guard_policy",
         "required_state",
@@ -1504,7 +1472,6 @@
         "semantics",
         "constraints",
         "faults",
-        "fields",
         "example"
       ],
       "properties": {
@@ -1558,23 +1525,6 @@
             "VSHMEM"
           ]
         },
-        "class": {
-          "enum": [
-            "SYS",
-            "SALU",
-            "VALU",
-            "MEMORY",
-            "CONTROL",
-            "SYNC",
-            "CROSSLANE",
-            "MATRIX"
-          ]
-        },
-        "format": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 7
-        },
         "opcode": {
           "type": "integer",
           "minimum": 0,
@@ -1626,12 +1576,26 @@
         "matrix_contract": {
           "$ref": "#/$defs/matrixContract"
         },
-        "fields": {
-          "type": "array",
-          "minItems": 5,
-          "maxItems": 12,
-          "items": {
-            "$ref": "#/$defs/field"
+        "field_values": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*$"
+          }
+        },
+        "field_notes": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*$"
           }
         },
         "example": {
@@ -1700,424 +1664,6 @@
       },
       "allOf": [
         {
-          "oneOf": [
-            {
-              "properties": {
-                "class": {
-                  "const": "SYS"
-                },
-                "encoding_format": {
-                  "const": "SYS"
-                },
-                "format": {
-                  "const": 0
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "SALU"
-                },
-                "encoding_format": {
-                  "const": "S1"
-                },
-                "format": {
-                  "const": 0
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "SALU"
-                },
-                "encoding_format": {
-                  "const": "S2"
-                },
-                "format": {
-                  "const": 1
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "SALU"
-                },
-                "encoding_format": {
-                  "const": "S3"
-                },
-                "format": {
-                  "const": 2
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "SALU"
-                },
-                "encoding_format": {
-                  "const": "SCMP"
-                },
-                "format": {
-                  "const": 3
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "SALU"
-                },
-                "encoding_format": {
-                  "const": "SIMM"
-                },
-                "format": {
-                  "const": 4
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "VALU"
-                },
-                "encoding_format": {
-                  "const": "V1"
-                },
-                "format": {
-                  "const": 0
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "VALU"
-                },
-                "encoding_format": {
-                  "const": "V2"
-                },
-                "format": {
-                  "const": 1
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "VALU"
-                },
-                "encoding_format": {
-                  "const": "V3"
-                },
-                "format": {
-                  "const": 2
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "VALU"
-                },
-                "encoding_format": {
-                  "const": "VCMP"
-                },
-                "format": {
-                  "const": 3
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "VALU"
-                },
-                "encoding_format": {
-                  "const": "VIMM"
-                },
-                "format": {
-                  "const": 4
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "MEMORY"
-                },
-                "encoding_format": {
-                  "const": "SMEM"
-                },
-                "format": {
-                  "const": 0
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "MEMORY"
-                },
-                "encoding_format": {
-                  "const": "VMEM"
-                },
-                "format": {
-                  "const": 1
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "MEMORY"
-                },
-                "encoding_format": {
-                  "const": "VSHMEM"
-                },
-                "format": {
-                  "const": 2
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "MEMORY"
-                },
-                "encoding_format": {
-                  "const": "VLMEM"
-                },
-                "format": {
-                  "const": 3
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "MEMORY"
-                },
-                "encoding_format": {
-                  "const": "SATOM"
-                },
-                "format": {
-                  "const": 4
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "MEMORY"
-                },
-                "encoding_format": {
-                  "const": "VATOM"
-                },
-                "format": {
-                  "const": 5
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "MEMORY"
-                },
-                "encoding_format": {
-                  "const": "SMEMX"
-                },
-                "format": {
-                  "const": 6
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "MEMORY"
-                },
-                "encoding_format": {
-                  "const": "VATOMX"
-                },
-                "format": {
-                  "const": 7
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "CONTROL"
-                },
-                "encoding_format": {
-                  "const": "CTRL"
-                },
-                "format": {
-                  "const": 0
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "SYNC"
-                },
-                "encoding_format": {
-                  "const": "SYNC"
-                },
-                "format": {
-                  "const": 0
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "CROSSLANE"
-                },
-                "encoding_format": {
-                  "const": "COLL"
-                },
-                "format": {
-                  "const": 0
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            },
-            {
-              "properties": {
-                "class": {
-                  "const": "MATRIX"
-                },
-                "encoding_format": {
-                  "const": "MMA"
-                },
-                "format": {
-                  "const": 0
-                }
-              },
-              "required": [
-                "class",
-                "encoding_format",
-                "format"
-              ]
-            }
-          ]
-        },
-        {
           "if": {
             "properties": {
               "execution_domain": {
@@ -2142,12 +1688,21 @@
         {
           "if": {
             "properties": {
-              "class": {
-                "const": "MEMORY"
+              "encoding_format": {
+                "enum": [
+                  "SMEM",
+                  "SMEMX",
+                  "SATOM",
+                  "VMEM",
+                  "VSHMEM",
+                  "VLMEM",
+                  "VATOM",
+                  "VATOMX"
+                ]
               }
             },
             "required": [
-              "class"
+              "encoding_format"
             ]
           },
           "then": {
@@ -2159,12 +1714,12 @@
         {
           "if": {
             "properties": {
-              "class": {
-                "const": "MATRIX"
+              "encoding_format": {
+                "const": "MMA"
               }
             },
             "required": [
-              "class"
+              "encoding_format"
             ]
           },
           "then": {
@@ -2252,31 +1807,6 @@
               },
               "required_state": {
                 "const": "scalar_ready"
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "mnemonic": {
-                "enum": [
-                  "V_BCAST.B32",
-                  "V_BCAST.B64"
-                ]
-              }
-            },
-            "required": [
-              "mnemonic"
-            ]
-          },
-          "then": {
-            "properties": {
-              "execution_domain": {
-                "const": "vector"
-              },
-              "guard_policy": {
-                "const": "optional"
               }
             }
           }
@@ -2656,12 +2186,6 @@
               "encoding_format": {
                 "const": "SYNC"
               },
-              "class": {
-                "const": "SYNC"
-              },
-              "format": {
-                "const": 0
-              },
               "opcode": {
                 "const": 3
               },
@@ -2703,157 +2227,38 @@
         {
           "if": {
             "properties": {
-              "mnemonic": {
-                "const": "BAR.ARRIVE.CTA"
+              "operands": {
+                "contains": {
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "vsrc32",
+                        "vsrc64"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                }
               }
             },
             "required": [
-              "mnemonic"
+              "operands"
             ]
           },
           "then": {
             "properties": {
-              "syntax": {
-                "const": "BAR.ARRIVE.CTA v5, 3"
-              },
-              "execution_domain": {
-                "const": "cta_sync"
-              },
               "encoding_format": {
-                "const": "SYNC"
-              },
-              "class": {
-                "const": "SYNC"
-              },
-              "format": {
-                "const": 0
-              },
-              "opcode": {
-                "const": 4
-              },
-              "guard_policy": {
-                "const": "required_pt"
-              },
-              "operands": {
-                "minItems": 2,
-                "maxItems": 2,
-                "prefixItems": [
-                  {
-                    "properties": {
-                      "type": {
-                        "const": "barrier_token"
-                      },
-                      "access": {
-                        "const": "write"
-                      },
-                      "field": {
-                        "const": "a"
-                      }
-                    }
-                  },
-                  {
-                    "properties": {
-                      "type": {
-                        "const": "barrier_id"
-                      },
-                      "access": {
-                        "const": "control"
-                      },
-                      "field": {
-                        "const": "slot3"
-                      }
-                    }
-                  }
+                "enum": [
+                  "V1",
+                  "V2",
+                  "V3",
+                  "VCMP"
                 ]
               },
-              "example": {
-                "properties": {
-                  "assembly": {
-                    "const": "BAR.ARRIVE.CTA v5, 3"
-                  },
-                  "machine_word": {
-                    "const": "0x0018000000280205"
-                  }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "mnemonic": {
-                "const": "BAR.WAIT.CTA"
-              }
-            },
-            "required": [
-              "mnemonic"
-            ]
-          },
-          "then": {
-            "properties": {
-              "syntax": {
-                "const": "BAR.WAIT.CTA 3, v5"
-              },
               "execution_domain": {
-                "const": "cta_sync"
-              },
-              "encoding_format": {
-                "const": "SYNC"
-              },
-              "class": {
-                "const": "SYNC"
-              },
-              "format": {
-                "const": 0
-              },
-              "opcode": {
-                "const": 5
-              },
-              "guard_policy": {
-                "const": "required_pt"
-              },
-              "operands": {
-                "minItems": 2,
-                "maxItems": 2,
-                "prefixItems": [
-                  {
-                    "properties": {
-                      "type": {
-                        "const": "barrier_id"
-                      },
-                      "access": {
-                        "const": "control"
-                      },
-                      "field": {
-                        "const": "slot3"
-                      }
-                    }
-                  },
-                  {
-                    "properties": {
-                      "type": {
-                        "const": "barrier_token"
-                      },
-                      "access": {
-                        "const": "read"
-                      },
-                      "field": {
-                        "const": "a"
-                      }
-                    }
-                  }
-                ]
-              },
-              "example": {
-                "properties": {
-                  "assembly": {
-                    "const": "BAR.WAIT.CTA 3, v5"
-                  },
-                  "machine_word": {
-                    "const": "0x0018000000280285"
-                  }
-                }
+                "const": "vector"
               }
             }
           }
@@ -2873,7 +2278,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "pattern": "^F[0-9]{3}$"
+          "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
         },
         "mnemonic": {
           "type": "string",
@@ -2922,21 +2327,21 @@
         {
           "if": {
             "properties": {
-              "id": {
-                "const": "F061"
+              "semantic_group": {
+                "const": "barrier"
               }
             },
             "required": [
-              "id"
+              "semantic_group"
             ]
           },
           "then": {
             "properties": {
+              "id": {
+                "const": "bar-sync"
+              },
               "mnemonic": {
                 "const": "BAR.SYNC"
-              },
-              "semantic_group": {
-                "const": "barrier"
               },
               "forms": {
                 "minItems": 1,
@@ -2946,76 +2351,6 @@
                     "properties": {
                       "mnemonic": {
                         "const": "BAR.SYNC.CTA"
-                      }
-                    }
-                  }
-                ]
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "id": {
-                "const": "F062"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          },
-          "then": {
-            "properties": {
-              "mnemonic": {
-                "const": "BAR.ARRIVE"
-              },
-              "semantic_group": {
-                "const": "barrier"
-              },
-              "forms": {
-                "minItems": 1,
-                "maxItems": 1,
-                "prefixItems": [
-                  {
-                    "properties": {
-                      "mnemonic": {
-                        "const": "BAR.ARRIVE.CTA"
-                      }
-                    }
-                  }
-                ]
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "id": {
-                "const": "F063"
-              }
-            },
-            "required": [
-              "id"
-            ]
-          },
-          "then": {
-            "properties": {
-              "mnemonic": {
-                "const": "BAR.WAIT"
-              },
-              "semantic_group": {
-                "const": "barrier"
-              },
-              "forms": {
-                "minItems": 1,
-                "maxItems": 1,
-                "prefixItems": [
-                  {
-                    "properties": {
-                      "mnemonic": {
-                        "const": "BAR.WAIT.CTA"
                       }
                     }
                   }

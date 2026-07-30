@@ -1,33 +1,10 @@
 # vtx-isa：VTX-1 ISA 1.0 Draft 设计记录
 
-本文件记录 1.0 Draft 设计重置期间已经落定的架构选择，以及仍在等待原型结果的项目。规范真值源始终是 `isa/vtx1/isa.yaml`。
+本文件记录 1.0 Draft 已经落定的架构选择，以及仍在等待原型结果的项目。规范真值源始终是 `isa/vtx1/isa.yaml`。
 
-## 2026-07-29：建立全新 1.0 Draft 基线
+Draft 冻结之前，本文件只呈现最终状态：一项决定被后来的决定取代时，原处直接改写，不追加“某天改成了什么”的过程记录。冻结之后才按版本追加变更条目。
 
-### 增加 shuffle-down 立即数 delta form
-
-- 保留 opcode 11 的 `V_SHUFFLE.DOWN.B32 vd,vs,vdelta,width`，新增 opcode 13
-  的 `V_SHUFFLE.DOWN.B32 vd,vs,delta,width`。
-- 立即数 delta 为 `0..31`，编码在 COLL `vb`；width 仍按字面值编码在
-  `imm8`，合法集合保持 `{2,4,8,16,32}`。
-- 两个 form 的参与、源冻结、缺失源写零和 `COLLECTIVE_FAULT` 语义完全相同；
-  新 form 用于消除固定归约树中的 delta 物化指令。
-- form 总数由 391 增至 392，family 数保持 69。
-
-### 修复命名 CTA 屏障语义退化
-
-- 每 CTA 固定 8 个命名槽 `0..7`；owner 唯一身份固定为 `linear_tid=warp_id*32+lane_id`，owner/arrived/consumed 集合全部保存 linear_tid。
-- 规范指令定为 `BAR.SYNC.CTA id`、`BAR.ARRIVE.CTA vd,id`、`BAR.WAIT.CTA id,vs`；F061/F062/F063、`(5,0,3/4/5)` 编码和 family/form 数量保持不变。
-- split token 定为每 lane VGPR32，隐藏标签恰好绑定 `{CTA identity,linear_tid,slot,logical generation}`。
-- generation 改为数学非负整数 `N`：从 0 开始，每次退休严格加 1，单调且永不回绕。有限计数器、epoch 或对象编号的复用不得让旧、已消费或复制 token 在后续代重新匹配；实现可用更宽 epoch、capability ID、安全回收或等效办法达到 as-if 不回绕。
-- 建立全 ISA VGPR 标签写回闭包：任意写入 VGPR32 槽默认清除旧标签，唯二例外是 BAR.ARRIVE 创建、寄存器型 `V_MOV.B32` 复制；YAML 根规则和 schema 严格列出两个例外。
-- 每代第一批合法 arrival 选择 `SYNC` 或 `SPLIT`。同代混用、重复 arrival、stale/foreign/wrong-slot/wrong-owner/malformed/untagged/duplicate token 都产生整条 warp 动态指令的 `BARRIER_FAULT`，不允许部分效果。
-- waiter 固定为 `BarrierWaitRecord {warp_id,owner_snapshot,resume_pc}`；每 warp 同时至多一条 blocked record。BAR 阻塞整个 warp，挂起路径不能切入；恢复只写记录中的 PC 并置 ready。
-- SYNC 到齐时所有记录一起 acquire 并立即退休；SPLIT 到齐只标 completed，所有 owner token 恰好消费一次后才退休。
-- `EXIT` 不缩小 owner；任一退出 linear_tid 位于 SPLIT 槽 `arrived_set-consumed_set` 时直接故障，与 VGPR tag 是否仍存在无关。
-- CTA 完成要求全部 warp 完成且 8 槽都 IDLE；任意非负 logical generation 允许，但 generation 不得回绕。
-- BAR arrival 是 shared CTA release，SYNC 恢复和成功 WAIT 是 shared CTA acquire；global、local、param、const 和 host 不自动排序。
-- 同步更新 `docs/00-status.md` 到 `docs/08-conformance.md`、YAML、schema 和设计审查，加入状态转移伪代码、编码示例及完整合规矩阵。
+## 2026-07-30：VTX-1 ISA 1.0 Draft 基线
 
 ### 设计定位
 
@@ -44,8 +21,9 @@
   - `SCC`：每 warp 一份的 1 位标量条件码。
 - 每个 form 必须明确声明 `system/scalar/vector/warp_control/warp_collective/cta_sync/warp_matrix` 七种执行域之一。
 - scalar 指令每 warp 执行一次；vector 指令对参与 lane 分别执行；其他执行域分别处理系统状态、warp 控制、集合、CTA 同步或矩阵协作。
-- vector 指令可以读取 SGPR 并向参与 lane 广播同一个值；普通 vector 指令不能写 SGPR 或 SCC。
+- vector 指令可以通过 scalar-source selector 读取一个 SGPR，该值对所有参与 lane 相同；普通 vector 指令不能写 SGPR 或 SCC。
 - 跨执行域的数据移动使用明确 form，不允许实现隐式选择代表 lane。
+- 寄存器只保存位模式。SGPR、VGPR、`vp` 和 `SCC` 都不携带隐藏影子状态：既没有 barrier token 标签，也没有 pointer provenance 标签。
 
 ### 物理寄存器与驻留
 
@@ -72,10 +50,11 @@ active_mask == live_mask
 重汇聚栈中不存在 FIRST 或 SECOND 帧
 ```
 
-- 检查失败产生 `SCALAR_STATE_FAULT`，不读取动态源，不形成地址，不写寄存器或内存，也不推进 PC。
+- 检查失败产生 `DIVERGENCE_FAULT`，不读取动态源，不形成地址，不写寄存器或内存，也不推进 PC。
 - SCC 条件为假不能绕过 scalar-ready。
-- 普通 vector 与 warp-control 指令不套用该检查。
+- 普通 vector 指令不套用该检查，即使它通过 selector 读一个 SGPR 也不需要。
 - 使用 warp 统一调用栈的 `CALL`、`CALL.IND`、`JUMP.IND` 和 `RET` 额外要求 scalar-ready，但机器 class 仍为 `CONTROL`。
+- `BAR.SYNC.CTA` 也要求 scalar-ready，使 warp 只能整体到达屏障。
 - 调用栈每 warp 一份、后进先出，descriptor 的 `call_stack_depth` 范围为 0..16；每帧只保存 `return_pc=PC+8`。
 - `SSY` 重汇聚帧记录 `owner_call_depth`。`RET` 必须先确认当前 callee 没有未闭合重汇聚帧，再把栈顶返回地址和 PC 一起提交。
 
@@ -125,6 +104,16 @@ class[3:0] | format[2:0] | opcode[5:0] | guard[5:0] | payload[44:0]
 - `SCC` 是标量条件状态，`vpN` 是逐 lane 条件状态，两者不占用普通 SGPR/VGPR 编号。
 - 静态编码错误不能被 false guard 掩盖。
 
+### 混合源：每条向量指令一个 SGPR 源
+
+- 四种 VALU 格式各带一个 scalar-source selector 字段：`V1` 是 1 位 `ssrc`，扩展位为 `x28`；`V2` 和 `VCMP` 是 2 位 `ssrc_sel`，扩展位为 `x19`；`V3` 是 2 位 `ssrc_sel`，扩展位为 `x11`。
+- selector 不改变源槽的位置和宽度，只决定那 8 位寄存器号在哪个寄存器文件中解释。selector 为 0 表示所有源都读 VGPR；非 0 时恰好一个源改在 SGPR 文件中解释。
+- `V1` 只能选 `va`；`V2` 和 `VCMP` 可选 `va` 或 `vb`，码 3 保留并产生 `ILLEGAL_INSTRUCTION`；`V3` 可选 `va`、`vb` 或 `vc`。
+- 操作数类型 `vsrc32` 和 `vsrc64` 表示“寄存器文件由 selector 决定”的源。只有 `execution_domain: vector` 且格式属于 `V1/V2/V3/VCMP` 的 form 允许使用；90 个 form 采用了它们。
+- 不含 `vsrc*` 操作数的 form 中，selector 字段是 must-zero 洞。
+- 目标操作数永远是 VGPR 或 `vpN`，不受 selector 影响。
+- 一条向量指令最多一个 SGPR 源。架构没有独立的广播指令；需要两个 uniform 值时软件必须显式先搬一个进 VGPR，汇编器不得自动插入搬运。
+
 ### PC-relative 控制
 
 - 所有直接控制目标使用 `CTRL.disp30`。
@@ -137,6 +126,14 @@ target_pc = next_pc + (sign_extend_30(disp30) << 3)
 - 位移单位为 8 字节指令字。
 - 目标必须 8 字节对齐，并指向当前内核文本中的完整指令。
 - 汇编和重定位溢出必须报错，不得截断。
+
+### 地址空间
+
+- 一次访存落在哪个空间完全由 opcode 决定：每条访存 form 的操作数类型固定写明空间，助记符也带同一个空间后缀。
+- 寄存器里的地址值只是位模式，不携带空间身份；实现禁止在运行期根据数值猜测空间。
+- 架构没有 generic 地址空间。
+- `GLOBAL_PTR` 和 `CONST_PTR` 是参数布局记录上的静态声明，不是运行期标签。
+- allocation 范围检查在实现内部按 allocation 表完成，与寄存器内容无关。
 
 ### `SMEMX` 与 `VATOMX`
 
@@ -171,11 +168,31 @@ EA[lane] = SGPR64_base + zero_extend(VGPR32_index[lane])
 
 ### B64 跨域
 
-- `V_BCAST.B64` 和 `S_READFIRST.B64` 是真实机器 form。
-- 两者都要求完整、偶数对齐、连续且不越界的 SGPR/VGPR 对。
-- `V_BCAST.B64` 把 SGPR64 及其 provenance 整体广播到参与 lane。
-- `S_READFIRST.B64` 先检查 scalar-ready，再从最低编号 live lane 整体读取 VGPR64 及其 provenance。
+- 跨域 64 位传递使用两个真实机器 form：混合源 `V_MOV.B64 vd_pair, s_pair`（`ssrc=1`）从 SGPR64 送到各参与 lane 的 VGPR64，`S_READFIRST.B64` 从最低编号 live lane 读到 SGPR64。
+- 两端都必须是完整、偶数对齐、连续且不越界的寄存器对。
+- `S_READFIRST.B64` 先检查 scalar-ready。
 - 两个 32 位半部必须来自同一次冻结和同一个源，不能拆开选择或部分提交。
+
+### CTA 屏障
+
+- `execution_domain=cta_sync` 只有一条屏障指令 `BAR.SYNC.CTA id`。架构不提供 split 屏障、屏障 token、generation 计数或子集屏障；`(5,0,4)` 和 `(5,0,5)` 未分配并必须拒绝。
+- 需要“先到达、后等待”的软件用 shared memory 上的原子操作和 `MEMBAR` 自行构造，这些结构完全落在既有内存模型内。
+- 每 CTA 固定 8 个槽 `0..7`；owner 唯一身份是 `linear_tid=warp_id*32+lane_id`，所有集合以 `linear_tid` 为元素。
+- 槽状态只有 `arrived_set` 和 waiter 映射；两者都空即为 idle，启动时 8 个槽全部 idle。
+- CTA 另有 8 槽共用的 `live_owner_set`：初值是全部真实线程的 `linear_tid`，不含不存在的尾 lane；`EXIT` 从中移除退出线程，这是它唯一会变小的方式。没有 `expected` 字段。
+- 完成条件是 `arrived_set == live_owner_set`；所有 waiter 在同一个完成动作中恢复，随后槽立即清空回 idle。`EXIT` 缩小 `live_owner_set` 时也要重新检查每个非 idle 槽。
+- `BAR.SYNC.CTA` 要求 scalar-ready，因此分歧 warp 在记录任何 arrival 之前就报 `DIVERGENCE_FAULT`，不留下部分 arrival、blocked record 或 PC 效果。
+- waiter 固定为 `BarrierWaitRecord {warp_id, owner_snapshot, resume_pc}`；每 warp 同时至多一条 blocked record。屏障阻塞整个 warp 当前动态路径，挂起路径不能切入；恢复只写记录中的 PC 并置 ready，不改 active/live 掩码、重汇聚栈或调用栈。
+- `EXIT` 没有屏障前置检查，也不报屏障故障，并且不贡献 shared release。
+- 屏障 arrival 是 shared CTA release，恢复是 shared CTA acquire；global、local、param、const 和 host 不自动排序。
+- CTA 只有在全部 warp 完成且 8 个槽都 idle 时完成。
+
+### 故障表
+
+- 故障码共 10 个，`fault_priority` 单独定义优先级顺序。
+- `DIVERGENCE_FAULT` 的语义是“这条 form 需要完全重汇聚的 warp，而当前 warp 不是”。它与 `RECONVERGENCE_FAULT` 的分界写在 `docs/02-programming-model.md`。
+- 屏障协议没有专属故障码：屏障的唯一入口条件是 scalar-ready，违反它就是 `DIVERGENCE_FAULT`。
+- `DEADLOCK` 的典型来源是一部分 warp 到达屏障，其余 owner 既不到达也不退出。
 
 ### 唯一 MMA
 
@@ -189,14 +206,27 @@ MMA.M16N8K16.F16.F16.F32
 - 只允许 `D=C` 完整别名；所有源先冻结，全部 D 结果检查通过后一次提交。
 - 其他形状、类型和 modifier 不得从保留位推测。
 
+### Shuffle-down 的两个 delta form
+
+- opcode 11 是 `V_SHUFFLE.DOWN.B32 vd,vs,vdelta,width`，opcode 13 是 `V_SHUFFLE.DOWN.B32 vd,vs,delta,width`。
+- 立即数 delta 为 `0..31`，编码在 COLL `vb`；width 按字面值编码在 `imm8`，合法集合为 `{2,4,8,16,32}`。
+- 两个 form 的参与、源冻结、缺失源写零和 `COLLECTIVE_FAULT` 语义完全相同；立即数 form 用于消除固定归约树中的 delta 物化指令。
+
+### 清单结构与真值源
+
+- `isa.yaml` 中物理布局与操作数绑定分离：`format_registry` 独占字段表，form 只声明 `encoding_format`、`opcode` 和操作数绑定，不重复 `class`、`format`、`fields`。未绑定的 payload 字段自动成为 must-zero 洞。
+- 仅两类无法派生的信息允许逐 form 覆盖：`field_values`（固定常量，用于 `MEMBAR` 的 `scope2/order2`）和 `field_notes`（form 专属字段描述，用于 `V_SHUFFLE.DOWN.B32` 的立即数 delta form）。
+- family ID 是语义 slug，例如 `v-add`、`bar-sync`；它不参与译码，也不承载编号顺序。
+- `tools/isa_model.py` 是加载与展开的唯一实现，验证器、构建器、向量生成器和测试共用它。`tools/gen_vectors.py` 生成 `encoding_vectors.json`，其中包含每个 selector 码的向量。
+
 ### 当前指令清单
 
 `isa/vtx1/isa.yaml` 当前生成：
 
-- **69 个 instruction families**
-- **392 个 instruction forms**
+- **66 个 instruction families**
+- **379 个 instruction forms**
 
-数量由 YAML 去重生成，不作为手工维护常量。`order`、`scope` 和地址 modifier 的合法组合另算 modifier instance，不混入 392 forms；出现不一致时以 YAML 为准。
+数量由 YAML 去重生成，不作为手工维护常量。`order`、`scope`、地址 modifier 和 scalar-source selector 的合法取值另算 modifier instance，不混入 form 统计；出现不一致时以 YAML 为准。
 
 ### 已确定但仍需实现证明的边界
 
@@ -205,7 +235,7 @@ MMA.M16N8K16.F16.F16.F32
 - class-specific format 固定字段语义；具体译码流水级和执行单元组织属于实现选择。
 - scalar-ready 的可见结果和故障顺序已经确定；检查电路如何与重汇聚栈、调用栈和记分牌集成仍待 RTL 验证。
 - PC-relative 目标算法已经确定；链接器代码布局策略和可选显式跳板变换仍由工具链设计。
-- `SMEMX/VATOMX` 地址公式、atomic modifier 矩阵、CALL 栈、B64 跨域和唯一 MMA 已是规范决定；它们的流水线、bank、旁路和调度代价仍属于原型验证内容。
+- `SMEMX/VATOMX` 地址公式、atomic modifier 矩阵、CALL 栈、混合源 selector、B64 跨域和唯一 MMA 已是规范决定；它们的流水线、bank、旁路和调度代价仍属于原型验证内容。
 
 ### 待 RTL 原型记录
 
@@ -216,7 +246,8 @@ MMA.M16N8K16.F16.F16.F32
 - SALU/VALU 并行发射、跨域依赖和记分牌规则。
 - `SMEMX/VATOMX` 地址形成与完整 atomic modifier 译码。
 - CALL 栈、`owner_call_depth` 和精确控制提交。
-- B64 数值/provenance 跨域旁路与唯一 MMA 的会合、提交和回滚。
+- scalar-source selector 的 SGPR 读端口、广播网络和 B64 跨域旁路，以及唯一 MMA 的会合、提交和回滚。
+- 屏障槽状态、`live_owner_set` 更新和 `EXIT` 触发的重新检查。
 
 ### 待编译器原型记录
 
@@ -229,20 +260,23 @@ MMA.M16N8K16.F16.F16.F32
 - `disp30` 汇编、链接、重定位和溢出诊断。
 - `SMEMX/VATOMX` 地址模式选择和 atomic modifier 后缀生成。
 - CALL 栈深度估算、callee 重汇聚闭合和 B64 偶数寄存器对分配。
-- 从 YAML 生成 69 family / 392 form 的后端描述和测试清单。
+- 从 YAML 生成后端描述和测试清单，包括 selector 与操作数寄存器文件的绑定。
+- uniform 值是直接用作 selector 源，还是先物化进 VGPR 供多次复用，这个取舍的收益。
 
 ### 最终规范审计
 
 - **结论：PASS。**
-- YAML 去重清单为 69 families / 392 forms，生成参考与 all-form 清单一致。
-- 所有 form 的机器 class、执行域、唯一译码、payload 覆盖、guard、required state 和 must-zero 规则通过一致性检查。
-- `SMEMX/VATOMX`、完整 atomic modifier、CALL 栈、B64 跨域和唯一 MMA 均已进入编码、语义、故障和合规门禁。
-- modifier instance 与 family/form 统计分离，atomic 后缀组合不会虚增 form 数。
+- YAML 去重清单为 66 families / 379 forms，生成参考与 all-form 清单一致。
+- 所有 form 的机器 class、执行域、唯一译码、payload 覆盖、guard、required state 和 must-zero 规则通过一致性检查，其中 `class`、`format` 和字段表由 `format_registry` 派生而非逐 form 重复书写。
+- `SMEMX/VATOMX`、完整 atomic modifier、CALL 栈、混合源 selector、B64 跨域搬运、单一 `BAR.SYNC.CTA` 和唯一 MMA 均已进入编码、语义、故障和合规门禁。
+- modifier instance 与 selector 取值都与 family/form 统计分离，不会虚增 form 数。
+- 文档与 YAML 都不含 token 标签、pointer provenance 或 generic 地址空间的残留描述。
 - 此 PASS 表示规范、YAML 和生成资产的最终审计通过；RTL 时序/面积和编译器质量仍由原型结果单独证明。
 
-## 后续记录规则
+## 记录规则
 
 - 这里只记录 Draft 设计决策、理由变化和原型结论。
+- Draft 冻结前只呈现最终状态：取代旧决定时改写原处，不保留被取代的写法，也不记录改写过程。
 - 每条记录应说明影响的 YAML 字段、规范章节和验证资产。
 - family/form 数量只引用 YAML 生成值。
 - 尚无 RTL 或编译器证据的性能、面积和代码质量判断必须标为“待验证”。

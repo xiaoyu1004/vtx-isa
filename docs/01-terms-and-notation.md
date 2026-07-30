@@ -38,14 +38,15 @@ lane_id    = linear_tid mod 32
 - **SCC（标量条件码）**：每个 warp 一个 1 位状态。只有把 SCC 明确列为源操作数的指令才读取它；SCC 不会自动变成所有 scalar 指令的开关。
 - **EXEC**：只读的 32 位当前执行掩码，数值等于 `active_mask`。
 - **LIVE**：只读的 32 位存活掩码，数值等于 `live_mask`。
-- **broadcast（广播）**：vector 指令读取一个 SGPR 时，把同一个 32 位值送给所有参与 lane。
+- **scalar source（标量源）**：一条 vector 指令中被 scalar-source selector 指定为读 SGPR 的那个源操作数。它的 32 位值对所有参与 lane 都相同，因此天然具有广播效果。一条 vector 指令最多有一个标量源。
+- **scalar-source selector（标量源选择器）**：`V1`、`V2`、`V3`、`VCMP` 格式中的一个编码字段，决定哪个源寄存器号在 SGPR 文件中解释。`V1` 用 1 bit 的 `ssrc`，其余三个用 2 bit 的 `ssrc_sel`；值 0 表示没有标量源。
 - **register slice（寄存器切片）**：SM/CU 从物理 SGPR/VGPR 容量中划给一个驻留 warp 的那一部分。
 
 `s0` 表示整个 warp 共用的一个 32 位值，不是 32 份值。`v0` 表示每个 lane 各有一个 32 位值，因此一个完整 warp 的 `v0` 一共有 32 份值。
 
 SGPR 和 VGPR 的物理寄存器文件位于 SM/CU。架构寄存器名不等于固定物理编号；实现可以改名、分 bank（分存储组）或在不被软件发现的情况下搬移数据。
 
-**barrier token（屏障 token）**是 `BAR.ARRIVE.CTA` 写入每个参与 lane 的 VGPR32。它有普通软件可见的 32 位数值，还带程序不能直接构造的隐藏有效标签。标签字段恰好是 `{CTA identity, linear_tid, slot, logical generation}`；数值碰巧相同不代表 token 相同。任意 VGPR32 槽写入默认清除旧标签，唯二例外是 `BAR.ARRIVE.CTA` 创建新标签、寄存器型 `V_MOV.B32` 完整复制源标签。
+寄存器只保存位模式。SGPR、VGPR、`vp` 和 `SCC` 都不携带隐藏的影子状态，也没有任何架构可见的标签跟着寄存器值传播。
 
 ## 4. lane 掩码
 
@@ -84,7 +85,7 @@ active_mask & ~live_mask == 0
 
 `execution_domain` 说明“这条 form 怎样执行”，`required_state` 说明“执行前还要满足什么状态”。所有 `execution_domain: scalar` form 都必须写 `required_state: scalar_ready`。这个规则不看机器 class，也不看它属于算术、浮点、特殊寄存器、访存还是原子操作。
 
-`execution_domain: vector` 不检查 scalar-ready。普通 `warp_control` 也不检查；直接 `BRA` 和 `BRA.P` 在分歧路径中仍可运行。`CALL`、`CALL.IND`、`JUMP.IND`、`RET` 是明确例外：它们写有 `required_state: scalar_ready`，但执行域仍是 `warp_control`。
+`execution_domain: vector` 不检查 scalar-ready。普通 `warp_control` 也不检查；直接 `BRA` 和 `BRA.P` 在分歧路径中仍可运行。`CALL`、`CALL.IND`、`JUMP.IND`、`RET` 是明确例外：它们写有 `required_state: scalar_ready`，但执行域仍是 `warp_control`。`BAR.SYNC.CTA` 同样写有 `required_state: scalar_ready`，执行域是 `cta_sync`。
 
 `SSY`、`BRA`、`BRA.P`、`JOIN`、`EXIT` 都是 `warp_control`。它们不属于 scalar ALU。即使当前 warp 处于分歧路径，它们仍按 `03-execution-model.md` 的控制规则执行。
 
@@ -119,17 +120,15 @@ PC + 8 <= text_size
 
 `FIRST` 或 `SECOND` 帧叫 **未完成分歧帧**。即使某个时刻 `active_mask` 恰好又等于 `live_mask`，只要栈里还有这类帧，scalar 指令仍然不合法。
 
-命名 CTA 屏障使用这些固定术语：
+CTA 屏障使用这些固定术语：
 
 - **slot（槽）**：每 CTA 的 8 个编号槽之一，id 为 `0..7`；
-- **generation（代）**：数学上的非负整数 `N={0,1,2,...}`。槽从 0 开始，每次退休严格变成 `old_generation+1`；它单调增加、永不回绕，也没有最大架构值；
 - **owner identity（owner 身份）**：只使用 CTA 内 `linear_tid = warp_id*32 + lane_id`；二元组 `(warp_id,lane_id)` 只是等价表示，所有架构集合和比较都以 `linear_tid` 为元素；
-- **owner set（owner 集）**：CTA 启动时全部真实线程 `linear_tid` 的固定集合，不含不存在的尾 lane，且不因 `EXIT` 变小；
-- **mode（模式）**：当前代的 `EMPTY`、`SYNC` 或 `SPLIT`；第一批合法到达把 `EMPTY` 变成后两者之一；
-- **arrived set（已到达集合）**：当前代已经成功到达的 `linear_tid` 集合；同一 `linear_tid` 每代只能进入一次；
-- **consumed set（已消费集合）**：SPLIT 代已经用 `BAR.WAIT.CTA` 成功消费自己 token 的 `linear_tid` 集合。
+- **live owner set（存活 owner 集）**：仍需在屏障处被等待的 `linear_tid` 集合。CTA 启动时它是全部真实线程，不含不存在的尾 lane；`EXIT` 把退出线程从其中移除；
+- **arrived set（已到达集合）**：当前尚未完成的这次屏障中已经成功到达的 `linear_tid` 集合；同一 `linear_tid` 只能进入一次；
+- **idle slot（空闲槽）**：`arrived_set` 为空且没有 waiter 的槽。
 
-“active owner”集合 `A` 是把某条 BAR 动态指令入口 `active_mask` 的每个置位 lane 转成 `linear_tid` 后得到的集合。挂起路径、已退出 lane和不存在 lane都不在这次 `A` 里；但只要其 `linear_tid` 属于固定 owner set，就仍可能是本代尚未到达或尚未消费的 owner。
+“active owner”集合 `A` 是把某条 `BAR.SYNC.CTA` 动态指令入口 `active_mask` 的每个置位 lane 转成 `linear_tid` 后得到的集合。因为 `BAR.SYNC.CTA` 要求 scalar-ready，`A` 恰好是该 warp 当前全部 live lane，不存在挂起路径或已退出 lane 混入的情况。
 
 屏障阻塞记录固定写成：
 
@@ -141,7 +140,7 @@ BarrierWaitRecord {
 }
 ```
 
-`owner_snapshot` 是入口 `A` 的冻结副本，`resume_pc=old_PC+8`。BAR 阻塞的是整个 warp 当前动态路径。阻塞时 warp 的 PC 留在 BAR 上，`active_mask/live_mask`、重汇聚栈和调用栈保持不变；挂起路径不能切入。每个 warp 同一时刻至多有一条 blocked record。恢复只清除该记录、写 `PC=resume_pc` 并把 warp 置为 ready，其他状态不变。
+`owner_snapshot` 是入口 `A` 的冻结副本，`resume_pc=old_PC+8`。`BAR.SYNC.CTA` 阻塞的是整个 warp 当前动态路径。阻塞时 warp 的 PC 留在屏障指令上，`active_mask/live_mask`、重汇聚栈和调用栈保持不变；挂起路径不能切入。每个 warp 同一时刻至多有一条 blocked record。恢复只清除该记录、写 `PC=resume_pc` 并把 warp 置为 ready，其他状态不变。
 
 ## 8. 数值和位写法
 
@@ -169,10 +168,8 @@ snapshot(x)              # 为当前动态指令保存不再变化的副本
 fault(code, mask, aux)   # 本动态指令不提交，并报告故障
 block(reason)            # 保存当前状态，等待条件满足后继续
 commit(effects)          # 把整条指令的效果一次性变为可见
-retire(slot)             # generation = old_generation + 1；再清 mode/集合/等待者
+clear(slot)              # 清空 arrived_set 和 waiter 列表，槽回到 idle
 ```
-
-实现可以在内部使用有限位宽计数器，但架构效果必须等同于逻辑 generation 永不回绕。实现可用更宽 epoch、不可伪造 capability ID、安全回收等办法；无论采用哪种办法，旧 token、已消费 token 或它的 `V_MOV.B32` 副本都不能因内部数值再次相等而在后续逻辑代重新有效。
 
 除屏障等明确写成两阶段的指令外，一条动态指令必须“先检查，后整体提交”：
 
@@ -192,7 +189,7 @@ else:
 ## 10. 就绪、阻塞和完成
 
 - **ready（就绪）**：warp 有非空 `active_mask`，也没有在等待屏障、内存或其他事件。
-- **blocked（阻塞）**：warp 还没完成，但眼下不能发射下一条指令；BAR blocked record 存在时整个 warp 都不能切换到挂起路径。
+- **blocked（阻塞）**：warp 还没完成，但眼下不能发射下一条指令；屏障 blocked record 存在时整个 warp 都不能切换到挂起路径。
 - **complete（完成）**：warp 的 `live_mask` 已经为空，而且没有未清理的重汇聚或同步状态。
 - **deadlock（死锁）**：内核还没完成，却没有任何 warp 能继续，也没有已在途事件能让 warp 重新就绪。
 - **livelock（活锁）**：指令一直在执行，但程序永远达不到完成状态。

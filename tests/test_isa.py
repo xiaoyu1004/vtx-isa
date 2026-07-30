@@ -13,46 +13,62 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
 import build_spec  # noqa: E402
+import isa_model  # noqa: E402
 import validate_isa  # noqa: E402
+
+
+FAMILY_COUNT = 66
+FORM_COUNT = 379
 
 
 class IsaConformanceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.document = validate_isa.load_isa(validate_isa.DEFAULT_ISA)
+        cls.expanded = isa_model.expand_document(copy.deepcopy(cls.document))
         cls.schema = validate_isa.load_json(validate_isa.DEFAULT_SCHEMA)
         cls.vectors = validate_isa.load_json(validate_isa.DEFAULT_VECTORS)
         cls.report = validate_isa.validate_all(cls.document, cls.schema, cls.vectors)
+
+    def forms(self, document=None):
+        source = self.expanded if document is None else document
+        return [form for _, form in isa_model.iter_forms(source)]
+
+    def find_form(self, document, **match):
+        for _, form in isa_model.iter_forms(document):
+            if all(form.get(name) == value for name, value in match.items()):
+                return form
+        raise AssertionError(f"no form matches {match}")
 
     def test_repository_isa_passes_schema_and_semantic_validation(self) -> None:
         self.assertTrue(self.report.ok, "\n".join(self.report.errors))
 
     def test_counts_are_read_from_yaml_and_match_actual_inventory(self) -> None:
         declared = self.document["counts"]
-        self.assertEqual((declared["families"], declared["forms"]), (69, 392))
+        self.assertEqual(
+            (declared["families"], declared["forms"]),
+            (FAMILY_COUNT, FORM_COUNT),
+        )
         self.assertEqual(
             (self.report.family_count, self.report.form_count),
             (declared["families"], declared["forms"]),
         )
 
-    def test_all_392_forms_have_unique_vectors(self) -> None:
+    def test_every_form_has_a_unique_golden_vector(self) -> None:
         form_keys = {
             validate_isa.form_key(family, form)
-            for family in self.document["families"]
-            for form in family["forms"]
+            for family, form in isa_model.iter_forms(self.document)
         }
         vector_keys = {entry["key"] for entry in self.vectors["forms"]}
         self.assertEqual(vector_keys, form_keys)
-        self.assertEqual(len(vector_keys), 392)
-        self.assertEqual(self.report.vector_count, 392)
+        self.assertEqual(len(vector_keys), FORM_COUNT)
+        self.assertEqual(self.report.vector_count, FORM_COUNT)
         for entry in self.vectors["forms"]:
             self.assertRegex(entry["machine_word"], r"^0x[0-9A-F]{16}$")
 
     def test_every_form_has_unique_encoding_triple(self) -> None:
         triples = [
-            (form["class"], form["format"], form["opcode"])
-            for family in self.document["families"]
-            for form in family["forms"]
+            (form["class"], form["format"], form["opcode"]) for form in self.forms()
         ]
         self.assertEqual(len(triples), len(set(triples)))
 
@@ -93,54 +109,42 @@ class IsaConformanceTests(unittest.TestCase):
         report = validate_isa.validate_document(broken_vp)
         self.assertTrue(any("operand_types.vpred.element_bits" in error for error in report.errors))
 
-    def test_v_bcast_is_true_sgpr_to_vgpr_optional_broadcast(self) -> None:
-        form = next(
-            form
-            for family in self.document["families"]
-            for form in family["forms"]
-            if form["mnemonic"] == "V_BCAST.B32"
-        )
-        operand_types = {operand["name"]: operand["type"] for operand in form["operands"]}
-        self.assertEqual(form["execution_domain"], "vector")
-        self.assertEqual(form["guard_policy"], "optional")
-        self.assertEqual((operand_types["src"], operand_types["dst"]), ("sgpr32", "vgpr32"))
-        guard = next(field for field in form["fields"] if field["name"] == "guard")
-        self.assertNotIn("fixed", guard)
+    def test_v_mov_reg_forms_take_a_mixed_source(self) -> None:
+        """V_MOV replaces the deleted V_BCAST: ssrc picks the source file."""
+        forms = {
+            (form["mnemonic"], form["encoding_format"]): form
+            for form in self.forms()
+            if form["mnemonic"] in {"V_MOV.B32", "V_MOV.B64"}
+        }
+        for mnemonic, source_type in (("V_MOV.B32", "vsrc32"), ("V_MOV.B64", "vsrc64")):
+            form = forms[(mnemonic, "V1")]
+            operand_types = {
+                operand["name"]: operand["type"] for operand in form["operands"]
+            }
+            self.assertEqual(form["execution_domain"], "vector")
+            self.assertEqual(form["guard_policy"], "optional")
+            self.assertEqual(operand_types["src"], source_type)
+            selector = next(
+                field for field in form["fields"] if field["name"] == "ssrc"
+            )
+            self.assertEqual(selector["kind"], isa_model.SELECTOR_KIND)
+            self.assertNotIn("fixed", selector)
+            self.assertNotIn("must_zero", selector)
 
-        broken = copy.deepcopy(self.document)
-        candidate = next(
-            form
-            for family in broken["families"]
-            for form in family["forms"]
-            if form["mnemonic"] == "V_BCAST.B32"
-        )
-        next(operand for operand in candidate["operands"] if operand["name"] == "src")["type"] = "vgpr32"
-        report = validate_isa.validate_document(broken)
-        self.assertTrue(any("SGPR-to-VGPR broadcast" in error for error in report.errors))
+        for mnemonic in ("V_BCAST.B32", "V_BCAST.B64"):
+            self.assertNotIn(
+                mnemonic, {form["mnemonic"] for form in self.forms()}
+            )
 
     def test_b64_cross_domain_transfer_forms(self) -> None:
         forms = {
             form["mnemonic"]: form
-            for family in self.document["families"]
-            for form in family["forms"]
-            if form["mnemonic"] in {"V_BCAST.B64", "S_READFIRST.B64"}
-        }
-        self.assertEqual(set(forms), {"V_BCAST.B64", "S_READFIRST.B64"})
-        broadcast_types = {
-            operand["name"]: operand["type"] for operand in forms["V_BCAST.B64"]["operands"]
+            for form in self.forms()
+            if form["mnemonic"] == "S_READFIRST.B64"
         }
         readfirst_types = {
             operand["name"]: operand["type"] for operand in forms["S_READFIRST.B64"]["operands"]
         }
-        self.assertEqual(
-            (
-                forms["V_BCAST.B64"]["execution_domain"],
-                forms["V_BCAST.B64"]["guard_policy"],
-                broadcast_types["src"],
-                broadcast_types["dst"],
-            ),
-            ("vector", "optional", "sgpr64", "vgpr64"),
-        )
         self.assertEqual(
             (
                 forms["S_READFIRST.B64"]["execution_domain"],
@@ -152,204 +156,234 @@ class IsaConformanceTests(unittest.TestCase):
         )
 
         broken = copy.deepcopy(self.document)
-        form = next(
-            form
-            for family in broken["families"]
-            for form in family["forms"]
-            if form["mnemonic"] == "S_READFIRST.B64"
-        )
+        form = self.find_form(broken, mnemonic="S_READFIRST.B64")
         next(operand for operand in form["operands"] if operand["name"] == "src")[
             "type"
         ] = "sgpr64"
         report = validate_isa.validate_document(broken)
         self.assertTrue(any("VGPR64-to-SGPR64" in error for error in report.errors))
 
-    def test_named_barrier_inventory_examples_slots_and_structure(self) -> None:
-        families = {
-            family["id"]: family
-            for family in self.document["families"]
-            if family["id"] in validate_isa.BARRIER_FORMS
-        }
-        self.assertEqual(set(families), set(validate_isa.BARRIER_FORMS))
-        expected_examples = {
-            "F061": ("BAR.SYNC.CTA 3", "0x0018000000000185"),
-            "F062": ("BAR.ARRIVE.CTA v5, 3", "0x0018000000280205"),
-            "F063": ("BAR.WAIT.CTA 3, v5", "0x0018000000280285"),
-        }
-        for family_id, expected in validate_isa.BARRIER_FORMS.items():
-            family = families[family_id]
-            self.assertEqual(family["mnemonic"], expected["family_mnemonic"])
-            self.assertEqual(family["semantic_group"], "barrier")
-            self.assertEqual(len(family["forms"]), 1)
-            form = family["forms"][0]
-            self.assertEqual(form["mnemonic"], expected["form_mnemonic"])
-            self.assertEqual((form["class"], form["format"], form["opcode"]), expected["triple"])
-            self.assertEqual(
-                (form["example"]["assembly"], form["example"]["machine_word"]),
-                expected_examples[family_id],
-            )
-            covered_bits = {
-                bit
-                for field in form["fields"]
-                for bit in range(field["lsb"], field["lsb"] + field["width"])
-            }
-            self.assertEqual(covered_bits, set(range(64)))
-            base_word = int(form["example"]["machine_word"], 16) & ~(0x7 << 51)
-            for slot in (0, 7):
-                word = f"0x{base_word | (slot << 51):016X}"
-                report = validate_isa.ValidationReport()
-                validate_isa._validate_machine_word(form, word, "$slot", report)
-                self.assertTrue(report.ok, "\n".join(report.errors))
-                self.assertEqual((int(word, 16) >> 51) & 0x7, slot)
-
-        contract = self.document["barrier_contract"]
-        self.assertEqual(contract["owner_identity"]["name"], "linear_tid")
+    def test_mixed_source_selector_model(self) -> None:
+        """Each vector format exposes one selector that names at most one SGPR."""
+        mixed = [form for form in self.forms() if isa_model.mixed_source_operands(form)]
+        self.assertEqual(len(mixed), 90)
         self.assertEqual(
-            contract["token_tag_fields"],
-            ["cta_identity", "linear_tid", "slot", "generation"],
+            {form["encoding_format"] for form in mixed},
+            set(isa_model.SELECTOR_LAYOUT),
         )
+        for form in mixed:
+            selector_name, choices = isa_model.SELECTOR_LAYOUT[form["encoding_format"]]
+            selector = next(
+                field for field in form["fields"] if field["name"] == selector_name
+            )
+            self.assertEqual(selector["width"], 1 if form["encoding_format"] == "V1" else 2)
+            self.assertNotIn("fixed", selector)
+            self.assertNotIn("must_zero", selector)
+            bound = {
+                operand["field"] for operand in isa_model.mixed_source_operands(form)
+            }
+            self.assertTrue(bound.issubset(set(choices.values())))
+
+        for form in self.forms():
+            if isa_model.mixed_source_operands(form):
+                continue
+            layout = isa_model.SELECTOR_LAYOUT.get(form["encoding_format"])
+            if layout is None:
+                continue
+            selector = next(
+                field for field in form["fields"] if field["name"] == layout[0]
+            )
+            self.assertTrue(selector.get("must_zero") or selector.get("fixed") == 0)
+
+    def test_mixed_source_selector_negatives(self) -> None:
+        no_selector_format = copy.deepcopy(self.document)
+        form = self.find_form(no_selector_format, mnemonic="S_READFIRST.B32")
+        next(operand for operand in form["operands"] if operand["name"] == "src")[
+            "type"
+        ] = "vsrc32"
+        report = validate_isa.validate_document(no_selector_format)
+        self.assertTrue(
+            any("has no source selector" in error for error in report.errors)
+        )
+
+        write_access = copy.deepcopy(self.document)
+        form = self.find_form(write_access, mnemonic="V_MOV.B32", encoding_format="V1")
+        next(operand for operand in form["operands"] if operand["name"] == "src")[
+            "access"
+        ] = "read_write"
+        report = validate_isa.validate_document(write_access)
+        self.assertTrue(any("must be read-only" in error for error in report.errors))
+
+    def test_mixed_source_vectors_cover_every_selector_code(self) -> None:
+        entries = self.vectors["mixed_source"]
+        self.assertEqual(len(entries), self.vectors["counts"]["mixed_source"])
+        expected: set[str] = set()
+        for family, form in isa_model.iter_forms(self.expanded):
+            layout = isa_model.SELECTOR_LAYOUT.get(form["encoding_format"])
+            operands = isa_model.mixed_source_operands(form)
+            if not operands or layout is None:
+                continue
+            selector_name, choices = layout
+            bound = {operand["field"] for operand in operands}
+            key = validate_isa.form_key(family, form)
+            for code, field_name in choices.items():
+                if field_name in bound:
+                    expected.add(f"{key}#{selector_name}={code}")
+        self.assertEqual({entry["key"] for entry in entries}, expected)
+        for entry in entries:
+            self.assertGreater(entry["selector_code"], 0)
+            self.assertRegex(entry["machine_word"], r"^0x[0-9A-F]{16}$")
+
+        broken = copy.deepcopy(self.vectors)
+        broken["mixed_source"][0]["selector_code"] = 0
+        report = validate_isa.ValidationReport()
+        validate_isa.validate_vectors(self.expanded, broken, report)
+        self.assertTrue(
+            any("selector_code" in error for error in report.errors),
+            "\n".join(report.errors),
+        )
+
+    def test_bar_sync_is_the_only_barrier_instruction(self) -> None:
+        barrier_families = [
+            family
+            for family in self.expanded["families"]
+            if family["semantic_group"] == "barrier"
+        ]
+        self.assertEqual(len(barrier_families), 1)
+        family = barrier_families[0]
+        expected = validate_isa.BARRIER_FORM
+        self.assertEqual(family["id"], expected["family_id"])
+        self.assertEqual(family["mnemonic"], expected["family_mnemonic"])
+        self.assertEqual(len(family["forms"]), 1)
+
+        form = family["forms"][0]
+        self.assertEqual(form["mnemonic"], expected["form_mnemonic"])
+        self.assertEqual(
+            (form["class"], form["format"], form["opcode"]), expected["triple"]
+        )
+        self.assertEqual(
+            (form["example"]["assembly"], form["example"]["machine_word"]),
+            (expected["assembly"], expected["machine_word"]),
+        )
+        self.assertEqual(
+            [
+                (o["name"], o["type"], o["access"], o["field"])
+                for o in form["operands"]
+            ],
+            expected["operands"],
+        )
+        covered_bits = {
+            bit
+            for field in form["fields"]
+            for bit in range(field["lsb"], field["lsb"] + field["width"])
+        }
+        self.assertEqual(covered_bits, set(range(64)))
+
+        base_word = int(form["example"]["machine_word"], 16) & ~(0x7 << 51)
+        for slot in (0, 7):
+            word = f"0x{base_word | (slot << 51):016X}"
+            report = validate_isa.ValidationReport()
+            validate_isa._validate_machine_word(form, word, "$slot", report)
+            self.assertTrue(report.ok, "\n".join(report.errors))
+
+        mnemonics = {form["mnemonic"] for form in self.forms()}
+        self.assertTrue(mnemonics.isdisjoint({"BAR.ARRIVE.CTA", "BAR.WAIT.CTA"}))
+        self.assertNotIn("barrier_token", self.document["operand_types"])
+
+    def test_barrier_contract_is_the_simplified_model(self) -> None:
+        contract = self.document["barrier_contract"]
+        self.assertEqual(set(contract), {
+            "owner_identity",
+            "live_owner_set",
+            "wait_record_fields",
+            "max_blocked_records_per_warp",
+            "idle_slot",
+        })
+        self.assertEqual(contract["owner_identity"]["name"], "linear_tid")
+        self.assertEqual(contract["live_owner_set"]["shrinks_on"], "EXIT")
+        self.assertFalse(contract["live_owner_set"]["exit_contributes_release"])
         self.assertEqual(
             contract["wait_record_fields"],
             ["warp_id", "owner_snapshot", "resume_pc"],
         )
-        self.assertEqual(contract["idle_slot"]["mode"], "EMPTY")
-        self.assertTrue(contract["idle_slot"]["generation_ignored"])
-        generation = contract["generation_domain"]
-        self.assertEqual(generation["type"], "mathematical_nonnegative_integer")
-        self.assertEqual((generation["initial"], generation["retire_step"]), (0, 1))
-        self.assertTrue(generation["monotonic"])
-        self.assertFalse(generation["wraps"])
-        self.assertEqual(generation["finite_implementation_rule"], "as_if_non_wrapping")
-        self.assertEqual(generation["observable_identity_reuse"], "forbidden")
-        self.assertEqual(generation["stale_token_revival"], "forbidden")
-        flattened_text = " ".join(
-            item
-            for family in families.values()
-            for form in family["forms"]
-            for item in [form["semantics"], *form["constraints"]]
+        self.assertEqual(contract["max_blocked_records_per_warp"], 1)
+        self.assertEqual(
+            contract["idle_slot"], {"arrived_set_empty": True, "waiters_empty": True}
         )
-        for fragment in (
-            "SYNC mode",
-            "SPLIT mode",
-            "generation",
-            "linear_tid",
-            "BarrierWaitRecord",
-            "EXIT never shrinks",
-            "shared CTA release",
-            "shared CTA acquire",
-        ):
-            self.assertIn(fragment, flattened_text)
 
-    def test_named_barrier_negative_contracts(self) -> None:
-        old_name = copy.deepcopy(self.document)
-        family = next(family for family in old_name["families"] if family["id"] == "F061")
+        form = self.find_form(self.expanded, mnemonic="BAR.SYNC.CTA")
+        text = " ".join([form["semantics"], *form["constraints"]])
+        for fragment in validate_isa.BARRIER_REQUIRED_TEXT:
+            self.assertIn(fragment, text)
+
+    def test_barrier_negative_contracts(self) -> None:
+        renamed = copy.deepcopy(self.document)
+        family = next(
+            family for family in renamed["families"] if family["id"] == "bar-sync"
+        )
         family["mnemonic"] = "BARRIER.SYNC"
         family["forms"][0]["mnemonic"] = "BARRIER.SYNC.CTA"
-        report = validate_isa.validate_document(old_name)
-        self.assertTrue(any("canonical family BAR.SYNC" in error for error in report.errors))
-
-        sgpr_token = copy.deepcopy(self.document)
-        arrive = next(family for family in sgpr_token["families"] if family["id"] == "F062")[
-            "forms"
-        ][0]
-        next(operand for operand in arrive["operands"] if operand["name"] == "token")[
-            "type"
-        ] = "sgpr32"
-        report = validate_isa.validate_document(sgpr_token)
-        self.assertTrue(any("canonical operands" in error for error in report.errors))
-
-        sgpr_token_type = copy.deepcopy(self.document)
-        sgpr_token_type["operand_types"]["barrier_token"]["register_file"] = "SGPR"
-        report = validate_isa.validate_document(sgpr_token_type)
-        self.assertTrue(any("barrier_token must be a 32-bit VGPR" in error for error in report.errors))
-
-        missing_wait_id = copy.deepcopy(self.document)
-        wait = next(
-            family for family in missing_wait_id["families"] if family["id"] == "F063"
-        )["forms"][0]
-        wait["operands"] = [
-            operand for operand in wait["operands"] if operand["name"] != "barrier"
-        ]
-        report = validate_isa.validate_document(missing_wait_id)
-        self.assertTrue(any("canonical operands" in error for error in report.errors))
-
-        wrong_triple = copy.deepcopy(self.document)
-        sync = next(family for family in wrong_triple["families"] if family["id"] == "F061")[
-            "forms"
-        ][0]
-        sync["opcode"] = 2
-        report = validate_isa.validate_document(wrong_triple)
-        self.assertTrue(any("canonical BAR.SYNC.CTA identity and triple" in error for error in report.errors))
-
-        generation_mutations = (
-            ("type", "u64"),
-            ("retire_step", 2),
-            ("wraps", True),
-            ("stale_token_revival", "allowed"),
+        report = validate_isa.validate_document(renamed)
+        self.assertTrue(
+            any("BAR.SYNC" in error for error in report.errors),
+            "\n".join(report.errors),
         )
-        for name, value in generation_mutations:
-            broken_generation = copy.deepcopy(self.document)
-            broken_generation["barrier_contract"]["generation_domain"][name] = value
-            report = validate_isa.validate_document(broken_generation)
-            self.assertTrue(
-                any("barrier_contract.generation_domain" in error for error in report.errors),
-                name,
-            )
 
-    def test_docs08_named_barrier_generation_static_gate(self) -> None:
+        wrong_opcode = copy.deepcopy(self.document)
+        self.find_form(wrong_opcode, mnemonic="BAR.SYNC.CTA")["opcode"] = 2
+        report = validate_isa.validate_document(wrong_opcode)
+        self.assertFalse(report.ok)
+
+        wrong_owner = copy.deepcopy(self.document)
+        wrong_owner["barrier_contract"]["owner_identity"]["name"] = "lane_id"
+        report = validate_isa.validate_document(wrong_owner)
+        self.assertTrue(
+            any("barrier_contract.owner_identity" in error for error in report.errors)
+        )
+
+        exit_releases = copy.deepcopy(self.document)
+        exit_releases["barrier_contract"]["live_owner_set"][
+            "exit_contributes_release"
+        ] = True
+        report = validate_isa.validate_document(exit_releases)
+        self.assertTrue(
+            any("barrier_contract.live_owner_set" in error for error in report.errors)
+        )
+
+    def test_faults_drop_barrier_and_rename_divergence(self) -> None:
+        names = [fault["name"] for fault in self.document["faults"]]
+        self.assertIn("DIVERGENCE_FAULT", names)
+        self.assertNotIn("SCALAR_STATE_FAULT", names)
+        self.assertNotIn("BARRIER_FAULT", names)
+        self.assertEqual(names, sorted(names, key=lambda name: names.index(name)))
+        self.assertEqual(
+            [fault["code"] for fault in self.document["faults"]],
+            list(range(1, len(names) + 1)),
+        )
+        self.assertEqual(set(self.document["fault_priority"]), set(names) - {"DEADLOCK"})
+
+    def test_docs08_barrier_static_gate(self) -> None:
         text = (ROOT / "docs" / "08-conformance.md").read_text(encoding="utf-8")
         for required in (
             "BAR.SYNC.CTA id",
-            "BAR.ARRIVE.CTA vd,id",
-            "BAR.WAIT.CTA id,vs",
-            "generation oracle 必须使用数学非负整数",
-            "逻辑 generation 仍严格 `old+1`、不回绕",
-            "绝不复活",
-            "assert logical_generation == previous_logical_generation + 1",
-            "capability ID 或安全回收",
+            "live_owner_set",
+            "DIVERGENCE_FAULT",
+            "(class=5, format=0, opcode=4) 未分配",
+            "(class=5, format=0, opcode=5) 未分配",
         ):
             self.assertIn(required, text)
 
-    def test_vgpr_tag_effect_policy_is_closed(self) -> None:
-        operand_types = self.document["operand_types"]
-        writers = {
-            validate_isa.form_key(family, form)
-            for family in self.document["families"]
-            for form in family["forms"]
-            if any(
-                operand["access"] in {"write", "read_write"}
-                and operand_types[operand["type"]].get("register_file") == "VGPR"
-                for operand in form["operands"]
-            )
-        }
-        effects = validate_isa.enumerate_vgpr_tag_effects(self.document)
-        self.assertEqual(set(effects), writers)
-        self.assertEqual(effects["F025/b32.reg"], "copy_source_tag")
-        self.assertEqual(effects["F062/cta"], "create_tag")
-        self.assertTrue(
-            all(
-                action == "clear"
-                for key, action in effects.items()
-                if key not in {"F025/b32.reg", "F062/cta"}
-            )
-        )
-
-        broken = copy.deepcopy(self.document)
-        broken["barrier_contract"]["vgpr_tag_write_policy"]["exceptions"].pop()
-        report = validate_isa.validate_document(broken)
-        self.assertTrue(any("must contain only V_MOV.B32" in error for error in report.errors))
-
-        broken_owner = copy.deepcopy(self.document)
-        broken_owner["barrier_contract"]["owner_identity"]["name"] = "lane_id"
-        report = validate_isa.validate_document(broken_owner)
-        self.assertTrue(any("barrier_contract.owner_identity" in error for error in report.errors))
+        # The deleted names may only survive as things the suite must reject or
+        # must prove absent, never as behaviour the suite still exercises.
+        for line in text.splitlines():
+            if "BAR.ARRIVE" in line or "BAR.WAIT" in line:
+                self.assertIn("拒绝", line)
+            if "generation" in line or "consumed_set" in line or "SPLIT" in line:
+                self.assertIn("不存在", line)
 
     def test_x_broadcast_register_and_immediate_lane_forms(self) -> None:
         forms = [
-            form
-            for family in self.document["families"]
-            for form in family["forms"]
-            if form["mnemonic"] == "X_BROADCAST.B32"
+            form for form in self.forms() if form["mnemonic"] == "X_BROADCAST.B32"
         ]
         self.assertEqual(len(forms), 2)
         lane_types = {
@@ -367,10 +401,7 @@ class IsaConformanceTests(unittest.TestCase):
 
     def test_shuffle_down_register_and_immediate_delta_forms(self) -> None:
         forms = [
-            form
-            for family in self.document["families"]
-            for form in family["forms"]
-            if form["mnemonic"] == "V_SHUFFLE.DOWN.B32"
+            form for form in self.forms() if form["mnemonic"] == "V_SHUFFLE.DOWN.B32"
         ]
         self.assertEqual(len(forms), 2)
         by_delta_type = {
@@ -412,7 +443,7 @@ class IsaConformanceTests(unittest.TestCase):
             form
             for family in broken["families"]
             for form in family["forms"]
-            if family["id"] == "F068" and form["id"] == "down_imm"
+            if family["id"] == "v-shuffle" and form["id"] == "down_imm"
         )
         next(
             operand
@@ -435,22 +466,34 @@ class IsaConformanceTests(unittest.TestCase):
 
     def test_duplicate_encoding_triple_negative(self) -> None:
         broken = copy.deepcopy(self.document)
-        forms = [form for family in broken["families"] for form in family["forms"]]
+        forms = [form for _, form in isa_model.iter_forms(broken)]
         first, second = forms[:2]
-        second["class"], second["format"], second["opcode"] = (
-            first["class"],
-            first["format"],
-            first["opcode"],
-        )
+        second["encoding_format"] = first["encoding_format"]
+        second["opcode"] = first["opcode"]
         report = validate_isa.validate_document(broken)
         self.assertTrue(any("duplicates" in error and "class,format,opcode" in error for error in report.errors))
 
-    def test_class_specific_format_negative(self) -> None:
+    def test_unknown_encoding_format_negative(self) -> None:
         broken = copy.deepcopy(self.document)
-        form = broken["families"][1]["forms"][0]
-        form["encoding_format"] = "V1"
+        broken["families"][1]["forms"][0]["encoding_format"] = "NOPE"
         report = validate_isa.validate_document(broken)
-        self.assertTrue(any("encoding_format" in error and "must be" in error for error in report.errors))
+        self.assertTrue(
+            any("encoding_format" in error for error in report.errors),
+            "\n".join(report.errors),
+        )
+
+    def test_derived_form_keys_must_not_be_authored(self) -> None:
+        for key, value in (("class", "SALU"), ("format", 0), ("fields", [])):
+            broken = copy.deepcopy(self.document)
+            broken["families"][0]["forms"][0][key] = value
+            report = validate_isa.validate_document(broken)
+            self.assertTrue(
+                any(
+                    "derived from format_registry" in error and key in error
+                    for error in report.errors
+                ),
+                key,
+            )
 
     def test_mixed_memory_formats_use_registered_fields(self) -> None:
         registry = {
@@ -459,38 +502,33 @@ class IsaConformanceTests(unittest.TestCase):
         }
         mixed = [
             form
-            for family in self.document["families"]
-            for form in family["forms"]
+            for form in self.forms()
             if form["encoding_format"] in {"SMEMX", "VATOMX"}
         ]
         self.assertEqual(
             {form["encoding_format"] for form in mixed},
             {"SMEMX", "VATOMX"},
         )
-        self.assertEqual(len(mixed), 24)
+        self.assertEqual(len(mixed), 22)
         for form in mixed:
             payload = [field["name"] for field in form["fields"] if field["lsb"] >= 19]
             self.assertEqual(payload, registry[form["encoding_format"]])
 
         broken = copy.deepcopy(self.document)
-        form = next(
-            form
-            for family in broken["families"]
-            for form in family["forms"]
-            if form["encoding_format"] == "SMEMX"
+        entry = next(
+            entry
+            for entry in broken["format_registry"]["MEMORY"]
+            if entry["name"] == "SMEMX"
         )
-        next(field for field in form["fields"] if field["name"] == "sindex")["name"] = "vindex"
+        next(field for field in entry["fields"] if field["name"] == "sindex")[
+            "name"
+        ] = "vindex"
         report = validate_isa.validate_document(broken)
-        self.assertTrue(any("does not exactly match" in error for error in report.errors))
+        self.assertTrue(any("unknown form field" in error for error in report.errors))
 
     def test_vmem_address_mode_contracts(self) -> None:
-        forms = [
-            form
-            for family in self.document["families"]
-            for form in family["forms"]
-            if form["encoding_format"] == "VMEM"
-        ]
-        self.assertEqual(len(forms), 36)
+        forms = [form for form in self.forms() if form["encoding_format"] == "VMEM"]
+        self.assertEqual(len(forms), 24)
         expected_fields = {
             "uniform_base": ["sbase", "simm16"],
             "lane_address": ["vaddr", "simm16"],
@@ -508,26 +546,22 @@ class IsaConformanceTests(unittest.TestCase):
             if template["mode"] == "sv_mix":
                 self.assertIn("zero_extend(vaddr)", template["expression"])
 
+        def sv_mix(document):
+            return next(
+                form
+                for _, form in isa_model.iter_forms(document)
+                if form["encoding_format"] == "VMEM"
+                and form.get("address_template", {}).get("mode") == "sv_mix"
+            )
+
         broken = copy.deepcopy(self.document)
-        form = next(
-            form
-            for family in broken["families"]
-            for form in family["forms"]
-            if form["encoding_format"] == "VMEM"
-            and form["address_template"]["mode"] == "sv_mix"
-        )
+        form = sv_mix(broken)
         form["address_template"]["address_operands"] = ["sbase", "simm16"]
         report = validate_isa.validate_document(broken)
         self.assertTrue(any("VMEM sv_mix requires" in error for error in report.errors))
 
         broken_extension = copy.deepcopy(self.document)
-        form = next(
-            form
-            for family in broken_extension["families"]
-            for form in family["forms"]
-            if form["encoding_format"] == "VMEM"
-            and form["address_template"]["mode"] == "sv_mix"
-        )
+        form = sv_mix(broken_extension)
         form["address_template"]["expression"] = form["address_template"][
             "expression"
         ].replace("zero_extend(vaddr)", "sign_extend(vaddr)")
@@ -537,8 +571,7 @@ class IsaConformanceTests(unittest.TestCase):
     def test_register_pair_syntax_is_adjacent_and_even(self) -> None:
         pair_forms = [
             form
-            for family in self.document["families"]
-            for form in family["forms"]
+            for form in self.forms()
             if validate_isa.REGISTER_PAIR_RE.search(form["syntax"])
         ]
         self.assertGreater(len(pair_forms), 100)
@@ -566,9 +599,8 @@ class IsaConformanceTests(unittest.TestCase):
         self.assertEqual(memory_scope["reserved_values"], [3])
         atomic_forms = [
             form
-            for family in self.document["families"]
+            for family, form in isa_model.iter_forms(self.expanded)
             if family["semantic_group"] == "atomic"
-            for form in family["forms"]
         ]
         self.assertEqual(len(atomic_forms), 100)
         for form in atomic_forms:
@@ -607,57 +639,55 @@ class IsaConformanceTests(unittest.TestCase):
                 names = {operand["name"] for operand in form["operands"]}
                 self.assertTrue({"compare", "replacement"}.issubset(names))
 
+        def first_atomic(document):
+            return next(
+                form
+                for family, form in isa_model.iter_forms(document)
+                if family["semantic_group"] == "atomic"
+            )
+
+        def registry_field(document, format_name, field_name):
+            for entries in document["format_registry"].values():
+                for entry in entries:
+                    if entry.get("name") != format_name:
+                        continue
+                    for field in entry["fields"]:
+                        if field["name"] == field_name:
+                            return field
+            raise AssertionError(f"{format_name}.{field_name} not registered")
+
         broken_order = copy.deepcopy(self.document)
-        atomic = next(
-            form
-            for family in broken_order["families"]
-            if family["semantic_group"] == "atomic"
-            for form in family["forms"]
-        )
-        atomic["legal_orders"] = ["RELAXED", "BOGUS"]
+        first_atomic(broken_order)["legal_orders"] = ["RELAXED", "BOGUS"]
         report = validate_isa.validate_document(broken_order)
         self.assertTrue(any(".legal_orders" in error for error in report.errors))
 
+        # Dropping the operand binding turns `order` into a must-zero hole, which
+        # is the only way the derived layout can pin an atomic modifier.
         broken_modifier = copy.deepcopy(self.document)
-        atomic = next(
-            form
-            for family in broken_modifier["families"]
-            if family["semantic_group"] == "atomic"
-            for form in family["forms"]
-        )
-        next(field for field in atomic["fields"] if field["name"] == "order")["fixed"] = 0
+        atomic = first_atomic(broken_modifier)
+        atomic["operands"] = [
+            operand for operand in atomic["operands"] if operand["name"] != "order"
+        ]
         report = validate_isa.validate_document(broken_modifier)
         self.assertTrue(any("runtime-selectable, not fixed" in error for error in report.errors))
 
         broken_scope = copy.deepcopy(self.document)
-        atomic = next(
-            form
-            for family in broken_scope["families"]
-            if family["semantic_group"] == "atomic"
-            for form in family["forms"]
-        )
-        next(field for field in atomic["fields"] if field["name"] == "scope")[
+        atomic = first_atomic(broken_scope)
+        registry_field(broken_scope, atomic["encoding_format"], "scope")[
             "reserved_values"
         ] = [2]
         report = validate_isa.validate_document(broken_scope)
         self.assertTrue(any("classify encoding 3 as reserved" in error for error in report.errors))
 
         broken_example = copy.deepcopy(self.document)
-        atomic = next(
-            form
-            for family in broken_example["families"]
-            if family["semantic_group"] == "atomic"
-            for form in family["forms"]
-        )
-        atomic["example"]["field_values"]["scope"] = 3
+        first_atomic(broken_example)["example"]["field_values"]["scope"] = 3
         report = validate_isa.validate_document(broken_example)
         self.assertTrue(any("reserved or outside legal_scopes" in error for error in report.errors))
 
         broken_cas = copy.deepcopy(self.document)
         cas = next(
             form
-            for family in broken_cas["families"]
-            for form in family["forms"]
+            for _, form in isa_model.iter_forms(broken_cas)
             if ".CAS." in form["mnemonic"]
         )
         cas["operands"] = [
@@ -667,12 +697,7 @@ class IsaConformanceTests(unittest.TestCase):
         self.assertTrue(any("CAS requires distinct compare" in error for error in report.errors))
 
     def test_unique_mma_contract_and_negative_participation(self) -> None:
-        forms = [
-            form
-            for family in self.document["families"]
-            for form in family["forms"]
-            if form["class"] == "MATRIX"
-        ]
+        forms = [form for form in self.forms() if form["class"] == "MATRIX"]
         self.assertEqual(len(forms), 1)
         form = forms[0]
         contract = form["matrix_contract"]
@@ -687,12 +712,7 @@ class IsaConformanceTests(unittest.TestCase):
         self.assertTrue(contract["participation"]["required_exec_equals_live"])
 
         broken = copy.deepcopy(self.document)
-        matrix = next(
-            form
-            for family in broken["families"]
-            for form in family["forms"]
-            if form["class"] == "MATRIX"
-        )
+        matrix = self.find_form(broken, encoding_format="MMA")
         matrix["matrix_contract"]["participation"]["required_live_lanes"] = 16
         report = validate_isa.validate_document(broken)
         self.assertTrue(
@@ -703,53 +723,45 @@ class IsaConformanceTests(unittest.TestCase):
         matrix_family = next(
             family
             for family in duplicate["families"]
-            if any(form["class"] == "MATRIX" for form in family["forms"])
+            if any(form["encoding_format"] == "MMA" for form in family["forms"])
         )
         clone = copy.deepcopy(matrix_family["forms"][0])
         clone["id"] += ".duplicate"
         clone["opcode"] = 1
-        next(field for field in clone["fields"] if field["name"] == "opcode")["fixed"] = 1
         matrix_family["forms"].append(clone)
         duplicate["counts"]["forms"] += 1
         report = validate_isa.validate_document(duplicate)
         self.assertTrue(any("exactly one canonical MATRIX/MMA" in error for error in report.errors))
 
-    def test_header_fixed_value_negative(self) -> None:
-        broken = copy.deepcopy(self.document)
-        form = broken["families"][0]["forms"][0]
-        opcode = next(field for field in form["fields"] if field["name"] == "opcode")
-        opcode["fixed"] = 63
-        report = validate_isa.validate_document(broken)
-        self.assertTrue(any("fixed value must equal form opcode" in error for error in report.errors))
-
     def test_full_64_bit_coverage_negative(self) -> None:
+        """A registry layout that leaves a hole must be rejected for every form."""
         broken = copy.deepcopy(self.document)
-        form = broken["families"][0]["forms"][0]
-        form["fields"][-1]["width"] -= 1
+        entry = next(
+            entry
+            for entry in broken["format_registry"]["SYS"]
+            if entry["name"] == "SYS"
+        )
+        entry["fields"][-1]["width"] -= 1
         report = validate_isa.validate_document(broken)
         self.assertTrue(any("does not cover all 64 bits" in error for error in report.errors))
 
-    def test_required_pt_guard_negative(self) -> None:
-        broken = copy.deepcopy(self.document)
+    def test_required_pt_guard_is_derived_from_guard_policy(self) -> None:
         form = next(
-            form
-            for family in broken["families"]
-            for form in family["forms"]
-            if form["guard_policy"] == "required_pt"
+            form for form in self.forms() if form["guard_policy"] == "required_pt"
         )
         guard = next(field for field in form["fields"] if field["name"] == "guard")
-        guard.pop("fixed")
-        report = validate_isa.validate_document(broken)
-        self.assertTrue(any("requires fixed PT" in error for error in report.errors))
+        self.assertEqual(guard["fixed"], 0)
+        optional = next(
+            form for form in self.forms() if form["guard_policy"] == "optional"
+        )
+        optional_guard = next(
+            field for field in optional["fields"] if field["name"] == "guard"
+        )
+        self.assertNotIn("fixed", optional_guard)
 
     def test_scalar_ready_rule_negative(self) -> None:
         broken_state = copy.deepcopy(self.document)
-        scalar = next(
-            form
-            for family in broken_state["families"]
-            for form in family["forms"]
-            if form["execution_domain"] == "scalar"
-        )
+        scalar = self.find_form(broken_state, execution_domain="scalar")
         scalar["required_state"] = "none"
         report = validate_isa.validate_document(broken_state)
         self.assertTrue(any("all scalar forms require scalar_ready" in error for error in report.errors))
@@ -757,8 +769,7 @@ class IsaConformanceTests(unittest.TestCase):
     def test_control_inventory_and_scalar_state_requirements(self) -> None:
         forms = {
             form["mnemonic"]: form
-            for family in self.document["families"]
-            for form in family["forms"]
+            for form in self.forms()
             if form["execution_domain"] == "warp_control"
         }
         self.assertEqual(set(forms), validate_isa.REQUIRED_CONTROL_MNEMONICS)
@@ -770,12 +781,7 @@ class IsaConformanceTests(unittest.TestCase):
         )
 
         broken = copy.deepcopy(self.document)
-        call = next(
-            form
-            for family in broken["families"]
-            for form in family["forms"]
-            if form["mnemonic"] == "CALL"
-        )
+        call = self.find_form(broken, mnemonic="CALL")
         call["required_state"] = "none"
         report = validate_isa.validate_document(broken)
         self.assertTrue(any("CALL control form requires scalar_ready" in error for error in report.errors))
@@ -788,8 +794,7 @@ class IsaConformanceTests(unittest.TestCase):
 
         forms = {
             form["mnemonic"]: form
-            for family in self.document["families"]
-            for form in family["forms"]
+            for form in self.forms()
             if form["mnemonic"] in validate_isa.SCALAR_CONTROL_MNEMONICS
         }
         for mnemonic in ("CALL", "CALL.IND", "RET"):
@@ -803,12 +808,7 @@ class IsaConformanceTests(unittest.TestCase):
         self.assertFalse(
             any(operand["name"] == "call_stack" for operand in forms["JUMP.IND"]["operands"])
         )
-        ssy = next(
-            form
-            for family in self.document["families"]
-            for form in family["forms"]
-            if form["mnemonic"] == "SSY"
-        )
+        ssy = self.find_form(self.expanded, mnemonic="SSY")
         ssy_stack = next(
             operand for operand in ssy["operands"] if operand["name"] == "call_stack"
         )
@@ -823,12 +823,7 @@ class IsaConformanceTests(unittest.TestCase):
         self.assertTrue(any("must equal architectural call_stack_depth" in error for error in report.errors))
 
         broken_call = copy.deepcopy(self.document)
-        call = next(
-            form
-            for family in broken_call["families"]
-            for form in family["forms"]
-            if form["mnemonic"] == "CALL"
-        )
+        call = self.find_form(broken_call, mnemonic="CALL")
         call["operands"] = [
             operand for operand in call["operands"] if operand["name"] != "call_stack"
         ]
@@ -836,12 +831,7 @@ class IsaConformanceTests(unittest.TestCase):
         self.assertTrue(any("implicit read_write call_stack" in error for error in report.errors))
 
         broken_ssy = copy.deepcopy(self.document)
-        ssy = next(
-            form
-            for family in broken_ssy["families"]
-            for form in family["forms"]
-            if form["mnemonic"] == "SSY"
-        )
+        ssy = self.find_form(broken_ssy, mnemonic="SSY")
         next(operand for operand in ssy["operands"] if operand["name"] == "call_stack")[
             "access"
         ] = "read_write"
@@ -849,12 +839,11 @@ class IsaConformanceTests(unittest.TestCase):
         self.assertTrue(any("SSY requires an implicit read-only" in error for error in report.errors))
 
     def test_sgpr_vgpr_and_vpred_field_reference_negative(self) -> None:
-        for operand_type in ("sgpr32", "vgpr32", "vpred"):
+        for operand_type in ("sgpr32", "vgpr32", "vpred", "vsrc32"):
             broken = copy.deepcopy(self.document)
             operand = next(
                 operand
-                for family in broken["families"]
-                for form in family["forms"]
+                for _, form in isa_model.iter_forms(broken)
                 for operand in form["operands"]
                 if operand["type"] == operand_type
             )
@@ -868,12 +857,12 @@ class IsaConformanceTests(unittest.TestCase):
     def test_machine_word_fixed_and_must_zero_negative(self) -> None:
         broken_vectors = copy.deepcopy(self.vectors)
         broken_vectors["forms"][0]["machine_word"] = "0xFFFFFFFFFFFFFFFF"
-        report = validate_isa.validate_document(self.document)
-        validate_isa.validate_vectors(self.document, broken_vectors, report)
+        report = validate_isa.ValidationReport()
+        validate_isa.validate_vectors(self.expanded, broken_vectors, report)
         self.assertTrue(any("encodes" in error and "expected" in error for error in report.errors))
 
     def test_appendix_contains_new_form_metadata(self) -> None:
-        appendix = build_spec.render_instruction_reference(self.document, self.vectors)
+        appendix = build_spec.render_instruction_reference(self.expanded, self.vectors)
         for text in (
             "执行域",
             "编码格式",
@@ -892,12 +881,14 @@ class IsaConformanceTests(unittest.TestCase):
         self.assertIn("Atomic modifiers", appendix)
         self.assertIn("Descriptor contract", appendix)
         self.assertIn("Barrier contract", appendix)
-        self.assertIn("VGPR tag effect", appendix)
-        self.assertIn("`create_tag`", appendix)
-        self.assertIn("`copy_source_tag`", appendix)
+        self.assertIn("Scalar source selector", appendix)
+        self.assertIn("`ssrc_sel`", appendix)
+        self.assertNotIn("VGPR tag effect", appendix)
         self.assertIn("示例字段值", appendix)
         self.assertIn("保留值", appendix)
-        self.assertGreaterEqual(len(re.findall(r"`0x[0-9A-F]{16}`", appendix)), 392)
+        self.assertGreaterEqual(
+            len(re.findall(r"`0x[0-9A-F]{16}`", appendix)), FORM_COUNT
+        )
 
     def test_markdown_table_preserves_code_span_pipe(self) -> None:
         row = "| name | `a|b` | escaped \\| pipe |"
@@ -959,8 +950,8 @@ class IsaConformanceTests(unittest.TestCase):
 
             def fake_pdf(markdown: str, destination: Path, title: str, cover_summary: str = "") -> Path:
                 self.assertIn("SGPR + VGPR", markdown)
-                self.assertIn("69 指令家族", cover_summary)
-                self.assertIn("392 指令形式", cover_summary)
+                self.assertIn(f"{FAMILY_COUNT} 指令家族", cover_summary)
+                self.assertIn(f"{FORM_COUNT} 指令形式", cover_summary)
                 destination.write_bytes(b"%PDF-test")
                 return Path("test-font.ttf")
 

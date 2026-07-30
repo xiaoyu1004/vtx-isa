@@ -6,8 +6,8 @@
 
 本规范同时定义每 warp 归属的标量寄存器（SGPR）与逐 lane 切片的向量寄存器（VGPR）。
 
-- 指令家族：69
-- 指令形式：392
+- 指令家族：66
+- 指令形式：379
 - 指令字宽：64 位
 
 <div class="page-break"></div>
@@ -66,15 +66,13 @@ VTX-1 ISA 1.0 Draft 固定以下基本决定：
 5. 机器码中的 8 个 class 只是编码分类：`SYS`、`SALU`、`VALU`、`MEMORY`、`CONTROL`、`SYNC`、`CROSSLANE`、`MATRIX`。class 不直接决定怎样执行；例如 `MEMORY` class 里面既有 `scalar` form，也有 `vector` form。
 6. 所有 `execution_domain=scalar` 的指令每个 warp 只执行一次，而且必须先满足 scalar-ready（标量就绪）。scalar-ready 要求 `active_mask == live_mask`、`live_mask` 非空，并且没有处于 `FIRST` 或 `SECOND` 的未完成分歧帧。`active_mask` 是当前执行路径的 lane，`live_mask` 是尚未退出的 lane。
 7. `S_ALU`（普通标量整数和逻辑运算）、`S_FP`（标量浮点）、`S_GETREG`（读取统一特殊寄存器）、`SMEM`（标量访存）、`SATOM`（标量原子操作）、`S_READFIRST`（读取最低编号 active lane）都属于 `execution_domain=scalar`，没有例外。
-8. `execution_domain=vector` 的指令只对当前 active lane 执行，并可读取 SGPR，把同一个 SGPR 值广播给所有参与 lane。vector 指令不要求 scalar-ready。
+8. `execution_domain=vector` 的指令只对当前 active lane 执行，不要求 scalar-ready。`V1`、`V2`、`V3`、`VCMP` 这四种向量编码格式各带一个 scalar-source selector 字段：`V1` 是 1 bit 的 `ssrc`，其余三个是 2 bit 的 `ssrc_sel`。selector 为 0 时所有源寄存器号都在 VGPR 文件中解释；selector 非 0 时恰好一个源寄存器号改为在 SGPR 文件中解释，同一个标量值对所有参与 lane 相同。一条 vector 指令最多只能有一个 SGPR 源，架构中没有独立的广播指令。
 9. `CALL`（直接调用）、`CALL.IND`（从 SGPR 取目标的间接调用）、`JUMP.IND`（从 SGPR 取目标的间接跳转）、`RET`（返回）都是 `execution_domain=warp_control`，但因为它们使用每 warp 一套的统一调用栈或统一间接目标，所以必须额外满足 scalar-ready。直接 `BRA` 和 `BRA.P` 不要求 scalar-ready。
 10. 软件不能写 `EXEC`。分歧、重汇聚和退出只能由 `SSY`、`BRA.P`、`JOIN`、`EXIT` 及其隐藏状态机处理。
 11. 一个 CTA（线程块）必须整体驻留在同一个 SM/CU 上；CTA 内各 warp 可以独立调度。
-12. 每个 CTA 固定有 8 个命名屏障槽 `0..7`。owner 的唯一身份是 CTA 内 `linear_tid = warp_id*32 + lane_id`；owner 集固定为启动时全部真实线程，不含尾部不存在 lane，且不因 `EXIT` 缩小。每槽 generation 是数学上的非负整数 `N`，从 0 开始，每次退休严格加 1，单调且永不回绕。
-13. 三条规范屏障指令只叫 `BAR.SYNC.CTA id`、`BAR.ARRIVE.CTA vd,id`、`BAR.WAIT.CTA id,vs`。split token 是每 lane 的 VGPR32 值并带隐藏有效标签；标签恰好绑定 `{CTA identity, linear_tid, slot, logical generation}`，不能靠伪造 32 位数值冒充，也不能在后续代复活。
-14. 同一 generation 只能选择 `SYNC` 或 `SPLIT` 一种模式。任一 active lane 的屏障协议错误都使整条 warp 动态指令零效果回滚；没有子集屏障，也没有 `expected` 字段。
-15. BAR 阻塞整个 warp 的当前动态路径；一个 waiter 固定保存 `{warp_id, owner_snapshot, resume_pc}`。阻塞和恢复都不改 active/live 掩码、重汇聚栈或调用栈，挂起路径不能趁机切入，每 warp 同时至多一条 blocked record。
-16. 任意参与 lane 的任意 VGPR32 槽写入默认清除旧 barrier-token 标签。唯二例外是 `BAR.ARRIVE.CTA` 创建新标签，以及寄存器型 `V_MOV.B32` 复制源标签。
+12. 每个 CTA 固定有 8 个屏障槽 `0..7`。owner 的唯一身份是 CTA 内 `linear_tid = warp_id*32 + lane_id`。`live_owner_set` 启动时是 CTA 内全部真实线程，不含尾部不存在的 lane，并且只在 `EXIT` 时收缩。
+13. 唯一的规范屏障指令是 `BAR.SYNC.CTA id`。架构不提供 split（arrive/wait 分离）屏障、屏障 token 或 generation 计数。屏障在槽的 `arrived_set` 等于 CTA 的 `live_owner_set` 时立即完成，槽随即原子清回 idle；idle 的定义就是 `arrived_set` 为空且没有 waiter。
+14. `BAR.SYNC.CTA` 阻塞整个 warp 的当前动态路径；一个 waiter 固定保存 `{warp_id, owner_snapshot, resume_pc}`，每 warp 同时至多一条 blocked record。阻塞和恢复都不改 active/live 掩码、重汇聚栈或调用栈，挂起路径不能趁机切入。它要求 scalar-ready，因此分歧 warp 在记录任何 arrival 之前就报故障。
 
 这些固定点的完整定义分别见 `02-programming-model.md` 和 `03-execution-model.md`。
 
@@ -84,15 +82,14 @@ VTX-1 ISA 1.0 Draft 固定以下基本决定：
 
 - 在 CTA 开始执行前完成描述符、文本、参数和资源校验；
 - 保持 `s`、`v`、`vp`、`SCC`、`EXEC`、`LIVE` 的可观察行为与本草案一致；
-- 对任何不满足 scalar-ready 的 `execution_domain: scalar` form 准确报告 `SCALAR_STATE_FAULT`；
-- `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 的 `required_state: scalar_ready` 不满足时，同样报告 `SCALAR_STATE_FAULT`，同时保持它们的 `warp_control` 分类；
+- 对任何不满足 scalar-ready 的 `execution_domain: scalar` form 准确报告 `DIVERGENCE_FAULT`；
+- `CALL`、`CALL.IND`、`JUMP.IND`、`RET`、`BAR.SYNC.CTA` 的 `required_state: scalar_ready` 不满足时，同样报告 `DIVERGENCE_FAULT`，同时保持它们各自的执行域分类；
 - 只通过规定的 warp-control 状态机改变 active lane 集和 live lane 集；
 - 在一条指令故障时，不提交该指令的任何部分效果；
-- 对命名屏障执行固定 owner、单 generation、模式隔离、逐 lane token 和恰好一次消费规则；`EXIT` 不得丢弃尚未消费的 split token；
-- 用槽内 `arrived_set-consumed_set` 判断 EXIT 的 SPLIT 消费义务，不能靠扫描 VGPR 标签猜测；
-- 让有限内部计数器表现得像 generation 永不回绕；任何旧、已消费或复制 token 都禁止因物理计数值复用而重新匹配；
-- 只有全部 warp 完成且 8 个槽都处于 IDLE 状态时才完成 CTA；generation 计数值本身不妨碍完成；
-- 只把成功 BAR 的 release/acquire 用于 CTA shared memory；global、local、param、const 和 host 不因 BAR 自动得到顺序；
+- 对每条向量指令最多解码出一个 SGPR 源；selector 落在保留编码上时报告 `ILLEGAL_INSTRUCTION`；
+- 对屏障执行固定 owner 身份和 `arrived_set == live_owner_set` 的完成条件；`EXIT` 把退出线程从 `live_owner_set` 移除，但本身不产生 shared release；
+- 只有全部 warp 完成且 8 个槽都处于 idle 状态时才完成 CTA；
+- 只把成功 `BAR.SYNC.CTA` 的 release/acquire 用于 CTA shared memory；global、local、param、const 和 host 不因屏障自动得到顺序；
 - 不把调度顺序、物理寄存器编号、缓存行为或实际执行周期暴露成未定义的架构承诺。
 
 实现可以采用不同的流水线、寄存器文件组织和调度算法，只要软件看到的结果与本草案完全一致。
@@ -139,14 +136,15 @@ lane_id    = linear_tid mod 32
 - **SCC（标量条件码）**：每个 warp 一个 1 位状态。只有把 SCC 明确列为源操作数的指令才读取它；SCC 不会自动变成所有 scalar 指令的开关。
 - **EXEC**：只读的 32 位当前执行掩码，数值等于 `active_mask`。
 - **LIVE**：只读的 32 位存活掩码，数值等于 `live_mask`。
-- **broadcast（广播）**：vector 指令读取一个 SGPR 时，把同一个 32 位值送给所有参与 lane。
+- **scalar source（标量源）**：一条 vector 指令中被 scalar-source selector 指定为读 SGPR 的那个源操作数。它的 32 位值对所有参与 lane 都相同，因此天然具有广播效果。一条 vector 指令最多有一个标量源。
+- **scalar-source selector（标量源选择器）**：`V1`、`V2`、`V3`、`VCMP` 格式中的一个编码字段，决定哪个源寄存器号在 SGPR 文件中解释。`V1` 用 1 bit 的 `ssrc`，其余三个用 2 bit 的 `ssrc_sel`；值 0 表示没有标量源。
 - **register slice（寄存器切片）**：SM/CU 从物理 SGPR/VGPR 容量中划给一个驻留 warp 的那一部分。
 
 `s0` 表示整个 warp 共用的一个 32 位值，不是 32 份值。`v0` 表示每个 lane 各有一个 32 位值，因此一个完整 warp 的 `v0` 一共有 32 份值。
 
 SGPR 和 VGPR 的物理寄存器文件位于 SM/CU。架构寄存器名不等于固定物理编号；实现可以改名、分 bank（分存储组）或在不被软件发现的情况下搬移数据。
 
-**barrier token（屏障 token）**是 `BAR.ARRIVE.CTA` 写入每个参与 lane 的 VGPR32。它有普通软件可见的 32 位数值，还带程序不能直接构造的隐藏有效标签。标签字段恰好是 `{CTA identity, linear_tid, slot, logical generation}`；数值碰巧相同不代表 token 相同。任意 VGPR32 槽写入默认清除旧标签，唯二例外是 `BAR.ARRIVE.CTA` 创建新标签、寄存器型 `V_MOV.B32` 完整复制源标签。
+寄存器只保存位模式。SGPR、VGPR、`vp` 和 `SCC` 都不携带隐藏的影子状态，也没有任何架构可见的标签跟着寄存器值传播。
 
 ## 4. lane 掩码
 
@@ -185,7 +183,7 @@ active_mask & ~live_mask == 0
 
 `execution_domain` 说明“这条 form 怎样执行”，`required_state` 说明“执行前还要满足什么状态”。所有 `execution_domain: scalar` form 都必须写 `required_state: scalar_ready`。这个规则不看机器 class，也不看它属于算术、浮点、特殊寄存器、访存还是原子操作。
 
-`execution_domain: vector` 不检查 scalar-ready。普通 `warp_control` 也不检查；直接 `BRA` 和 `BRA.P` 在分歧路径中仍可运行。`CALL`、`CALL.IND`、`JUMP.IND`、`RET` 是明确例外：它们写有 `required_state: scalar_ready`，但执行域仍是 `warp_control`。
+`execution_domain: vector` 不检查 scalar-ready。普通 `warp_control` 也不检查；直接 `BRA` 和 `BRA.P` 在分歧路径中仍可运行。`CALL`、`CALL.IND`、`JUMP.IND`、`RET` 是明确例外：它们写有 `required_state: scalar_ready`，但执行域仍是 `warp_control`。`BAR.SYNC.CTA` 同样写有 `required_state: scalar_ready`，执行域是 `cta_sync`。
 
 `SSY`、`BRA`、`BRA.P`、`JOIN`、`EXIT` 都是 `warp_control`。它们不属于 scalar ALU。即使当前 warp 处于分歧路径，它们仍按 `03-execution-model.md` 的控制规则执行。
 
@@ -220,17 +218,15 @@ PC + 8 <= text_size
 
 `FIRST` 或 `SECOND` 帧叫 **未完成分歧帧**。即使某个时刻 `active_mask` 恰好又等于 `live_mask`，只要栈里还有这类帧，scalar 指令仍然不合法。
 
-命名 CTA 屏障使用这些固定术语：
+CTA 屏障使用这些固定术语：
 
 - **slot（槽）**：每 CTA 的 8 个编号槽之一，id 为 `0..7`；
-- **generation（代）**：数学上的非负整数 `N={0,1,2,...}`。槽从 0 开始，每次退休严格变成 `old_generation+1`；它单调增加、永不回绕，也没有最大架构值；
 - **owner identity（owner 身份）**：只使用 CTA 内 `linear_tid = warp_id*32 + lane_id`；二元组 `(warp_id,lane_id)` 只是等价表示，所有架构集合和比较都以 `linear_tid` 为元素；
-- **owner set（owner 集）**：CTA 启动时全部真实线程 `linear_tid` 的固定集合，不含不存在的尾 lane，且不因 `EXIT` 变小；
-- **mode（模式）**：当前代的 `EMPTY`、`SYNC` 或 `SPLIT`；第一批合法到达把 `EMPTY` 变成后两者之一；
-- **arrived set（已到达集合）**：当前代已经成功到达的 `linear_tid` 集合；同一 `linear_tid` 每代只能进入一次；
-- **consumed set（已消费集合）**：SPLIT 代已经用 `BAR.WAIT.CTA` 成功消费自己 token 的 `linear_tid` 集合。
+- **live owner set（存活 owner 集）**：仍需在屏障处被等待的 `linear_tid` 集合。CTA 启动时它是全部真实线程，不含不存在的尾 lane；`EXIT` 把退出线程从其中移除；
+- **arrived set（已到达集合）**：当前尚未完成的这次屏障中已经成功到达的 `linear_tid` 集合；同一 `linear_tid` 只能进入一次；
+- **idle slot（空闲槽）**：`arrived_set` 为空且没有 waiter 的槽。
 
-“active owner”集合 `A` 是把某条 BAR 动态指令入口 `active_mask` 的每个置位 lane 转成 `linear_tid` 后得到的集合。挂起路径、已退出 lane和不存在 lane都不在这次 `A` 里；但只要其 `linear_tid` 属于固定 owner set，就仍可能是本代尚未到达或尚未消费的 owner。
+“active owner”集合 `A` 是把某条 `BAR.SYNC.CTA` 动态指令入口 `active_mask` 的每个置位 lane 转成 `linear_tid` 后得到的集合。因为 `BAR.SYNC.CTA` 要求 scalar-ready，`A` 恰好是该 warp 当前全部 live lane，不存在挂起路径或已退出 lane 混入的情况。
 
 屏障阻塞记录固定写成：
 
@@ -242,7 +238,7 @@ BarrierWaitRecord {
 }
 ```
 
-`owner_snapshot` 是入口 `A` 的冻结副本，`resume_pc=old_PC+8`。BAR 阻塞的是整个 warp 当前动态路径。阻塞时 warp 的 PC 留在 BAR 上，`active_mask/live_mask`、重汇聚栈和调用栈保持不变；挂起路径不能切入。每个 warp 同一时刻至多有一条 blocked record。恢复只清除该记录、写 `PC=resume_pc` 并把 warp 置为 ready，其他状态不变。
+`owner_snapshot` 是入口 `A` 的冻结副本，`resume_pc=old_PC+8`。`BAR.SYNC.CTA` 阻塞的是整个 warp 当前动态路径。阻塞时 warp 的 PC 留在屏障指令上，`active_mask/live_mask`、重汇聚栈和调用栈保持不变；挂起路径不能切入。每个 warp 同一时刻至多有一条 blocked record。恢复只清除该记录、写 `PC=resume_pc` 并把 warp 置为 ready，其他状态不变。
 
 ## 8. 数值和位写法
 
@@ -270,10 +266,8 @@ snapshot(x)              # 为当前动态指令保存不再变化的副本
 fault(code, mask, aux)   # 本动态指令不提交，并报告故障
 block(reason)            # 保存当前状态，等待条件满足后继续
 commit(effects)          # 把整条指令的效果一次性变为可见
-retire(slot)             # generation = old_generation + 1；再清 mode/集合/等待者
+clear(slot)              # 清空 arrived_set 和 waiter 列表，槽回到 idle
 ```
-
-实现可以在内部使用有限位宽计数器，但架构效果必须等同于逻辑 generation 永不回绕。实现可用更宽 epoch、不可伪造 capability ID、安全回收等办法；无论采用哪种办法，旧 token、已消费 token 或它的 `V_MOV.B32` 副本都不能因内部数值再次相等而在后续逻辑代重新有效。
 
 除屏障等明确写成两阶段的指令外，一条动态指令必须“先检查，后整体提交”：
 
@@ -293,7 +287,7 @@ else:
 ## 10. 就绪、阻塞和完成
 
 - **ready（就绪）**：warp 有非空 `active_mask`，也没有在等待屏障、内存或其他事件。
-- **blocked（阻塞）**：warp 还没完成，但眼下不能发射下一条指令；BAR blocked record 存在时整个 warp 都不能切换到挂起路径。
+- **blocked（阻塞）**：warp 还没完成，但眼下不能发射下一条指令；屏障 blocked record 存在时整个 warp 都不能切换到挂起路径。
 - **complete（完成）**：warp 的 `live_mask` 已经为空，而且没有未清理的重汇聚或同步状态。
 - **deadlock（死锁）**：内核还没完成，却没有任何 warp 能继续，也没有已在途事件能让 warp 重新就绪。
 - **livelock（活锁）**：指令一直在执行，但程序永远达不到完成状态。
@@ -462,7 +456,7 @@ s15 = parameter bytes [60, 64)
 
 这份复制对 CTA 中每个 warp 都做一次，所以每个 warp 启动时的 `s0..s15` 相同。超过 64 字节的参数通过只读 param 地址空间和参数加载指令读取。
 
-指针参数除了 64 位数值，还要带地址空间身份。实现必须能区分“数值碰巧一样的普通 U64”和真正的 `GLOBAL_PTR` 或 `CONST_PTR`；普通整数不能伪装成指针。
+`GLOBAL_PTR` 和 `CONST_PTR` 只是参数布局记录上的静态声明，供启动时校验参数块并确定该指针指向哪个窗口。它们不给运行期的寄存器值附加任何身份：写进 SGPR 之后就是普通的 64 位数值。一次访存落在哪个地址空间完全由指令 opcode 决定，与地址值本身无关。
 
 ## 4. 架构寄存器
 
@@ -486,9 +480,7 @@ s15 = parameter bytes [60, 64)
 
 例如，`v3` 不是整个 warp 共用的值。lane 0 的 `v3` 和 lane 1 的 `v3` 是两个独立的 32 位值。
 
-每个真实 lane 的每个 VGPR32 还可以带一个程序不可直接读取的 barrier-token 标签。普通状态是“无标签”。对参与 lane，只要某条 form 写任意 VGPR32 槽，就默认清除该槽旧标签；多槽目标逐槽清除。唯二例外是 `BAR.ARRIVE.CTA` 创建 `{CTA identity,linear_tid,slot,logical generation}` 新标签，以及寄存器型 `V_MOV.B32` 按 lane 完整复制源标签。
-
-因此，`V_MOV.B64`、`V_BCAST`、`X_BROADCAST`、`V_GETREG`、普通或原子 load 的返回目标、全部 ALU/CVT/FP 写回、MMA 输出和其他 VGPR 写目标 form 都走默认清除。标签规则与 pointer provenance 等其他 shadow tag 分开处理；清除 barrier-token 标签不等于擅自清除或制造其他标签。barrier 标签不改变 32 位寄存器容量，也不能由位型伪造。
+VGPR 只保存 32 位位模式。架构不给寄存器附加任何影子状态：没有 barrier token 标签，也没有地址 provenance 标签。任何一条写 VGPR 的 form 只改写这 32 位数值，实现不得让软件观察到额外的隐藏 per-register 状态。
 
 ### 4.3 `vp` 写入规则
 
@@ -576,12 +568,11 @@ LIVE            = live_mask 的只读视图
 
 - 一块 `static_shared_size + requested_dynamic_shared` 字节的 shared memory；
 - 每个真实 lane 一块 `local_size_per_lane` 字节的 local memory；
-- 8 个命名 CTA 屏障槽 `0..7`。每槽初始化为逻辑 `generation=0∈N`、`mode=EMPTY`、`arrived_set=empty`、`consumed_set=empty`、`completed=false`、`waiters=empty`；8 槽共用的固定 owner set 是 CTA 启动时全部真实线程的 `linear_tid`；
+- 8 个 CTA 屏障槽 `0..7`，每槽初始化为 `arrived_set=empty`、`waiters=empty`，也就是 idle；
+- 一个 CTA 级 `live_owner_set`，初值是 CTA 启动时全部真实线程的 `linear_tid`；
 - CTA 和 grid 的坐标及尺寸。
 
-`linear_tid = warp_id*32+lane_id` 是 owner 的唯一集合元素；不存在的尾 lane 不进入 owner set。之后执行 `EXIT` 也不从 owner set 删除 `linear_tid`。所有 VGPR barrier-token 标签启动时无效。shared memory 和 local memory 的初始数据为 `UNSPEC`，除非其他章节对某段存储明确规定清零。
-
-generation 没有 U32/U64 之类的架构位宽。有限硬件状态必须提供“看起来永不回绕”的结果：不得因为物理计数器回到旧位型，就让任何旧、已消费或复制 token 重新匹配当前代。
+`linear_tid = warp_id*32+lane_id` 是 owner 的唯一集合元素；不存在的尾 lane 从一开始就不在 `live_owner_set` 中。`EXIT` 把退出线程的 `linear_tid` 从 `live_owner_set` 移除。shared memory 和 local memory 的初始数据为 `UNSPEC`，除非其他章节对某段存储明确规定清零。
 
 ## 8. 特殊只读信息
 
@@ -614,15 +605,14 @@ vector 读取 lane 相关信息时，每个参与 lane 得到自己的值。`exe
 |---:|---|---|
 | `0x0001` | `ILLEGAL_INSTRUCTION` | 指令字、操作码或保留位非法 |
 | `0x0002` | `ILLEGAL_OPERAND` | 寄存器类别、编号、目标或动态操作数组合非法 |
-| `0x0003` | `SCALAR_STATE_FAULT` | `execution_domain: scalar` 的 form 不满足 scalar-ready，或 `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 的 `required_state: scalar_ready` 不满足 |
-| `0x0004` | `RECONVERGENCE_FAULT` | 重汇聚栈、帧、目标或 `JOIN` 顺序错误 |
+| `0x0003` | `DIVERGENCE_FAULT` | 要求 warp 完全重汇聚的 form 在非 scalar-ready 状态下执行；覆盖全部 `execution_domain: scalar` form，以及 `CALL`、`CALL.IND`、`JUMP.IND`、`RET`、`BAR.SYNC.CTA` 上写明的 `required_state: scalar_ready` |
+| `0x0004` | `RECONVERGENCE_FAULT` | 重汇聚栈、帧、目标或 `JOIN` 顺序错误，调用栈上溢或下溢，以及 `RET` 时仍有未关闭的 callee 帧 |
 | `0x0005` | `MISALIGNED_ACCESS` | 内存访问没有满足对齐要求 |
 | `0x0006` | `MEMORY_BOUNDS` | 地址越过对应地址空间 |
 | `0x0007` | `INTEGER_FAULT` | 除零等已定义整数错误 |
-| `0x0008` | `BARRIER_FAULT` | 屏障模式、到达、token、linear_tid owner、槽或代际规则错误；包括任一 SPLIT 槽中该退出 `linear_tid ∈ arrived_set-consumed_set` |
-| `0x0009` | `COLLECTIVE_FAULT` | warp 集合指令的参与规则错误 |
-| `0x000A` | `SOFTWARE_TRAP` | 程序主动执行 `TRAP` |
-| `0x000B` | `DEADLOCK` | 满足架构死锁条件 |
+| `0x0008` | `COLLECTIVE_FAULT` | warp 集合指令或矩阵指令的参与规则错误 |
+| `0x0009` | `SOFTWARE_TRAP` | 程序主动执行 `TRAP` |
+| `0x000A` | `DEADLOCK` | 满足架构死锁条件 |
 
 故障记录至少包含：
 
@@ -637,7 +627,9 @@ FaultRecord {
 }
 ```
 
-`SCALAR_STATE_FAULT` 是 warp 状态错误，`lane_mask` 必须记录指令入口的 `active_mask`，`address_or_aux` 必须为 0。它覆盖所有 `execution_domain: scalar` form，也覆盖 `warp_control` 类 `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 上明确写出的 `required_state: scalar_ready`。完整触发条件见 `03-execution-model.md`。
+`DIVERGENCE_FAULT` 是 warp 状态错误，`lane_mask` 必须记录指令入口的 `active_mask`，`address_or_aux` 必须为 0。它覆盖所有 `execution_domain: scalar` form，也覆盖 `warp_control` 类 `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 以及 `cta_sync` 类 `BAR.SYNC.CTA` 上明确写出的 `required_state: scalar_ready`。完整触发条件见 `03-execution-model.md`。
+
+`DIVERGENCE_FAULT` 和 `RECONVERGENCE_FAULT` 的分界是固定的：前者只表示“这条 form 需要一个完全重汇聚的 warp，而当前 warp 不是”，它在指令执行前由入口状态检查产生，不改变任何控制状态；后者表示重汇聚状态机或调用栈本身被用错，例如 `JOIN` 与栈顶帧阶段不符、`SSY` 目标非法、调用栈上溢或下溢。同一条动态指令若两者都成立，按 `fault_priority` 先报 `DIVERGENCE_FAULT`。
 
 同一动态指令同时发现多个问题时，必须逐字采用 YAML 的 `fault_priority`：
 
@@ -645,9 +637,8 @@ FaultRecord {
 fault_priority:
 - ILLEGAL_INSTRUCTION
 - ILLEGAL_OPERAND
-- SCALAR_STATE_FAULT
+- DIVERGENCE_FAULT
 - RECONVERGENCE_FAULT
-- BARRIER_FAULT
 - COLLECTIVE_FAULT
 - INTEGER_FAULT
 - MISALIGNED_ACCESS
@@ -714,7 +705,7 @@ else:
 
 若指令故障，该指令不得留下部分 SGPR、VGPR、`vp0..vp15`、SCC、内存、PC、`EXEC`、`LIVE` 或栈更新。
 
-YAML 必须给每个 `execution_domain: scalar` form 写 `required_state: scalar_ready`，也必须给 `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 写同一个 `required_state`。执行时按这个字段检查：
+YAML 必须给每个 `execution_domain: scalar` form 写 `required_state: scalar_ready`，也必须给 `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 和 `BAR.SYNC.CTA` 写同一个 `required_state`。执行时按这个字段检查：
 
 ```text
 if I.required_state == scalar_ready:
@@ -723,7 +714,7 @@ else:
     no scalar-ready check
 ```
 
-这里的额外检查不会把 `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 改成 `scalar`；它们的 `execution_domain` 仍是 `warp_control`。直接 `BRA` 和 `BRA.P` 不做 scalar-ready 检查。
+这里的额外检查不会改变执行域：`CALL`、`CALL.IND`、`JUMP.IND`、`RET` 仍是 `warp_control`，`BAR.SYNC.CTA` 仍是 `cta_sync`。直接 `BRA` 和 `BRA.P` 不做 scalar-ready 检查。
 
 同一动态指令发现多个故障时，只使用 YAML 的 `fault_priority`；`02-programming-model.md` 第 9 节逐字抄写了该字段。本文件不从 `faults` 列表或故障码另排第二套顺序。
 
@@ -776,7 +767,7 @@ reconv_stack 中不存在 phase 为 FIRST 或 SECOND 的帧
 
 ```text
 fault(
-    code = SCALAR_STATE_FAULT,
+    code = DIVERGENCE_FAULT,
     lane_mask = active_mask,
     aux = 0)
 ```
@@ -825,9 +816,23 @@ P = E & ~snapshot(vpN)
 
 `P` 是 participating mask，也就是实际执行数据操作的 lane。不存在 lane、已经退出的 lane、挂起分支中的 lane 都不会进入 `P`。
 
-### 4.2 SGPR 广播
+### 4.2 混合源：一个 SGPR 源
 
-vector 指令可以把 SGPR 当作统一源读取：
+vector 指令的源寄存器号在哪个寄存器文件里解释，由编码里的 scalar-source selector 决定。`V1` 格式用 1 bit 的 `ssrc`，`V2`、`V3`、`VCMP` 用 2 bit 的 `ssrc_sel`。selector 为 0 时全部源都读 VGPR；非 0 时它恰好指定一个源位置改读 SGPR：
+
+```text
+selector == 0            所有源都是 VGPR
+V1:   ssrc == 1          va 读 SGPR
+V2:   ssrc_sel == 1      va 读 SGPR
+      ssrc_sel == 2      vb 读 SGPR
+      ssrc_sel == 3      保留
+VCMP: 与 V2 相同
+V3:   ssrc_sel == 1      va 读 SGPR
+      ssrc_sel == 2      vb 读 SGPR
+      ssrc_sel == 3      vc 读 SGPR
+```
+
+被选中的源在该动态指令里对所有参与 lane 给出同一个 32 位值：
 
 ```text
 for each lane i in P:
@@ -835,9 +840,11 @@ for each lane i in P:
     scalar_source[i] = sM           # 所有 lane 得到同一个值
 ```
 
-这就是 SGPR 广播。广播不会复制或改写 SGPR，只是在该动态指令里让各参与 lane 看到同一个源值。
+也就是说广播效果内建在读操作里，不需要先把值搬进 VGPR，架构里也没有独立的广播指令。selector 落在保留编码上时报告 `ILLEGAL_INSTRUCTION`；这条检查在读取任何源之前完成。
 
-vector 指令读取 SGPR 不需要满足 scalar-ready，因为它的 `execution_domain` 仍是 `vector`。它只把 SGPR 当作只读统一输入。
+一条 vector 指令最多只能有一个 SGPR 源。要同时用到两个 uniform 值时，软件必须先用一条 `V_MOV` 之类的混合源指令把其中一个搬进 VGPR。
+
+读 SGPR 不改变执行域：这类指令仍是 `vector`，仍不要求 scalar-ready，SGPR 只是只读的统一输入。selector 也不影响写回：目标始终是 VGPR 或 `vpN`。
 
 ### 4.3 Vector 写回
 
@@ -876,7 +883,7 @@ vector 访存只为 `P` 中的 lane 形成地址。`E-P` 中的 lane：
 
 `warp_control` 直接管理 warp，不属于 scalar ALU。`SSY`、`BRA`、`BRA.P`、`JOIN`、`EXIT` 不检查 scalar-ready；它们必须能在分歧路径中把控制流走完。
 
-`CALL`、`CALL.IND`、`JUMP.IND`、`RET` 也属于 `warp_control`，并明确写有 `required_state: scalar_ready`。检查失败就报告 `SCALAR_STATE_FAULT`，不读取间接目标或调用栈，也不改 PC。
+`CALL`、`CALL.IND`、`JUMP.IND`、`RET` 也属于 `warp_control`，并明确写有 `required_state: scalar_ready`。检查失败就报告 `DIVERGENCE_FAULT`，不读取间接目标或调用栈，也不改 PC。
 
 直接 `BRA` 和 `BRA.P` 明确不套这条额外规则。不能因为它们也会改 PC，就把它们误当成调用指令。
 
@@ -1103,20 +1110,11 @@ PC = old_PC + 8
 - 无条件 `EXIT`：`X = active_mask`；
 - 带显式 lane 条件的 `EXIT`：`X = active_mask & condition_mask`。
 
-提交前先把每个 `lane∈X` 转成 `linear_tid=warp_id*32+lane_id`，然后检查全部 8 个槽：
+`EXIT` 没有任何屏障前置条件；它不会因为槽状态失败。提交时先把每个 `lane∈X` 转成 `linear_tid=warp_id*32+lane_id`，把这些身份从 CTA 的 `live_owner_set` 中移除，然后更新掩码：
 
 ```text
-for tid in exiting_linear_tids:
-    require 不存在槽 S 满足：
-        S.mode == SPLIT
-        and tid in (S.arrived_set - S.consumed_set)
-```
+live_owner_set -= exiting_linear_tids
 
-任一槽命中就使整条 `EXIT` 报告 `BARRIER_FAULT`：所有 lane 都不能退出，`LIVE/EXEC`、栈、槽、VGPR 标签和 PC 全部保持入口状态。这个义务只由槽状态决定，与 VGPR 中是否还保存 token 标签无关：token 即使被覆盖或丢失，未消费义务仍在；已经消费后留下的 stale 标签不阻止 EXIT。
-
-成功提交时：
-
-```text
 live_mask   = live_mask & ~X
 active_mask = active_mask & ~X
 
@@ -1125,6 +1123,8 @@ for each frame f:
     f.pending_mask &= ~X
     f.arrived_mask &= ~X
 ```
+
+缩小 `live_owner_set` 可能让某个正在等待的槽立刻满足完成条件，那些 waiter 因此被唤醒。但 `EXIT` 本身不产生 shared release；退出线程之前写的 shared 数据只在它自己执行过成功屏障时才被同步。
 
 若还有 active lane，它们从 `old_PC + 8` 继续。若当前路径已经空了，必须执行下面的正规化，直到找到另一条非空路径或 warp 完成：
 
@@ -1166,7 +1166,7 @@ while active_mask == 0:
 
 进入 `FIRST` 后，只有第一条路径的 lane active；进入 `SECOND` 后，只有第二条路径的 lane active。若这时运行 scalar，两个路径可能对同一个 SGPR 给出互相覆盖的结果，也可能让后执行路径看到前一路留下的临时值。
 
-VTX-1 不让软件猜这种行为。只要有 `FIRST` 或 `SECOND` 未完成帧，任何 `execution_domain=scalar` 的指令都直接报告 `SCALAR_STATE_FAULT`。这包括 `S_ALU`、`S_FP`、`S_GETREG`、`SMEM`、`SATOM`、`S_READFIRST`，不能只限制普通算术。编译器必须把这些指令放在分歧前或完成 `JOIN` 后；若确实需要逐 lane 计算，就使用 vector 指令。
+VTX-1 不让软件猜这种行为。只要有 `FIRST` 或 `SECOND` 未完成帧，任何 `execution_domain=scalar` 的指令都直接报告 `DIVERGENCE_FAULT`。这包括 `S_ALU`、`S_FP`、`S_GETREG`、`SMEM`、`SATOM`、`S_READFIRST`，不能只限制普通算术。编译器必须把这些指令放在分歧前或完成 `JOIN` 后；若确实需要逐 lane 计算，就使用 vector 指令。
 
 普通 `warp_control` 指令是例外，因为没有它就无法走完分支并回到 `JOIN`。`CALL`、`CALL.IND`、`JUMP.IND`、`RET` 仍要检查 scalar-ready。`vector` 也是合法的，因为它只改当前 participating lane 的 VGPR 或 `vpN` 状态。
 
@@ -1210,24 +1210,19 @@ receivers = E
 
 ## 10. CTA 屏障
 
-`execution_domain=cta_sync` 的三条规范指令是：
+`execution_domain=cta_sync` 只有一条屏障指令：
 
 ```text
-BAR.SYNC.CTA   id
-BAR.ARRIVE.CTA vd, id
-BAR.WAIT.CTA   id, vs
+BAR.SYNC.CTA id
 ```
 
-每个 CTA 固定有 8 个命名槽 `id=0..7`。每个槽只有一个当前 generation，状态为：
+架构不提供把到达和等待分开的 split 屏障，也不提供屏障 token、generation 计数或子集屏障。需要“先到达、后等待”的软件必须自己用 shared memory 上的原子操作和 `MEMBAR` 构造，那些结构完全落在第 4 章的内存模型里，不需要额外的屏障状态。
+
+每个 CTA 固定有 8 个槽 `id=0..7`，另有一个 CTA 级的 `live_owner_set`：
 
 ```text
 BarrierSlot {
-    generation: N                 # 数学非负整数，无最大值、不回绕
-    mode: EMPTY | SYNC | SPLIT
-    owner_set: set<linear_tid>         # CTA 启动时固定
     arrived_set: set<linear_tid>
-    consumed_set: set<linear_tid>
-    completed: bool
     waiters: map<warp_id, BarrierWaitRecord>
 }
 
@@ -1236,23 +1231,23 @@ BarrierWaitRecord {
     owner_snapshot: set<linear_tid>
     resume_pc: U64
 }
+
+live_owner_set: set<linear_tid>        # 每 CTA 一个，8 个槽共用
 ```
 
-owner 的唯一身份是 CTA 内 `linear_tid=warp_id*32+lane_id`；它与 `(warp_id,lane_id)` 等价，但所有 `owner_set/arrived_set/consumed_set`、token tag、重复检查和 wrong-owner 检查都只使用 `linear_tid`。启动时 `generation=0`、`mode=EMPTY`、两个集合和 `waiters` 都为空、`completed=false`。`owner_set` 恰好是 CTA 启动时全部真实线程的 `linear_tid`：不存在的尾 lane不属于 owner；真实线程后来 `EXIT` 也不会删掉 owner。没有子集 barrier，没有 `expected` 字段。
+owner 的唯一身份是 CTA 内 `linear_tid=warp_id*32+lane_id`；`(warp_id,lane_id)` 只是等价表示，所有集合和比较都以 `linear_tid` 为元素。启动时 8 个槽的 `arrived_set` 和 `waiters` 都为空，也就是全部 idle；`live_owner_set` 是 CTA 启动时全部真实线程的 `linear_tid`，不含不存在的尾 lane。`EXIT` 把退出线程从 `live_owner_set` 移除，这是它唯一会变小的方式。没有 `expected` 字段。
 
-这里的 `N` 是数学上的非负整数，不是 U64，也没有最大值。generation 只会在 `retire` 时严格加 1，永远不回绕。有限实现必须做到架构上看起来同样不回绕；它可以使用更宽 epoch、capability ID 或安全回收，但绝不能让旧、已消费或复制 token 因内部计数器复用而重新匹配。
-
-每条 BAR 先取：
+`BAR.SYNC.CTA` 写有 `required_state: scalar_ready`。因此它先取
 
 ```text
 A = {warp_id*32 + lane_id | lane_id 位于 snapshot(active_mask)}
 ```
 
-所以 `A` 是 `set<linear_tid>`。分歧路径只处理当前 `active_mask` 中的真实 lane；同 warp 的挂起路径不会偷偷参加。所有 owner 检查完成后才允许一次提交。任一 `tid∈A` 出错，整条 warp 动态指令报告 `BARRIER_FAULT`，不得留下部分 arrival、consume、VGPR 写、blocked record 或 PC 效果。
+时，`active_mask` 必然等于 `live_mask`，`A` 恰好是该 warp 当前全部 live lane。分歧 warp 在记录任何 arrival 之前就报告 `DIVERGENCE_FAULT`，不留下部分 arrival、blocked record 或 PC 效果。这条规则替代了旧模型里的模式隔离、重复到达和 wrong-owner 检查：一个 warp 要么整体到达，要么根本没到达。
 
 ### 10.1 阻塞记录
 
-BAR 阻塞整个 warp 的当前动态路径，不只是 `A` 中的若干 lane。每个 warp 同一时刻至多有一条 barrier blocked record；ready warp 发射 BAR 时该记录必须为空。统一操作为：
+屏障阻塞整个 warp 的当前动态路径。每个 warp 同一时刻至多有一条 barrier blocked record；ready warp 发射屏障时该记录必须为空。统一操作为：
 
 ```text
 block_barrier(S, A, old_PC):
@@ -1263,12 +1258,12 @@ block_barrier(S, A, old_PC):
         resume_pc = old_PC + 8)
     require current_warp_id not in S.waiters
     S.waiters[current_warp_id] = R
-    warp.blocked_record = (slot_id, S.generation, R)
+    warp.blocked_record = (slot_id, R)
     warp.ready = false
-    # PC 留在 BAR；active_mask/live_mask/reconv_stack/call_stack 全部不变
+    # PC 留在屏障上；active_mask/live_mask/reconv_stack/call_stack 全部不变
 
 resume_barrier(S, R):
-    require warp[R.warp_id].blocked_record == (slot_id, S.generation, R)
+    require warp[R.warp_id].blocked_record == (slot_id, R)
     shared_acquire(R.owner_snapshot)
     delete S.waiters[R.warp_id]
     warp[R.warp_id].blocked_record = none
@@ -1277,133 +1272,50 @@ resume_barrier(S, R):
     # active_mask/live_mask/reconv_stack/call_stack 全部不变
 ```
 
-blocked record 存在期间，调度器不能发射该 warp，也不能切入其重汇聚栈中的挂起路径。恢复只执行上面列出的 PC、ready 和记录清理，不重新读 token、不重新 arrival/consume，也不改任何控制掩码或栈。
+blocked record 存在期间，调度器不能发射该 warp，也不能切入其重汇聚栈中的挂起路径。恢复只执行上面列出的 PC、ready 和记录清理，不重新读源，也不改任何控制掩码或栈。
 
-### 10.2 模式、到达和退休
-
-某代的第一批合法 arrival 决定模式：`BAR.SYNC.CTA` 把 `EMPTY` 变为 `SYNC`，`BAR.ARRIVE.CTA` 把它变为 `SPLIT`。已经选定后混用另一种 arrival，整条指令报 `BARRIER_FAULT`。每个 owner 每代只准 arrival 一次；只要 `A` 与 `arrived_set` 相交，整条指令不提交。
+### 10.2 `BAR.SYNC.CTA id`
 
 ```text
-retire(slot):
-    old_generation = slot.generation
-    slot.generation = old_generation + 1
-    slot.mode = EMPTY
-    slot.arrived_set = {}
-    slot.consumed_set = {}
-    slot.completed = false
-    slot.waiters = {}
-```
-
-SYNC 代在全部 owner 到齐并恢复等待者后立即退休。SPLIT 代即使已经到齐，也必须等全部 owner 的 token 都成功 WAIT 消费后才能退休。每次退休后的 generation 必须恰好等于旧值加 1，不能跳号或回绕；退休后旧代 token 永久 stale。
-
-### 10.3 `BAR.SYNC.CTA id`
-
-```text
+require scalar_ready                      # 否则 DIVERGENCE_FAULT
 A = {warp_id*32 + lane_id | lane_id 位于 snapshot(active_mask)}
 S = slot[id]
 
-require S.mode in {EMPTY, SYNC}
-require A & S.arrived_set == {}
-
 atomically:
-    if S.mode == EMPTY: S.mode = SYNC
     S.arrived_set |= A
     shared_release(tid in A)
     block_barrier(S, A, old_PC)
 
-if S.arrived_set == S.owner_set:
-    S.completed = true
+if S.arrived_set == live_owner_set:
     records = snapshot(all S.waiters)
     for every R in records together:
         resume_barrier(S, R)
-    retire(S)
+    clear(S)                              # arrived_set = {}，waiters = {}
 ```
 
-“together”表示同一代所有 SYNC 等待者在同一个完成动作中恢复，不允许先让一部分跨过 barrier。阻塞期间不能再次读取源、重复 arrival 或预先推进 PC。
+“together”表示所有等待者在同一个完成动作中恢复，不允许先让一部分跨过屏障。清空之后槽立即回到 idle，可以马上被下一次屏障复用；槽里不留任何跨屏障的残余状态，所以也没有“旧代”可以被误认。
 
-### 10.4 `BAR.ARRIVE.CTA vd,id`
-
-每个入口 active lane 对应一个 `tid∈A`，并得到自己的 VGPR32 token，不是整个 warp 共用一份 SGPR token：
+完成条件是 `arrived_set == live_owner_set`，而不是与某个启动时固定集合比较。因此 `EXIT` 缩小 `live_owner_set` 时也要重新检查每个非 idle 槽：
 
 ```text
-A = {warp_id*32 + lane_id | lane_id 位于 snapshot(active_mask)}
-S = slot[id]
-
-require S.mode in {EMPTY, SPLIT}
-require A & S.arrived_set == {}
-
-atomically:
-    if S.mode == EMPTY: S.mode = SPLIT
-    S.arrived_set |= A
-    for each active lane_id:
-        tid = warp_id*32 + lane_id
-        shared_release(tid)
-        vd[lane_id].bits = implementation_defined_U32
-        vd[lane_id].tag = VALID(CTA_identity, tid, id, S.generation)
-    PC = old_PC + 8
-
-if S.arrived_set == S.owner_set:
-    S.completed = true
-    records = snapshot(all S.waiters)
-    for every R in records:
-        resume_barrier(S, R)
-    if S.consumed_set == S.owner_set:
-        retire(S)
+after live_owner_set shrinks:
+    for each slot S with S.arrived_set != {}:
+        if S.arrived_set == live_owner_set:
+            resume all S.waiters together
+            clear(S)
 ```
 
-不在入口 active mask 中的 lane 不读取也不写 `vd[lane]`。tag 字段恰好是 `{CTA identity,linear_tid,slot,logical generation}`；tag 才是身份，32 位值不是身份。logical generation 永不复用，所以旧 tag 不可能在后续代复活。
+`EXIT` 本身不做 shared release，所以被它放行的 waiter 只获得其他真正到达者贡献的 release。
 
-### 10.5 VGPR 标签写回闭包
+### 10.3 EXIT、分歧和死锁
 
-对参与 lane，任何 form 写入任何 VGPR32 槽时，默认清除该目标槽旧 barrier-token tag。多槽或片段目标逐个 VGPR32 槽应用。全 ISA 只有两个例外：
+`EXIT` 没有屏障前置条件，也不会报屏障相关故障。退出线程只是从 `live_owner_set` 中消失，剩下的 owner 因此少等一个人。
 
-1. `BAR.ARRIVE.CTA` 对其写入槽创建新 tag；
-2. 寄存器型 `V_MOV.B32 vd,vs` 对该 lane 完整复制源槽 tag。
+若一个 warp 在屏障上阻塞，而同 CTA 另一些 owner 既不到达该槽也不退出，`arrived_set` 永远追不上 `live_owner_set`，程序按第 12 节报告 `DEADLOCK`。同一个 warp 的不同 warp 内路径不会造成这种情况：屏障要求 scalar-ready，warp 只能整体到达。典型死锁来自不同 warp 走了不同的控制流，例如只有一部分 warp 执行了循环体里的 `BAR.SYNC.CTA`。
 
-所以 `V_MOV.B64`、`V_BCAST`、`X_BROADCAST`、`V_GETREG`、普通/原子 load 返回、所有 ALU/CVT/FP 写回、MMA 输出及任何其他 VGPR 写目标都清除其写入槽的 barrier-token tag。非参与 lane不写槽，也不清标签。这个闭包只管 barrier-token tag，不改变其他章节单独定义的 pointer provenance。
+### 10.4 内存边
 
-### 10.6 `BAR.WAIT.CTA id,vs`
-
-WAIT 的 `id` 是显式编码字段；每个 active owner 从自己的 `vs[lane]` 读 token：
-
-```text
-A = {warp_id*32 + lane_id | lane_id 位于 snapshot(active_mask)}
-S = slot[id]
-T[lane_id] = snapshot(vs[lane_id].bits, vs[lane_id].tag)
-    for lane_id represented in A
-
-require S.mode == SPLIT
-for each active lane_id:
-    tid = warp_id*32 + lane_id
-    require T[lane_id].tag is VALID
-    require T[lane_id].tag == (this_CTA_identity, tid, id, S.generation)
-    require tid in S.arrived_set
-    require tid not in S.consumed_set
-
-atomically:
-    S.consumed_set |= A
-    mark each linear_tid identity in A consumed
-    if not S.completed:
-        block_barrier(S, A, old_PC)
-    else:
-        shared_acquire(tid in A)
-        PC = old_PC + 8
-
-if S.completed and S.consumed_set == S.owner_set:
-    retire(S)
-```
-
-在 generation 已完成后才执行 WAIT，会立即取得 shared acquire 并前进。token 只能成功消费一次；stale、foreign CTA、wrong-slot、wrong-owner、wrong-generation、malformed、untagged 和 duplicate token 一律 `BARRIER_FAULT`。wrong-owner 就是 tag 的 `linear_tid` 不等于当前 lane 算出的 `warp_id*32+lane_id`。同一 token 标签被 `V_MOV.B32` 复制到多处也不会增加消费次数；第一份成功消费后，其余副本都变成 duplicate/stale。
-
-### 10.7 EXIT、分歧和死锁
-
-owner 尚未 arrival 就执行 `EXIT` 不会缩小 `owner_set`，其他 owner 以后可能永远等不到它，最终按第 12 节报告 `DEADLOCK`。若任一退出 `linear_tid` 位于任一 SPLIT 槽的 `arrived_set-consumed_set`，`EXIT` 直接 `BARRIER_FAULT`；即使 VGPR token tag 已被清除也不能退出。
-
-分歧路径上的 BAR 只把当前 active lane 转成 `A`。如果当前路径在 BAR 上阻塞，整个 warp blocked，重汇聚栈中的挂起路径不能切入；其中若还有本代必须 arrival 或 WAIT 的 `linear_tid`，程序可以死锁。这不是子集 barrier，也不会由实现代替软件补票。
-
-### 10.8 内存边
-
-每个成功 `BAR.SYNC.CTA` arrival 和 `BAR.ARRIVE.CTA` arrival 都是 shared、CTA scope 的 release。SYNC 恢复和成功 `BAR.WAIT.CTA` 是 shared、CTA scope 的 acquire。它们不自动排序 global、local、param、const 或 host；global 通信仍要使用合法原子和需要的 `MEMBAR`。
+每个成功 `BAR.SYNC.CTA` arrival 都是 shared、CTA scope 的 release，恢复是 shared、CTA scope 的 acquire。它们不自动排序 global、local、param、const 或 host；global 通信仍要使用合法原子和需要的 `MEMBAR`。
 
 ## 11. 调度、前进和 occupancy
 
@@ -1439,14 +1351,11 @@ CTA 完成条件：
 ```text
 全部 warp 完成
 并且 8 个 slot 都满足：
-    mode == EMPTY
     arrived_set == {}
-    consumed_set == {}
     waiters == {}
-    completed == false
 ```
 
-上面这组槽条件叫 **IDLE**。`generation∈N` 是已经退休了多少代的逻辑计数；它可以为任意非负值，不妨碍 CTA 完成，也不要求归零。这里“任意”不表示有限位宽回绕，generation 始终保留其完整逻辑值。
+上面这组槽条件就是 **idle**。全部 warp 完成时 `live_owner_set` 必然为空，所以任何还有到达者的槽都会先被完成并清空；若实现观察到 warp 全部完成而某个槽仍非 idle，说明它没有正确执行 10.2 的重新检查。
 
 kernel 完成条件：
 
@@ -1472,10 +1381,10 @@ kernel 尚未完成时，若同时满足：
 |---|---|---|
 | `system` | 系统控制、陷阱和杂项 | 不因执行域自动检查 |
 | `scalar` | 每 warp 做一次，可读写 SGPR；只有明确操作数才能读 SCC | 每个 form 都必须检查 |
-| `vector` | 每个参与 lane 做一次，可读 VGPR、`vpN` 和 SGPR 广播 | 不检查 |
+| `vector` | 每个参与 lane 做一次，可读 VGPR、`vpN`，并可由 selector 把其中一个源改成 SGPR | 不检查 |
 | `warp_control` | 改 PC、路径、重汇聚栈或调用栈 | 普通控制不检查；`CALL/CALL.IND/JUMP.IND/RET` 必须检查 |
 | `warp_collective` | 一个 warp 的多个 lane 合作投票或交换数据 | 不检查，但要满足集合会合合同 |
-| `cta_sync` | CTA 线程做屏障或内存同步 | 不检查，但要满足 CTA 同步合同 |
+| `cta_sync` | CTA 线程做屏障或内存同步 | `BAR.SYNC.CTA` 必须检查；`MEMBAR` 不检查 |
 | `warp_matrix` | 一个 warp 合作完成矩阵运算 | 不检查，但要满足矩阵参与合同 |
 
 机器 class 不出现在这张表里，因为它只决定编码。`MEMORY` class 内部仍要看 form 的执行域，不能把所有访存一概当成 vector 或 scalar。
@@ -1490,16 +1399,17 @@ kernel 尚未完成时，若同时满足：
 
 文中的“必须”“禁止”“可以”分别表示 MUST、MUST NOT、MAY。
 
-## 1. 先记住六条直观规则
+## 1. 先记住七条直观规则
 
 1. **SGPR 是每 warp 一份，VGPR 是每 lane 一份。** scalar 访存读写 SGPR，整条 warp 只做一次；vector 访存读写 VGPR，每个参与 lane 各做一次。
-2. **所有 scalar 访存和 scalar 原子都要求头部 guard 固定为 `PT`，并且 warp scalar-ready。** 静态 guard 不是 `PT` 时按非法编码处理；不满足 scalar-ready 时固定报告 `SCALAR_STATE_FAULT`。两种失败都不读动态源、不形成地址、不产生事件。
+2. **所有 scalar 访存和 scalar 原子都要求头部 guard 固定为 `PT`，并且 warp scalar-ready。** 静态 guard 不是 `PT` 时按非法编码处理；不满足 scalar-ready 时固定报告 `DIVERGENCE_FAULT`。两种失败都不读动态源、不形成地址、不产生事件。
 3. **vector 访存按参与 lane 展开。** `vp` 条件筛出几个参与 lane，就有几个彼此独立的事件。即使硬件把它们合成一个总线请求，内存模型里仍是多个事件。
-4. **地址可以“统一基址 + 各 lane 索引”。** global、param、const 的向量访问可以用一个带 provenance 的 SGPR64 基址，再加每 lane 的 VGPR32 无符号索引。SV-mix 固定先做 `zero_extend`，不能把最高位当符号位。
-5. **空间有明确限制。** local 只能向量访问；param 和 const 只读；param、const、global 可以标量读，global 可以标量写；shared 同时支持标量和向量访问。
-6. **BAR 只管整个 CTA 的 shared。** 它不是任意线程子集屏障，也不会替代 global 的原子通信或主机所有权转移。
+4. **地址可以“统一基址 + 各 lane 索引”。** global、param、const 的向量访问可以用一个 SGPR64 基址，再加每 lane 的 VGPR32 无符号索引。SV-mix 固定先做 `zero_extend`，不能把最高位当符号位。
+5. **地址空间由 opcode 决定，不由地址值决定。** 每条访存 form 的助记符里写明 `GLOBAL`、`SHARED`、`LOCAL`、`PARAM` 或 `CONST`；地址寄存器只保存位模式，不携带空间身份，也没有 generic 空间和运行期空间推断。
+6. **空间有明确限制。** local 只能向量访问；param 和 const 只读；param、const、global 可以标量读，global 可以标量写；shared 同时支持标量和向量访问。
+7. **`BAR.SYNC.CTA` 只管整个 CTA 的 shared。** 它不是任意线程子集屏障，也不会替代 global 的原子通信或主机所有权转移。
 
-含数据竞争、原子与普通访问非法混用、或违反主机所有权的程序是未定义程序。未定义不是一种可捕获的设备故障。地址越界、未对齐和错误空间仍按各自精确故障处理；scalar-ready 失败固定为 `SCALAR_STATE_FAULT`。
+含数据竞争、原子与普通访问非法混用、或违反主机所有权的程序是未定义程序。未定义不是一种可捕获的设备故障。地址越界、未对齐和错误空间仍按各自精确故障处理；scalar-ready 失败固定为 `DIVERGENCE_FAULT`。
 
 ## 2. 两类访存指令
 
@@ -1509,7 +1419,7 @@ scalar 访存使用 SGPR 操作数。成功的 scalar load 对整个 warp 产生
 
 每条 scalar load 和 scalar store 都必须在读取动态源之前检查执行模型定义的 `scalar-ready(warp)`。大白话说，warp 必须至少还有一个活 lane，全部活 lane 必须在同一路径上，而且重汇聚栈中不能有未完成的 `FIRST` 或 `SECOND` 帧。只要有一条分歧路径还没走完，就不是 scalar-ready；不存在“这一条 scalar 指令碰巧安全，所以可以执行”的例外。
 
-scalar-ready 检查失败固定报告 `SCALAR_STATE_FAULT`，不读取 SGPR 地址或数据源，不形成地址，不产生 `R/W/A_*`、`ppo` 或其他内存关系，也不写任何 SGPR。
+scalar-ready 检查失败固定报告 `DIVERGENCE_FAULT`，不读取 SGPR 地址或数据源，不形成地址，不产生 `R/W/A_*`、`ppo` 或其他内存关系，也不写任何 SGPR。
 
 scalar load 把一次读取结果写入 SGPR；scalar store 从 SGPR 取得一次写入值。无论 warp 有多少个参与 lane，都不能把一次 scalar store 解释为多次相同写入，也不能把一次 scalar 原子解释为多次 RMW。
 
@@ -1552,7 +1462,7 @@ scalar 访存先检查静态操作数和固定 `PT`，再检查 scalar-ready，�
 
 标量和向量只决定“产生几个架构事件”，不规定硬件发出几个缓存请求。
 
-## 3. 地址空间、地址形成与 provenance
+## 3. 地址空间和地址形成
 
 ### 3.1 空间和窗口
 
@@ -1560,21 +1470,23 @@ scalar 访存先检查静态操作数和固定 `PT`，再检查 scalar-ready，�
 
 | 空间 | 可见范围 | 地址宽度和来源 |
 |---|---|---|
-| `global` | 设备内 CTA；主机须遵守所有权 | 带 global provenance 的 SGPR64 或 VGPR64 基址 |
+| `global` | 设备内 CTA；主机须遵守所有权 | SGPR64 或 VGPR64 基址 |
 | `shared` | 同一 CTA | CTA 内 U32 字节偏移 |
 | `local` | 单 lane | 该 lane 私有窗口内的 U32 字节偏移 |
-| `param` | 本次 kernel 启动，只读 | 带 param provenance 的 SGPR64 或 VGPR64 基址 |
-| `const` | 设备只读 | 带 const provenance 的 SGPR64 或 VGPR64 基址 |
+| `param` | 本次 kernel 启动，只读 | SGPR64 或 VGPR64 基址 |
+| `const` | 设备只读 | SGPR64 或 VGPR64 基址 |
 
-global、param、const allocation 都有空间身份、基址、长度和生命周期。一次访问必须完整落在同一个活跃 allocation 中，不能跨到相邻 allocation。shared 每 CTA 一份，local 每真实 lane 一份；不同 lane 的 local 永不别名。
+一次访问落在哪个空间只由 form 决定：每条访存 form 的操作数类型固定写明空间，助记符里也带同一个空间后缀。架构没有 generic 空间，寄存器里的地址值不带空间身份，实现禁止在运行期根据数值猜测空间。
+
+global、param、const allocation 都有空间身份、基址、长度和生命周期。一次访问必须完整落在同一个活跃 allocation 中，不能跨到相邻 allocation。这项检查在实现内部按 allocation 表完成，与寄存器内容无关。shared 每 CTA 一份，local 每真实 lane 一份；不同 lane 的 local 永不别名。
 
 ### 3.2 三种地址合同
 
-地址 form 只能明确选择 `uniform`、`lane`、`SV-mix` 三种合同之一。地址先用无界数学整数计算，再检查 provenance、窗口、范围和对齐；任何中间步骤都不能按 32 位或 64 位回绕。
+地址 form 只能明确选择 `uniform`、`lane`、`SV-mix` 三种合同之一。地址先用无界数学整数计算，再检查窗口、allocation 范围和对齐；任何中间步骤都不能按 32 位或 64 位回绕。
 
 #### uniform
 
-整个 warp 使用同一个 SGPR 地址。global、param、const 使用带正确 provenance 的 SGPR64 base；shared 使用 CTA 内 SGPR32 offset。基本模板是：
+整个 warp 使用同一个 SGPR 地址。global、param、const 使用 SGPR64 base；shared 使用 CTA 内 SGPR32 offset。基本模板是：
 
 ```text
 EA = unsigned(SGPR_base) + sign_extend(immediate)
@@ -1589,7 +1501,7 @@ EA = unsigned(SGPR_base)
      + sign_extend(immediate)
 ```
 
-SGPR base 提供空间和 allocation provenance，index 只是无标签字节索引。uniform 只说明地址统一，不决定事件数：scalar memory 成功后整个 warp 恰好一个事件；若某个 vector form 使用 uniform 地址，仍对 `P` 中每个 lane 各产生一个事件。
+base 和 index 都只是字节数值。uniform 只说明地址统一，不决定事件数：scalar memory 成功后整个 warp 恰好一个事件；若某个 vector form 使用 uniform 地址，仍对 `P` 中每个 lane 各产生一个事件。
 
 #### lane
 
@@ -1600,7 +1512,7 @@ EA[lane] = unsigned(VGPR_base[lane])
            + sign_extend(immediate)
 ```
 
-global、param、const 的 lane base 为带相应 provenance 的 VGPR64；shared 和 local 使用各 lane 的 VGPR32 窗口 offset。local **只能**使用 lane 合同，不能使用 uniform、`SMEMX` 或 `SV-mix`。同一个数值 offset 在不同 lane 的 local 中仍指向不同私有 allocation。
+global、param、const 的 lane base 为 VGPR64；shared 和 local 使用各 lane 的 VGPR32 窗口 offset。local **只能**使用 lane 合同，不能使用 uniform、`SMEMX` 或 `SV-mix`。同一个数值 offset 在不同 lane 的 local 中仍指向不同私有 allocation，因为 local form 的窗口按 lane 选取。
 
 #### SV-mix
 
@@ -1612,7 +1524,7 @@ EA[lane] = unsigned(SGPR_base)
            + sign_extend(immediate)
 ```
 
-`scale` 只能取具体 form 明写的值。SGPR base 提供 provenance，VGPR index 不携带 provenance。所有 SV-mix form 都必须对 VGPR32 index 做 `zero_extend`；使用 `sign_extend` 或二补数负 offset 是错误实现。SV-mix 可用于 global、param、const 和 shared，但不能用于 local。
+`scale` 只能取具体 form 明写的值。所有 SV-mix form 都必须对 VGPR32 index 做 `zero_extend`；使用 `sign_extend` 或二补数负 offset 是错误实现。SV-mix 可用于 global、param、const 和 shared，但不能用于 local。
 
 `VATOMX` 是 global vector atomic 的 SV-mix 固定模板：
 
@@ -1631,8 +1543,7 @@ EA[lane] = unsigned(SGPR64_base)
 - `start < 0`；
 - global、param、const 的 `start` 或 `end` 超出 U64 地址范围；
 - shared/local 的结果超出对应窗口；
-- 访问没有完整落在同一个活跃 allocation；
-- provenance 正确但 offset 已越出该 allocation。
+- 访问没有完整落在同一个活跃 allocation。
 
 自然对齐要求如下：
 
@@ -1648,40 +1559,22 @@ EA[lane] = unsigned(SGPR64_base)
 
 未对齐报 `MISALIGNED_ACCESS`。同一参与地址同时未对齐和越界时，按精确故障优先级报告。
 
-### 3.4 provenance 的产生和复制
+### 3.4 64 位地址在两个寄存器文件之间搬运
 
-global、param、const 指针除 64 位数值外，还携带软件不可直接读取的 provenance：
-
-```text
-{ space, allocation-id, offset }
-```
-
-运行时物化指针参数，`SR_PARAM_BASE` 产生 param provenance，装载器产生 const provenance。以下操作完整保留 provenance：
-
-- 同寄存器类别的 U64 move；
-- 带 provenance 指针加无标签整数偏移；
-- 自然对齐 U64 load/store 的 shadow tag；
-- `V_BCAST.B64` 把一个 SGPR64 广播到各目标 VGPR64 时，向每个写入 lane 完整复制同一 provenance；
-- `S_READFIRST.B64` 从编号最小的 live lane 读取 VGPR64 时，把该 lane 的 64 位数值和 provenance 一起完整复制到 SGPR64。
-
-`V_BCAST.B64` 和 `S_READFIRST.B64` 都是真实机器 form，不是伪指令，也不能拆成两条 `.B32` 来替代。规范语法和效果为：
+地址就是 64 位数值，没有影子状态，所以在寄存器之间搬运它只是搬 64 个位。两条真实机器 form 覆盖两个方向，它们都不是伪指令，也不能拆成两条 `.B32` 来替代：
 
 ```text
-V_BCAST.B64 vE:v(E+1), sA:s(A+1)
+V_MOV.B64 vE:v(E+1), sA:s(A+1)      # ssrc=1，SGPR64 -> 每 lane VGPR64
 S_READFIRST.B64 sE:s(E+1), vA:v(A+1)
 ```
 
-`V_BCAST.B64` 在入口冻结一次 SGPR 偶数连续寄存器对及其 provenance，再对 `P` 中每个 lane 整体写入对应 VGPR 偶数连续寄存器对和同一 provenance；非参与 lane 的数值和 provenance 都保持不变。它是 vector form，不要求 scalar-ready。
+`V_MOV.B64` 是 `V1` 格式的混合源 form。`ssrc=0` 时它是普通的 VGPR64 到 VGPR64 复制；`ssrc=1` 时源在 SGPR 文件中解释，于入口冻结一次那个偶数对齐的 SGPR 对，再对 `P` 中每个 lane 整体写入对应 VGPR 对。这就是把一个统一的 64 位地址送进各 lane 的规范做法。它是 vector form，不要求 scalar-ready；非参与 lane 保持原值。
 
-这里复制的是 pointer provenance，不是 barrier-token 标签。按全 ISA VGPR 写回闭包，`V_BCAST.B32/B64` 对每个实际写入的 VGPR32 槽清除旧 barrier-token 标签；两类 shadow 状态必须分别处理。
+`S_READFIRST.B64` 的头部 guard 固定为 `PT`，并且先检查 scalar-ready。通过后选择编号最小的 live lane，冻结该 lane 的 VGPR 偶数连续寄存器对，再整体写入 SGPR 偶数连续寄存器对。它不检查其他 lane 是否同值。
 
-`S_READFIRST.B64` 的头部 guard 固定为 `PT`，并且先检查 scalar-ready。通过后选择编号最小的 live lane，同时冻结该 lane 的 VGPR 偶数连续寄存器对及 provenance，再整体写入 SGPR 偶数连续寄存器对。它不检查其他 lane 是否同值。
+两条指令都只复制 64 个数值位。目标地址属于哪个空间由后续访存指令的 opcode 决定，与这次搬运无关；把一个 shared offset 搬进 SGPR64 再交给 `S_LD.GLOBAL` 不是“指针伪造”，而是一个越界或越窗口的地址，按 3.3 节的精确故障处理。
 
-这里“完整复制”包含 `space`、`allocation-id` 和当前 `offset`，不能只复制数值位，也不能重新猜测 tag。源没有 provenance 时，目标的 provenance 也必须清除。`.B32` form 只复制 32 个数值位，不产生 pointer provenance。
-
-自然对齐 U64 store/load 将 64 位数据和 shadow tag 作为同一来源保存/恢复。任何与该 8 字节槽重叠的非 U64 写都会清除 tag。U64 原子对 tag 的处理见第 7 节。
-
-错误空间、已释放 allocation、或无 provenance 的 U64 值用作 global、param、const 基址时，报 `ILLEGAL_OPERAND`。数值碰巧相同不能伪造指针。
+超出窗口、落在已释放 allocation，或没有完整落在同一个活跃 allocation 的地址报 `MEMORY_BOUNDS`；寄存器类别、编号或对齐不符合 form 要求时报 `ILLEGAL_OPERAND`。
 
 ## 4. 事件和普通访问粒度
 
@@ -1698,7 +1591,7 @@ space, allocation, byte-range, value, scope, order
 - `R`、`W`：普通读写；
 - `A_R`、`A_W`、`A_RMW`：原子读、写、读改写；
 - `F(scope)`：`MEMBAR`；
-- `B(slot,logical_generation,phase)`：BAR 到达、完成、等待；其中 logical generation 是永不回绕的 `N`；
+- `B(slot,phase)`：`BAR.SYNC.CTA` 的到达和恢复；
 - `H`：allocation、启动、完成和所有权转移。
 
 原子事件的 `order` 和 `scope` 来自该动态指令机器字中的 modifier 位，不由地址、寄存器值或实现猜测。译码出的 modifier 会原样成为事件属性，并参与后面的 `ppo/sw/hb`。
@@ -1713,7 +1606,7 @@ space, allocation, byte-range, value, scope, order
 - 每个读必须说清楚“读的是哪次写”，这就是 `rf`。
 - 一个读选了旧写，那么它自然位于后续写之前，这就是 `fr`。
 - 单个 warp/lane 里不是所有程序顺序都强制保留；真正必须保留的部分叫 `ppo`。
-- release/acquire、BAR 和运行时所有权可以在不同代理之间搭桥，这些桥叫 `sw`。
+- release/acquire、CTA 屏障和运行时所有权可以在不同代理之间搭桥，这些桥叫 `sw`。
 - `ppo` 和 `sw` 反复串起来得到 `hb`。如果 `A hb B`，意思是 A 必须先于 B 对程序生效。
 
 下面给出完整关系，不能只凭上面的比喻实现。
@@ -1735,10 +1628,10 @@ space, allocation, byte-range, value, scope, order
 
 1. 同一代理且字节区间重叠的 `po-loc`；
 2. SGPR 或 VGPR 的真数据依赖、地址依赖和控制依赖；
-3. `V_BCAST.B32/B64`、`S_READFIRST.B32/B64` 建立的寄存器值依赖；其中 `.B64` 还建立 provenance 依赖；
+3. 混合源 `V_MOV.B32/B64` 和 `S_READFIRST.B32/B64` 建立的寄存器值依赖；
 4. 任意事件到其后 `MEMBAR`，以及 `MEMBAR` 到其后任意事件；
 5. 任意事件到其后 RELEASE/ACQ_REL 原子，以及 ACQUIRE/ACQ_REL 原子到其后任意事件；
-6. `BAR.SYNC.CTA` 或 `BAR.ARRIVE.CTA` 到达前的 shared 事件到该 owner 的 release 到达事件，成功 SYNC 恢复或成功 `BAR.WAIT.CTA` acquire 到之后的 shared 事件；
+6. `BAR.SYNC.CTA` 到达前的 shared 事件到该 owner 的 release 到达事件，以及屏障恢复的 acquire 到之后的 shared 事件；
 7. 同一 RMW 的读部到写部；
 8. 运行时启动、完成和所有权转移要求的边。
 
@@ -1812,7 +1705,7 @@ shared 的可见范围固定为 CTA，因此 shared 原子事件只允许 `CTA` 
 2. release fence `Fr` 在 `po` 中先于原子修改 `X`，acquire 原子 `Y` 读取 `X` 的 release sequence，且相关 scope 相容，则 `Fr sw Y`。
 3. release 原子 `X` 的 release sequence 被原子 `Y` 读取，且 `Y po Fa`、`Fa` 是 acquire fence，相关 scope 相容，则 `X sw Fa`。
 4. 同时满足 `Fr po X`、`Y po Fa`，且 `Y` 读取 `X` 的 release sequence 时，在全部相关 scope 相容后有 `Fr sw Fa`。
-5. 一个成功的全 CTA BAR 代际，把每个 `linear_tid` owner 的 shared release arrival 侧连接到每个成功 SYNC 恢复或成功 WAIT 的 shared acquire 侧。阻塞记录冻结 `owner_snapshot: set<linear_tid>`；恢复时 acquire 正好应用于该快照。SPLIT 代的 owner 可以在代完成前先消费 token 并阻塞，但 acquire 边只在代完成、其 warp 按记录离开 WAIT 时建立。
+5. 一次成功的 `BAR.SYNC.CTA`，把每个到达 owner 的 shared release 侧连接到每个恢复 waiter 的 shared acquire 侧。阻塞记录冻结 `owner_snapshot: set<linear_tid>`；恢复时 acquire 正好应用于该快照。`EXIT` 只缩小 `live_owner_set`，不贡献 release 侧，因此不建立这类 `sw` 边。
 6. 主机 release 所有权并启动 kernel，启动事件同步到设备入口；设备全部完成后，完成事件同步到重新取得所有权的主机访问。
 
 release sequence 是 `mo_x` 中从一个 release 修改开始、随后只包含连续 RMW 的最大序列；遇到普通原子写就结束。
@@ -1908,24 +1801,23 @@ param、const 和 local 不支持原子。没有 SC order，也没有跨所有�
 - 不同起点或宽度的重叠原子，程序未定义；
 - U32 和 U64 原子永不共享同一个 `mo`。
 
-U64 原子 load/store/XCHG/CAS 同时读取或写入 provenance shadow tag；失败 CAS 保留旧 tag。ADD、MIN、MAX、AND、OR、XOR 的结果清除 tag。U32 原子不携带 tag。
+原子操作只搬运和计算位模式。U32 和 U64 原子都不携带任何影子状态，也不需要区分“保留 tag”和“清除 tag”的情况；一次 U64 原子读写的就是那 8 个字节。
 
-本段的 `tag` 只指 pointer provenance。任何普通或原子 load/RMW 返回到 VGPR 的每个实际写入槽，都按根规则清除旧 barrier-token 标签；不能因为返回值复制 provenance 就顺便保留 barrier token。
-
-## 8. MEMBAR 和全 CTA BAR
+## 8. MEMBAR 和 CTA 屏障
 
 `MEMBAR.CTA/DEVICE/SYSTEM` 是执行代理的 acquire-release fence。它对 warp 的 scalar 事件和相关 vector 事件建立第 6 节规定的 `ppo`；它不是会合点，也不等待其他 warp。只有配合同址原子通信并满足 scope 相容时，它才建立跨代理 `sw`。
 
-BAR 只有全 CTA 语义。每 CTA 有 8 个槽 `0..7`；owner 唯一身份为 CTA 内 `linear_tid=warp_id*32+lane_id`。每槽每一代的 owner 集固定为 CTA 启动时全部真实线程的 `linear_tid` 集合。不存在的尾 lane 不计入 owner，提前 `EXIT` 不会缩小 owner 集，也没有 `expected` 或子集参数。
+`BAR.SYNC.CTA id` 是唯一的屏障指令，只有全 CTA 语义。每 CTA 有 8 个槽 `0..7`；owner 唯一身份为 CTA 内 `linear_tid=warp_id*32+lane_id`。完成条件是槽的 `arrived_set` 等于 CTA 当前的 `live_owner_set`；不存在的尾 lane 从不计入，`EXIT` 会把退出线程移出 `live_owner_set`，也没有 `expected` 或子集参数。
 
-- `BAR.SYNC.CTA id` 的每次合法 active-owner arrival 是 shared CTA release；全体 owner 到齐后，所有 SYNC 等待者一起恢复并各自取得 shared CTA acquire。
-- `BAR.ARRIVE.CTA vd,id` 的每次合法 active-owner arrival 是 shared CTA release，并向 `vd[lane]` 写该 owner 的 token；到齐只把 SPLIT 代标为 completed。
-- `BAR.WAIT.CTA id,vs` 逐 lane 消费匹配 token。代未完成时先消费再阻塞；代完成后该 owner 成功离开 WAIT 时取得 shared CTA acquire。到齐后才来的 WAIT 立即 acquire。
-- SPLIT 代必须在全体 owner 的 token 都恰好消费一次后退休；错误 CTA、owner、槽、generation、标签或重复消费都没有内存边，并使整条动态指令回滚。
+- 每次到达是一次 shared CTA release，覆盖该 warp 当前全部 live lane：屏障要求 scalar-ready，所以 warp 只能整体到达。
+- `arrived_set` 追上 `live_owner_set` 后，所有等待者一起恢复并各自取得 shared CTA acquire，槽随即清回 idle。
+- `EXIT` 可以通过缩小 `live_owner_set` 让屏障完成，但它自己不是 release，因此不给任何 waiter 建立 `sw` 边。
 
-BAR 阻塞记录保存 `{warp_id, owner_snapshot, resume_pc}`。恢复只把该 warp 的 PC 写成 `resume_pc` 并置 ready；active/live 掩码、重汇聚栈、调用栈和 shared 事件历史都不改。generation 是单调、永不回绕的逻辑整数；退休加 1 本身不是内存事件，也不妨碍一个 IDLE 槽参与 CTA 完成判断。有限实现的内部计数器复用不得把不同逻辑代的 `B` 事件或 token 身份合并。
+屏障阻塞记录保存 `{warp_id, owner_snapshot, resume_pc}`。恢复只把该 warp 的 PC 写成 `resume_pc` 并置 ready；active/live 掩码、重汇聚栈、调用栈和 shared 事件历史都不改。槽清空不是内存事件；因为槽里不保留任何跨屏障状态，同一个槽的两次屏障之间也没有需要区分的“代”。
 
-这些边只覆盖 shared 事件。BAR 不排序 global、local、param、const，也不涉及 host。用 BAR 交换 global 数据仍需合法原子发布/获取；需要的顺序仍由 atomic order/scope 和 `MEMBAR` 建立。
+这些边只覆盖 shared 事件。屏障不排序 global、local、param、const，也不涉及 host。用屏障交换 global 数据仍需合法原子发布/获取；需要的顺序仍由 atomic order/scope 和 `MEMBAR` 建立。
+
+需要 arrive/wait 分离的软件用 shared memory 上的原子计数器加 `MEMBAR.CTA` 自行实现：release 侧用 RELEASE 原子递增，acquire 侧用 ACQUIRE 原子自旋读。这样得到的顺序由第 6 节的原子 `sw` 规则给出，不依赖任何屏障槽状态。
 
 ## 9. 主机所有权
 
@@ -1967,23 +1859,23 @@ V_LD.GLOBAL.U32 v0, [s2:s3 + v4]  // P 中每个 lane 各有一个 R
 
 第一条的头部 guard 必须是 `PT`，且必须满足 scalar-ready；成功恰好一个事件，失败零个事件。第二条对 `P` 中每个 lane 恰好一个事件，即使所有 `v4` 都相等，也不能退化成一个 scalar 事件。
 
-### 11.2 provenance 跨寄存器类别
+### 11.2 64 位地址跨寄存器文件
 
 ```text
-V_BCAST.B64 v2:v3, s4:s5
+V_MOV.B64 v2:v3, s4:s5      # ssrc=1
 S_READFIRST.B64 s6:s7, v2:v3
 ```
 
-若 `s4:s5` 是合法 global 指针，则每个被广播 lane 的 `v2:v3` 都得到完整相同 provenance；`S_READFIRST.B64` 再从编号最小的 live lane 把数值和 tag 一起复制到 `s6:s7`。
+若 `s4:s5` 保存一个合法 global 地址，则每个参与 lane 的 `v2:v3` 都得到同一个 64 位值；`S_READFIRST.B64` 再从编号最小的 live lane 把这 64 位复制回 `s6:s7`。两步都只搬位，空间仍由随后的访存 opcode 决定。
 
-### 11.3 shared BAR
+### 11.3 shared 屏障
 
 ```text
-lane0: V_ST.SHARED.U32 [x], 1; BAR.SYNC.CTA 0
-lane1: BAR.SYNC.CTA 0; v5 = V_LD.SHARED.U32 [x]
+warp0: V_ST.SHARED.U32 [x], 1; BAR.SYNC.CTA 0
+warp1: BAR.SYNC.CTA 0; v5 = V_LD.SHARED.U32 [x]
 ```
 
-成功的全 CTA BAR 后，`v5` 必须看到 1。把 `x` 换成 global，仅有 BAR 不足，未排序的普通冲突是数据竞争。
+成功的全 CTA 屏障后，`v5` 必须看到 1。把 `x` 换成 global，仅有屏障不足，未排序的普通冲突是数据竞争。
 
 ### 11.4 主机完成边
 
@@ -2008,11 +1900,11 @@ host:   R y
 3. **默认只有一种舍入。** 浮点结果固定使用“最近值，正中间取偶数”（RNE）。没有动态舍入寄存器，也没有每 lane 不同的舍入模式。
 4. **小数不会偷偷冲成零。** normal 以下仍保留 subnormal；输入也不做 DAZ，结果也不做 FTZ。
 5. **NaN 结果有统一答案。** 只要一个数值运算应得到 NaN，就返回目标格式的正号 canonical qNaN；load/store/MOV 这种纯位搬运则原样保留 payload。
-6. **所有 S 浮点和 S 转换都要求 scalar-ready。** 算术、比较、FMIN/FMAX、FABS/FNEG、近似函数和整数/浮点转换没有例外。失败固定报告 `SCALAR_STATE_FAULT`，不读 SGPR、不写 SGPR 或 `SCC`。
+6. **所有 S 浮点和 S 转换都要求 scalar-ready。** 算术、比较、FMIN/FMAX、FABS/FNEG、近似函数和整数/浮点转换没有例外。失败固定报告 `DIVERGENCE_FAULT`，不读 SGPR、不写 SGPR 或 `SCC`。
 
 VTX-1 不提供浮点异常标志、trap enable、动态舍入状态、DAZ 或 FTZ。invalid、除零、上溢、下溢和 inexact 都不产生设备故障。
 
-VGPR 上的 barrier-token 隐藏标签不是数值位型的一部分。全 ISA 的根规则是：每个参与 lane 的每个 VGPR32 槽写入默认清除旧标签，唯二例外是 `BAR.ARRIVE.CTA` 创建标签、寄存器型 `V_MOV.B32` 复制源标签。因此任何浮点算术、数值转换或 MMA 输出都逐槽清除 barrier-token 标签，即使输出 32 位恰好与旧 token 相同。浮点 MOV/转换不能制造或保留 token；这条规则不改浮点位型，也不覆盖 pointer provenance 的独立规则。
+本章只关心 32 位和 16 位数值位型。寄存器上没有任何隐藏影子状态，浮点算术、数值转换和 MMA 输出都只写位型，不需要额外说明标签如何传播。
 
 ## 2. S 与 V 的执行规则
 
@@ -2022,7 +1914,7 @@ S.F32 指令使用 SGPR。一次动态 S.F32 指令对整个 warp 只计算一�
 
 本章所有 S.F32 指令和所有 S 数值转换都必须在读取任何动态源之前检查执行模型定义的 scalar-ready。warp 必须至少还有一个活 lane，全部活 lane 必须在同一路径上，而且重汇聚栈中不能有未完成的 `FIRST` 或 `SECOND` 帧。
 
-只要还有一条分歧路径没走完，任何 S 浮点或 S 转换都固定报告 `SCALAR_STATE_FAULT`。不存在“比较可以跑”“只读 SGPR 可以跑”“结果碰巧相同可以跑”或“这一条不会写结果所以可以跑”的例外。
+只要还有一条分歧路径没走完，任何 S 浮点或 S 转换都固定报告 `DIVERGENCE_FAULT`。不存在“比较可以跑”“只读 SGPR 可以跑”“结果碰巧相同可以跑”或“这一条不会写结果所以可以跑”的例外。
 
 失败指令不读 SGPR，不做 NaN 分类或舍入，不写 SGPR 或 `SCC`，也不留下部分结果。
 
@@ -2041,7 +1933,9 @@ E = 当前路径上的候选 lane
 
 除 warp collective 和 MMA 外，一个 lane 的特殊值不会影响另一个 lane。
 
-V 浮点和 V 转换不套用 scalar-ready；它们只更新 `P` 中 lane 的 VGPR 或 `vp`。V 指令把 SGPR 当统一只读源时，执行类别仍是 V，也不会因此变成 S 指令。
+V 浮点和 V 转换不套用 scalar-ready；它们只更新 `P` 中 lane 的 VGPR 或 `vp`。
+
+V 浮点 form 的 scalar-source selector 可以把其中一个源改成 SGPR，例如 `V_FMUL.F32 vd, va, sB`。这只改变那个源从哪个寄存器文件读取，不改变数值语义：舍入、NaN 传播和 subnormal 处理与两个源都来自 VGPR 时完全一致。执行类别仍是 V，也不会因此变成 S 指令。一条 V 浮点指令最多只能有一个 SGPR 源。
 
 ### 2.3 同一算法，不同寄存器
 
@@ -2237,7 +2131,7 @@ F32 转整数先使用 round toward zero（RTZ）截断，再饱和：
 
 `-0` 转为整数 0。转换不产生浮点或整数故障。
 
-这里所有 S 转换都读写 SGPR，并且必须先通过 scalar-ready；失败是 `SCALAR_STATE_FAULT`，不是数值饱和，也不会写目标 SGPR。所有 V 转换逐参与 lane 读写 VGPR，不套用 scalar-ready。
+这里所有 S 转换都读写 SGPR，并且必须先通过 scalar-ready；失败是 `DIVERGENCE_FAULT`，不是数值饱和，也不会写目标 SGPR。所有 V 转换逐参与 lane 读写 VGPR，不套用 scalar-ready。
 
 ### 9.2 V.F16 与 V.F32
 
@@ -2400,7 +2294,7 @@ acc = RN32(F32(A[m,k]) * F32(B[k,n]) + acc)
 符合实现至少必须逐位测试：
 
 - S.F32 与 V.F32 对相同输入得到相同数值位型；
-- 每一种 S 浮点、S 比较和 S 转换在非 scalar-ready 状态都报告 `SCALAR_STATE_FAULT`，不读动态源、不写 SGPR 或 `SCC`；
+- 每一种 S 浮点、S 比较和 S 转换在非 scalar-ready 状态都报告 `DIVERGENCE_FAULT`，不读动态源、不写 SGPR 或 `SCC`；
 - 未完成的 `FIRST` 或 `SECOND` 分歧中不存在任何可执行的 S 浮点或 S 转换例外；
 - F16/F32 的正负零、最小/最大 subnormal、最小 normal、最大有限值、正负 Inf、qNaN 和 sNaN；
 - RNE 中点取偶，以及 subnormal/normal、最大有限值/Inf 两个边界；
@@ -2645,10 +2539,10 @@ guard 合法性只能在译码出 form 后，根据该 form 的 `execution_domai
 典型反例说明为什么不能按 class 判断：
 
 - `V_GETREG` 位于 `SYS` class，但其 form 是 `execution_domain: vector`、`guard_policy: optional`，所以允许非 PT；
-- `V_BCAST` 位于 `CROSSLANE` class、使用 `COLL` format，但它是普通 `vector` form，不是 warp collective，因此同样允许 `guard_policy: optional`；
+- `V_SHUFFLE.DOWN.B32` 位于 `CROSSLANE` class、使用 `COLL` format，是真正的 `warp_collective` form，必须 `required_pt`；
 - `S_READFIRST` 也位于 `CROSSLANE/COLL`，但它是 `scalar` form，必须 `required_pt` 并检查 scalar-ready。
 
-所有 `execution_domain: cta_sync`、`warp_collective`、`warp_matrix` 的 form 都必须 `guard_policy: required_pt`。因此 SYNC form、真正的 COLL 集合 form 和唯一 MMA form 仍只能使用 PT；`V_BCAST` 不因复用 COLL payload 就变成集合 form。
+所有 `execution_domain: cta_sync`、`warp_collective`、`warp_matrix` 的 form 都必须 `guard_policy: required_pt`。因此 SYNC form、全部 COLL 集合 form 和唯一 MMA form 都只能使用 PT。
 
 每个 `execution_domain: scalar` 的 form 都必须声明 `guard_policy: required_pt` 和 `required_state: scalar_ready`，并在读取任何动态源前检查：
 
@@ -2658,7 +2552,7 @@ active_mask == live_mask
 reconv_stack 中不存在 phase 为 FIRST 或 SECOND 的帧
 ```
 
-三个条件必须同时成立。条件不满足产生 `SCALAR_STATE_FAULT`，且不得读取 SGPR、SCC 或内存源。`ARMED` 帧本身不破坏 scalar-ready。
+三个条件必须同时成立。条件不满足产生 `DIVERGENCE_FAULT`，且不得读取 SGPR、SCC 或内存源。`ARMED` 帧本身不破坏 scalar-ready。
 
 CONTROL form 的状态要求逐 form 声明，不能由 machine class 推导：
 
@@ -2709,13 +2603,36 @@ guard 为假只抑制该 lane 的架构效果，不抑制静态译码。未知 o
 
 | format | P 位布局 |
 |---|---|
-| `V1` | `[7:0] vd, [15:8] va, [44:16] x29` |
-| `V2` | `[7:0] vd, [15:8] va, [23:16] vb, [44:24] x21` |
-| `V3` | `[7:0] vd, [15:8] va, [23:16] vb, [31:24] vc, [44:32] x13` |
-| `VCMP` | `[3:0] vpd, [7:4] zero4, [15:8] va, [23:16] vb, [44:24] x21` |
+| `V1` | `[7:0] vd, [15:8] va, [16] ssrc, [44:17] x28` |
+| `V2` | `[7:0] vd, [15:8] va, [23:16] vb, [25:24] ssrc_sel, [44:26] x19` |
+| `V3` | `[7:0] vd, [15:8] va, [23:16] vb, [31:24] vc, [33:32] ssrc_sel, [44:34] x11` |
+| `VCMP` | `[3:0] vpd, [7:4] zero4, [15:8] va, [23:16] vb, [25:24] ssrc_sel, [44:26] x19` |
 | `VIMM` | `[7:0] vd, [15:8] va, [39:16] imm24, [44:40] x5` |
 
 `VCMP` 通过 `vpd` 显式选择并写 `vp0..vp15`，且 `zero4` 必须为零；它不写 SCC。`VIMM` 的目标是 VGPR；需要“比较寄存器与立即数”的程序必须使用明确分配的比较立即数 opcode/格式，若清单未分配则先物化常量，汇编器不得擅自把 `VIMM.vd` 解释为谓词目标。
+
+这四种 VALU 格式与 SALU 的对应格式的唯一结构差别，就是它们从扩展字段里切出一个 scalar-source selector。`V1` 用 1 位的 `ssrc`，`V2`、`V3`、`VCMP` 用 2 位的 `ssrc_sel`。selector 不改变源槽的位置和宽度，只改变那 8 位寄存器号在哪个寄存器文件里解释：
+
+| format | selector 字段 | 合法值 | 含义 |
+|---|---|---|---|
+| `V1` | `ssrc` | 0 | `va` 读 VGPR |
+| `V1` | `ssrc` | 1 | `va` 读 SGPR |
+| `V2`、`VCMP` | `ssrc_sel` | 0 / 1 / 2 | 无标量源 / `va` 读 SGPR / `vb` 读 SGPR |
+| `V2`、`VCMP` | `ssrc_sel` | 3 | 保留，`ILLEGAL_INSTRUCTION` |
+| `V3` | `ssrc_sel` | 0 / 1 / 2 / 3 | 无标量源 / `va` / `vb` / `vc` 读 SGPR |
+
+因此一条 VALU 指令最多只有一个 SGPR 源。清单中把可以这样切换的源操作数写成 `vsrc32` 或 `vsrc64` 类型；只有 `execution_domain: vector` 且格式属于 `V1/V2/V3/VCMP` 的 form 才允许出现这两种类型。目标操作数永远是 VGPR 或 `vpN`，不受 selector 影响。
+
+不含 `vsrc*` 操作数的 VALU form（例如 `VIMM` 系列，或所有源都固定为 VGPR 的 form）必须把 selector 字段编码为零；它在这些 form 里是 must-zero 洞，非零就是 `ILLEGAL_INSTRUCTION`。
+
+`vsrc64` 的两个寄存器文件都要求偶数对齐的完整寄存器对，语法上必须写全，例如：
+
+```text
+V_MOV.B64 v2:v3, v4:v5      # ssrc=0
+V_MOV.B64 v2:v3, s4:s5      # ssrc=1
+```
+
+汇编器由源操作数的前缀唯一确定 selector 值：写 `sN` 就置对应的 selector 码，写 `vN` 就保持该位置为 VGPR。同一条指令里出现两个 `sN` 源没有可用编码，必须报错，而不是自行插入搬运指令。
 
 ### 6.5.4 MEMORY
 
@@ -2784,7 +2701,7 @@ V_LD.LOCAL.U32 v0, [v2 + 16]
 V_ST.LOCAL.U32 [v2 + 16], v0
 ```
 
-所有 LOCAL form 的 `sbase` 必须为零；LOCAL 禁止 SGPR base、SGPR+VGPR indexed 地址和 64 位 VGPR base。`VSHMEM` 的合法地址 form 由 shared-memory 清单单独固定，不得借用 VMEM 的 global/generic 64 位 base 规则。
+所有 LOCAL form 的 `sbase` 必须为零；LOCAL 禁止 SGPR base、SGPR+VGPR indexed 地址和 64 位 VGPR base。`VSHMEM` 的合法地址 form 由 shared-memory 清单单独固定，不得借用 VMEM 的 global 64 位 base 规则。
 
 `SATOM/VATOM`：
 
@@ -2851,7 +2768,7 @@ scope 名称统一使用 `DEVICE`，不得输出或接受 `GPU` 作为 canonical
 
 合法矩阵为：
 
-| operation 类别 | 合法 order | global/generic 合法 scope | shared 合法 scope |
+| operation 类别 | 合法 order | global 合法 scope | shared 合法 scope |
 |---|---|---|---|
 | LOAD | `RELAXED`, `ACQUIRE` | `CTA`, `DEVICE`, `SYSTEM` | `CTA` |
 | STORE | `RELAXED`, `RELEASE` | `CTA`, `DEVICE`, `SYSTEM` | `CTA` |
@@ -2913,21 +2830,17 @@ frame.owner_call_depth = call_stack.depth
 | `[38:37]` | `order2` |
 | `[44:39]` | `x6` |
 
-`a/b` 是 opcode 指定类别的寄存器槽。屏障槽 `slot3` 可表达 0..7。三条 BAR 都把 `slot3` 作为显式 `barrier_id`；`BAR.ARRIVE.CTA` 和 `BAR.WAIT.CTA` 的 `a` 都编码 VGPR 号。非屏障同步指令必须把 `slot3` 置零。scope/order 只在相应 opcode 明确定义时有效，否则必须为零。
+`a/b` 是 opcode 指定类别的寄存器槽。屏障槽 `slot3` 可表达 0..7。唯一使用它的指令是 `BAR.SYNC.CTA`，其中 `slot3` 是显式 `barrier_id`；非屏障同步指令必须把 `slot3` 置零。scope/order 只在相应 opcode 明确定义时有效，否则必须为零。
 
-命名屏障保留原有 family ID 和译码三元组，规范编码固定为：
+屏障的规范编码只有一条：
 
 | family | `(class,format,opcode)` | canonical 汇编 | payload 非零字段 | 示例机器字 |
 |---|---|---|---|---|
-| `F061` | `(5,0,3)` | `BAR.SYNC.CTA id` | `slot3=id` | `BAR.SYNC.CTA 3` → `0x0018000000000185` |
-| `F062` | `(5,0,4)` | `BAR.ARRIVE.CTA vd,id` | `a=vd, slot3=id` | `BAR.ARRIVE.CTA v5,3` → `0x0018000000280205` |
-| `F063` | `(5,0,5)` | `BAR.WAIT.CTA id,vs` | `a=vs, slot3=id` | `BAR.WAIT.CTA 3,v5` → `0x0018000000280285` |
+| `bar-sync` | `(5,0,3)` | `BAR.SYNC.CTA id` | `slot3=id` | `BAR.SYNC.CTA 3` → `0x0018000000000185` |
 
-表中未列出的 `b/imm16/scope2/order2/x6` 都必须为零。`a` 只是 8 位 VGPR 编号；token 的隐藏身份字段恰好是 `{CTA identity,linear_tid,slot,logical generation}`，另有隐藏 valid 状态。它们不进入机器字，也不能用立即数编码。logical generation 属于数学非负整数 `N`，没有 U64 位宽或编码字段；有限实现必须以 epoch、capability ID、安全回收或等效办法做到架构上永不回绕。`linear_tid=warp_id*32+lane_id`，wrong-owner 比较也使用这个值。
+`a/b/imm16/scope2/order2/x6` 都必须为零。屏障不写寄存器，也不读寄存器源，所以 SYNC payload 里没有屏障寄存器槽；`(5,0,4)` 和 `(5,0,5)` 在 1.0 Draft 中未分配，译码为 `ILLEGAL_INSTRUCTION`。
 
-`BarrierWaitRecord {warp_id,owner_snapshot,resume_pc}`、warp blocked record 和槽内 waiter 映射都是执行状态，不占 SYNC payload。`resume_pc` 固定为该动态 BAR 的 `old_PC+8`，不能由汇编显式提供。
-
-YAML 根 `barrier_contract.vgpr_tag_write_policy` 是标签写回的机器可读闭包：生成器先枚举所有含 VGPR `write/read_write` 目标的 form，并对每个目标 VGPR32 槽应用 `default_action=clear`。只有列出的 F025 `b32.reg`/`V_MOV.B32` 使用 `copy_source_tag`，F062 `cta`/`BAR.ARRIVE.CTA` 使用 `create_tag`。任何未列出的 form 都不能靠助记符或实现特例保留 barrier-token 标签。
+`BarrierWaitRecord {warp_id,owner_snapshot,resume_pc}`、warp blocked record、槽内 waiter 映射和 CTA 的 `live_owner_set` 都是执行状态，不占 SYNC payload。`resume_pc` 固定为该动态屏障指令的 `old_PC+8`，不能由汇编显式提供。
 
 ### 6.5.7 COLL
 
@@ -2940,16 +2853,17 @@ YAML 根 `barrier_contract.vgpr_tag_write_policy` 是标签写回的机器可读
 | `[39:32]` | `imm8` |
 | `[44:40]` | `x5` |
 
-`smask` 是保存 lane mask、标量源或标量目标的 SGPR 号，不是 8 位 lane mask 本身。真正的 `warp_collective` form 按 opcode 语义确定参与者并要求 header guard 为 PT；`V_BCAST` 是复用 COLL 格式的 `vector` form，可以使用 optional guard。
+`smask` 是保存 lane mask、标量源或标量目标的 SGPR 号，不是 8 位 lane mask 本身。COLL 格式只承载 `warp_collective` 和 `scalar` form，它们都要求 header guard 为 PT。COLL 没有 scalar-source selector：需要把统一值送进各 lane 的场合用 `V1` 的混合源 `V_MOV`，不用跨 lane 格式。
 
-`V_BCAST.B64` 和 `S_READFIRST.B64` 的 64 位两端都必须显式写完整、偶数对齐且不越界的寄存器对：
+`S_READFIRST.B64` 的 64 位两端都必须显式写完整、偶数对齐且不越界的寄存器对：
 
 ```text
-V_BCAST.B64 v2:v3, s4:s5
 S_READFIRST.B64 s6:s7, v8:v9
 ```
 
-`V_BCAST.B64` 的 `vd` 编码 VGPR 目标对基址，`smask` 编码 SGPR 源对基址，`va/vb/imm8/x5` 必须为零；它是 `execution_domain: vector`、`guard_policy: optional`。`S_READFIRST.B64` 的 `smask` 编码 SGPR 目标对基址，`va` 编码 VGPR 源对基址，`vd/vb/imm8/x5` 必须为零；它是 `execution_domain: scalar`、`guard_policy: required_pt`、`required_state: scalar_ready`。后者必须从同一个最低编号 active lane 原子快照两个 32 位半部，禁止两个半部分别选择 lane。
+它的 `smask` 编码 SGPR 目标对基址，`va` 编码 VGPR 源对基址，`vd/vb/imm8/x5` 必须为零；它是 `execution_domain: scalar`、`guard_policy: required_pt`、`required_state: scalar_ready`。它必须从同一个最低编号 active lane 原子快照两个 32 位半部，禁止两个半部分别选择 lane。
+
+反方向的 SGPR64 到各 lane VGPR64 搬运由 `V1` 格式的 `V_MOV.B64 vE:v(E+1), sA:s(A+1)`（`ssrc=1`）完成，见 6.5.3。
 
 `V_SHUFFLE.DOWN.B32` 有两个保留相同 width 编码的 form：
 
@@ -3142,10 +3056,11 @@ canonical 文本遵守以下规则：
 - 直接控制目标优先显示符号；无符号时显示相对 `next_pc` 的有符号位移，不显示其他目标表示；
 - 64 位操作数必须显示完整寄存器对，其他寄存器组必须显示完整范围或使用其专用片段语法；
 - 原子助记符必须严格按 `<op>.<type>.<space>.<order>.<scope>` 排列，交换操作只写 `XCHG`；
-- 命名屏障只显示为 `BAR.SYNC.CTA id`、`BAR.ARRIVE.CTA vd,id`、`BAR.WAIT.CTA id,vs`；id 必须显式出现，split token 寄存器必须写作 `vN`；
+- 屏障只显示为 `BAR.SYNC.CTA id`，id 必须显式出现；
+- 混合源操作数按实际寄存器文件显示为 `sN`/`sE:s(E+1)` 或 `vN`/`vE:v(E+1)`，反汇编不得把 SGPR 源印成 VGPR 号；
 - 不允许根据助记符拼写、寄存器前缀或字面量大小模糊选择多个候选形式。
 
-汇编器可以接受大小写、显式 `@PT`、零偏移省略等无损语法别名，但必须先归一化到唯一形式。`BARRIER`、`BARRIER_ARRIVE`、`BARRIER_WAIT` 不是 BAR 的兼容名称或 canonical 别名，必须按未知助记符拒绝。需要多条机器指令的伪操作属于宏，不是编码别名；listing 和调试信息必须显示实际展开。
+汇编器可以接受大小写、显式 `@PT`、零偏移省略等无损语法别名，但必须先归一化到唯一形式。`BARRIER`、`BARRIER_ARRIVE`、`BARRIER_WAIT`、`V_BCAST` 都不是任何指令的兼容名称或 canonical 别名，必须按未知助记符拒绝。需要多条机器指令的伪操作属于宏，不是编码别名；listing 和调试信息必须显示实际展开。
 
 若源文本不能唯一确定 `(class, format, opcode)`、数据类型、寄存器类别或立即数解释，汇编器必须报错并列出冲突候选，不得按声明顺序或“最接近”原则选择。
 
@@ -3182,7 +3097,7 @@ require static_operand_combinations_are_legal(form)      else ILLEGAL_OPERAND
 require direct_target_is_legal_if_checked_now(form)      else ILLEGAL_OPERAND
 
 if form.required_state == scalar_ready:
-    require scalar_ready(warp_state)                     else SCALAR_STATE_FAULT
+    require scalar_ready(warp_state)                     else DIVERGENCE_FAULT
 ```
 
 错误分类固定如下：
@@ -3215,40 +3130,56 @@ if form.required_state == scalar_ready:
 
 动态地址越界、实际访存未对齐、除零、屏障协议不一致和集合参与者不一致不属于静态编码错误；它们由相应执行语义产生运行时故障。
 
-`SCALAR_STATE_FAULT` 是已成功静态译码后对当前 warp 动态状态的检查结果。它适用于所有 `required_state: scalar_ready` 的 form，包括全部 scalar form，以及 `CALL` direct、`CALL.IND`、`JUMP.IND` 和 `RET`；它不适用于 `BRA/BRA.P`，也不属于非法机器编码。
+`DIVERGENCE_FAULT` 是已成功静态译码后对当前 warp 动态状态的检查结果。它适用于所有 `required_state: scalar_ready` 的 form，包括全部 scalar form，以及 `CALL` direct、`CALL.IND`、`JUMP.IND` 和 `RET`；它不适用于 `BRA/BRA.P`，也不属于非法机器编码。
 
 静态错误检查对整个 warp 只做一次，先于 guard 和 scalar-ready 求值。发生静态错误时不得提交 SGPR、VGPR、VP、SCC、内存、PC、同步或重汇聚状态。
 
 ## 6.12 机器可读清单要求
 
-机器可读 ISA 清单中的每个 form 至少必须给出：
+清单把**物理布局**和**操作数绑定**分开保存，各有唯一归属：
+
+- 根 `format_registry` 拥有物理布局。每个编码格式在这里给出一次自己的 class、payload 位范围和完整字段表（字段名、`lsb`、`width`、`kind`、描述）。
+- 每个 form 拥有操作数绑定。它声明自己属于哪个 `encoding_format`、自己的 `opcode`，以及每个操作数绑定到哪个字段。
+
+因此单个 form 至少必须给出：
 
 ```yaml
-family: IADD
-form: iadd_v2_u32
-class: VALU
-format: V2
+family: v-add                  # 语义分组，语义化 slug
+form: u32                      # family 内唯一
+mnemonic: V_ADD.U32
+syntax: V_ADD.U32 v0, v1, v2
+encoding_format: V2
 opcode: 0x00
-mnemonic: IADD.U32
 execution_domain: vector
 required_state: none
 guard_policy: optional
-fields: [...]
-must_zero: [...]
-operands: [...]
-semantics: [...]
+operands: [...]                # 每项含 name/type/access/field
+semantics: ...
 constraints: [...]
 faults: [...]
+example: {assembly: ..., machine_word: ...}
 ```
+
+form 里**不得**重复 `class`、`format` 或 `fields`：它们由 `encoding_format` 加 `format_registry` 唯一决定，工具必须现场推导。任何绑定不到操作数的 payload 字段自动成为 must-zero 洞，不需要另写 `must_zero` 列表。
+
+只有两类信息无法从 registry 推导，因此允许逐 form 覆盖：
+
+- `field_values`：把某个字段固定成一个常量。例如 `MEMBAR` 三个 form 用它把 `scope2/order2` 钉死成各自的组合。
+- `field_notes`：给某个字段一个 form 专属的描述，用于同一个物理槽在不同 form 中承载不同含义的情况，例如 `V_SHUFFLE.DOWN.B32` 的立即数 delta form。
+
+family ID 是语义化 slug（`^[a-z0-9]+(-[a-z0-9]+)*$`，如 `v-add`、`bar-sync`），不是不透明编号。
 
 生成器必须拒绝：
 
-- 两个 form 重复声明同一 `(class, format, opcode)`；
-- form 缺失 family，或 family 被当成译码字段；
-- 位段重叠、越出 64 位或遗漏 payload 位；
+- 两个 form 重复声明同一 `(encoding_format, opcode)` 或同一译码三元组；
+- form 直接书写 `class`、`format` 或 `fields`；
+- form 引用 `format_registry` 中不存在的 `encoding_format`，或绑定到该格式没有的字段名；
+- `format_registry` 中位段重叠、越出 64 位或遗漏 payload 位；
 - 同一机器字匹配多个形式；
 - 未定义的 `x` 位；
 - opcode 的字段类别与操作数类别不一致；
+- `vsrc32`/`vsrc64` 操作数出现在非 `V1/V2/V3/VCMP` 格式或非 `vector` 执行域的 form 上；
+- 含 `vsrc*` 操作数的 form 把 selector 字段当成 must-zero 洞，或不含 `vsrc*` 的 form 让 selector 变成可变字段；
 - `execution_domain` 不属于本章规定的七值集合；
 - `guard_policy`、`required_state` 或 form 级 guard 矩阵与本章规则不一致；
 - 原子 `order/scope` 被错误拆成额外 opcode/form，或合法矩阵不一致；
@@ -3257,7 +3188,7 @@ faults: [...]
 - 立即数宽度大于其格式容器；
 - 示例不能 canonical 汇编，或 round-trip 改变机器字。
 
-执行域、machine class、编码格式、family 和 form 必须作为不同概念保存。family 只做语义分组，form 才是唯一译码叶子；每个 form 的 `(class, format, opcode)` 三元组必须全局唯一。生成器不得从 `V2` 自动推导 `IADD` family，不得从 `MEMORY` class 推导 execution domain，也不得从 `FADD` family 反推其 payload 布局。完整指令表、汇编器、反汇编器、验证器和 RTL/CModel 解码表必须由同一份清单生成。
+执行域、machine class、编码格式、family 和 form 必须作为不同概念保存。family 只做语义分组，form 才是唯一译码叶子；每个 form 的 `(class, format, opcode)` 三元组必须全局唯一。生成器不得从 `V2` 自动推导 `v-add` family，不得从 `MEMORY` class 推导 execution domain，也不得从 family 名反推其 payload 布局。完整指令表、汇编器、反汇编器、验证器和 RTL/CModel 解码表必须由同一份清单生成。
 
 <div class="page-break"></div>
 
@@ -3315,17 +3246,17 @@ X     跨 lane/跨域，对应 CROSSLANE
 MMA   矩阵，对应 MATRIX
 ```
 
-`SYS` class 中纯系统 form 仍直接称为 SYS。`V_BCAST`、`X_BROADCAST`、`S_READFIRST` 的名字说明数据方向或集合行为，但机器 class 仍由 YAML 决定。所以“这一节从 V 方向解释它”和“它编码在 CROSSLANE class”并不冲突；机器 class 永远以 8 类之一为准。
+`SYS` class 中纯系统 form 仍直接称为 SYS。`X_BROADCAST`、`S_READFIRST` 的名字说明数据方向或集合行为，但机器 class 仍由 YAML 决定。所以“这一节从 V 方向解释它”和“它编码在 CROSSLANE class”并不冲突；机器 class 永远以 8 类之一为准。
 
 命名规则如下：
 
 - 标量数据指令使用 `S_` 前缀，例如 `S_ADD`、`S_LD`、`S_ATOM.ADD.U32.GLOBAL.RELAXED.DEVICE`。
 - 向量数据指令使用 `V_` 前缀，例如 `V_ADD`、`V_LD`、`V_ATOM.ADD.U32.GLOBAL.RELAXED.DEVICE`。
-- 跨寄存器域和跨 lane 的规范名称固定为 `V_BCAST`、`X_BROADCAST`、`S_READFIRST`、`S_GETREG`、`V_GETREG`。
+- 跨寄存器域和跨 lane 的规范名称固定为 `X_BROADCAST`、`S_READFIRST`、`S_GETREG`、`V_GETREG`。
 - 控制流清单固定为 `BRA`、`BRA.P`、`SSY`、`JOIN`、`EXIT`、`CALL`、`CALL.IND`、`JUMP.IND`、`RET`。
 - SYNC、X 和 MMA 的完整规范名称由 YAML 给出；文本别名不能产生第二个机器编码。
 
-`S_BROADCAST` 不是规范名称。把一个标量值送到各 lane 的指令只能写作 `V_BCAST`，因为目标属于 V 域。
+`S_BROADCAST` 和 `V_BCAST` 都不是规范名称，也不是任何指令的别名。把一个标量值送到各 lane 不需要专门的指令：任何 `V1/V2/V3/VCMP` 向量 form 都可以用 scalar-source selector 直接读一个 SGPR 源，需要独立副本时写 `V_MOV.B32 vd, sN`。
 
 ## 7.2 双寄存器执行模型
 
@@ -3370,7 +3301,7 @@ reconv_stack 中不存在 phase 为 FIRST 或 SECOND 的帧
 
 ```text
 fault(
-    code = SCALAR_STATE_FAULT,
+    code = DIVERGENCE_FAULT,
     lane_mask = active_mask,
     aux = 0)
 ```
@@ -3391,11 +3322,11 @@ fault(
 7. commit     无故障才一次提交全部效果
 ```
 
-静态译码不受 active mask 或 guard 抑制。具体先后只引用 `docs/02-programming-model.md` 的权威表；按该表，`ILLEGAL_INSTRUCTION` 和静态 `ILLEGAL_OPERAND` 位于 `SCALAR_STATE_FAULT` 之前。对静态合法的 S form，非 scalar-ready 的结果固定是 `SCALAR_STATE_FAULT`。任一参与 lane 失败，整条指令都不提交；不能出现“低 lane 已写、高 lane 才报错”。
+静态译码不受 active mask 或 guard 抑制。具体先后只引用 `docs/02-programming-model.md` 的权威表；按该表，`ILLEGAL_INSTRUCTION` 和静态 `ILLEGAL_OPERAND` 位于 `DIVERGENCE_FAULT` 之前。对静态合法的 S form，非 scalar-ready 的结果固定是 `DIVERGENCE_FAULT`。任一参与 lane 失败，整条指令都不提交；不能出现“低 lane 已写、高 lane 才报错”。
 
 所有源逻辑上先读后写，所以目标可以与源完全重合。多槽寄存器组只能完全重合或完全不相交，除非对应 form 明确允许其他关系。
 
-普通非控制指令成功后 `PC = PC + 8`。合法且 `P` 为空的 V 指令不产生数据效果，只推进 PC。S 指令若 `live_mask==0`，应在更早的 scalar-ready 检查中报告 `SCALAR_STATE_FAULT`，不能走空参与集合捷径。
+普通非控制指令成功后 `PC = PC + 8`。合法且 `P` 为空的 V 指令不产生数据效果，只推进 PC。S 指令若 `live_mask==0`，应在更早的 scalar-ready 检查中报告 `DIVERGENCE_FAULT`，不能走空参与集合捷径。
 
 ## 7.3 S-only、V-only 和 S/V 双版本
 
@@ -3434,7 +3365,7 @@ YAML 可以声明更多 S-only form，但必须写出不能存在 V 版本的理
 
 下列能力只属于 V 域：
 
-- `V_BCAST`：S 到 V 的广播。
+- 用 scalar-source selector 把一个 SGPR 当统一源读入逐 lane 运算。
 - 读取 lane id、lane-local 状态等逐 lane 特殊寄存器的 `V_GETREG` form。
 - 以 V 地址项形成每 lane 不同地址的访存。
 - 产生 `vpN` lane 掩码，并可作为 `BRA.P` 的逐 lane 条件。
@@ -3443,12 +3374,14 @@ X 和 MMA 也会读写 V 寄存器，但它们是独立顶层类别，不归入 
 
 ### 7.3.4 不允许偷偷跨域
 
-除 `V_BCAST`、`S_READFIRST` 和 form 明写的混合地址外：
+除 `vsrc*` 混合源、`S_READFIRST` 和 form 明写的混合地址外：
 
 - S 指令不能读 V 寄存器；
 - V 指令不能把 V 结果直接写进 S 寄存器；
-- 汇编器不能靠同号寄存器名自动插入广播或 read-first；
+- 汇编器不能靠同号寄存器名自动插入搬运或 read-first；
 - 实现不能因为“所有 lane 的值碰巧相同”把 V 源当成 S 源。
+
+混合源也不是无限制的跨域：一条 V 指令最多一个 SGPR 源，且必须由 selector 显式编码。写出两个 `sN` 源的汇编是错误，汇编器必须报错而不是自行插入一条搬运指令。
 
 ## 7.4 move 与跨域操作
 
@@ -3456,26 +3389,30 @@ X 和 MMA 也会读写 V 寄存器，但它们是独立顶层类别，不归入 
 
 `S_MOV` 和 `V_MOV` 按 form 宽度逐位复制，不做数值转换，不改变 NaN payload，不做符号扩展。窄值扩展只能由明确的 load 或 cvt form 完成。
 
-`V_MOV.B32 vd,vs` 的寄存器 form 是全 ISA 标签写回闭包的复制例外：对每个参与 lane，它把 barrier token 的隐藏有效标签与 32 位数值一起完整复制。非参与 lane 仍保持原样。除此以外，任何 VGPR32 槽写入都默认清除旧 barrier-token 标签，只有 `BAR.ARRIVE.CTA` 可以创建新标签。
+`V_MOV` 只搬位。寄存器上没有隐藏影子状态，因此 move 不需要额外说明标签如何创建、复制或清除。
 
-因此 `V_MOV.B32 vd,imm`、`V_MOV.B64`、`V_BCAST`、`X_BROADCAST`、`V_GETREG`、普通/原子 load 返回、ALU/CVT/FP 写回和 MMA 输出都逐个清除其写入槽的 barrier-token 标签。复制出来的多个标签副本仍指向同一个 `{CTA identity,linear_tid,slot,logical generation}` 单次消费身份，不会变成多张 token。这个默认清除只针对 barrier-token 标签，pointer provenance 仍按第 4 章处理。
-
-### 7.4.2 V_BCAST
+### 7.4.2 混合源 V_MOV：SGPR 到各 lane
 
 ```text
-V_BCAST.B32 vd, ss
-V_BCAST.B64 v0:v1, s0:s1
+V_MOV.B32 vd, vs            # ssrc=0
+V_MOV.B32 vd, ss            # ssrc=1
+V_MOV.B64 v0:v1, v2:v3      # ssrc=0
+V_MOV.B64 v0:v1, s0:s1      # ssrc=1
 ```
 
-`V_BCAST` 虽编码在 `CROSSLANE` class，执行域却是 `vector`，并且是该 class 中明确允许 `guard_policy: optional` 的例外。它按普通 vector 规则令 `P = E & guard`，不要求 scalar-ready。在入口冻结一次 S 源；对每个 `lane ∈ P`：
+`V_MOV` 是 `V1` 格式的 form，源操作数类型是 `vsrc32` 或 `vsrc64`。`ssrc=1` 时那 8 位寄存器号在 SGPR 文件中解释，这就是把标量值送进各 lane 的规范做法。它的执行域是 `vector`、`guard_policy: optional`，按普通 vector 规则令 `P = E & guard`，不要求 scalar-ready。
+
+在入口冻结一次源；对每个 `lane ∈ P`：
 
 ```text
-vd[lane] = frozen(ss)
+vd[lane] = frozen(src)
 ```
 
-guard 为假的 lane 不读取源、不写目标；非参与 lane 的 `vd` 保持不变。这里的方向固定是 **SGPR 到各 lane 的 VGPR**，不是从某个 lane 取值。
+guard 为假的 lane 不读取源、不写目标；非参与 lane 的 `vd` 保持不变。
 
-`.B64` 使用完整偶数连续寄存器对，一次复制 64 位。若 S 源携带 global/param/const pointer provenance，则每个参与 lane 的 V 目标同时得到同一份完整 `{space, allocation-id, offset}`；非参与 lane 的旧数值和旧 provenance 都不变。`.B32` 只复制 32 位，不凭空产生 provenance。
+`.B64` 使用完整偶数连续寄存器对，一次复制 64 位，两个 32 位半部来自同一次冻结的快照。
+
+很多情况下连这条 move 都不需要：既然 `V_ADD.U32`、`V_CMP.LT.U32`、`V_FFMA.F32` 这类 form 本身就能读一个 SGPR 源，直接写 `V_ADD.U32 v1, v0, s6` 比先搬后算更短。只有一条指令需要两个 uniform 值，或者要把 uniform 值多次复用而寄存器压力允许时，才值得先物化成 VGPR。
 
 ### 7.4.3 X_BROADCAST
 
@@ -3485,7 +3422,7 @@ X_BROADCAST vd, vs, lane
 
 `X_BROADCAST` 才是 lane 到 lane 的广播。它先冻结选中 lane 的 `vs`，再把这一份值写到所有规定的接收 lane。`lane` 是立即数还是统一 SGPR、源 lane 必须属于哪个集合、接收集合是什么，都由对应 YAML form 的结构化操作数和约束给出；实现不能自行改成“当前第一个 lane”。
 
-这是 `execution_domain: warp_collective` 的集合操作。所有规定参与者必须在同一动态实例上取得一致的 lane 选择，源 lane 必须可用，否则产生 `COLLECTIVE_FAULT`，并且所有目标保持不变。`V_BCAST` 和 `X_BROADCAST` 方向不同，汇编器不得把它们当别名。
+这是 `execution_domain: warp_collective` 的集合操作。所有规定参与者必须在同一动态实例上取得一致的 lane 选择，源 lane 必须可用，否则产生 `COLLECTIVE_FAULT`，并且所有目标保持不变。它与混合源读 SGPR 是两件不同的事：`X_BROADCAST` 是 lane 到 lane，混合源是 SGPR 文件到各 lane。
 
 ### 7.4.4 S_READFIRST
 
@@ -3501,7 +3438,7 @@ first = 编号最小的 live lane
 sd = frozen(vs[first])
 ```
 
-`.B64` 从同一个 first lane 一次读取完整 VGPR 对。若该 lane 的 V 源携带 pointer provenance，S 目标同时得到完全相同的 provenance；不能从一个 lane 取数值、从另一个 lane 取 tag。`.B32` 不产生 provenance。
+`.B64` 从同一个 first lane 一次读取完整 VGPR 对；两个 32 位半部必须来自同一个 lane 的同一次快照，不能分别选择 lane。
 
 若 `live_mask` 为空，warp 已完成，不会取到该指令。`S_READFIRST` 不做 vote，也不检查其他 lane 是否同值；需要验证同值时必须先用 X 类指令。
 
@@ -3663,7 +3600,7 @@ x5      form 未定义的位必须为零
 
 SV-mix 的 VGPR32 index **固定零扩展**；最高位为 1 也仍是大正数，绝不能按有符号数解释。`scale` 只能取具体 form 明写的值；未声明缩放时固定为 1。global、param、const 可以使用 lane-address 或 SV-mix；shared 使用 32 位 lane-address，也可使用 form 明确给出的 SV-mix。**local 只能使用 lane-address**，只能由 vector memory 访问，每个 lane 的数值偏移落在自己的 local allocation；local 禁止 scalar、uniform-base 和 SV-mix。
 
-`SMEMX`/VMEM/VATOMX 只能使用各自 form 结构化列出的地址项。错误空间或 provenance 为 `ILLEGAL_OPERAND`，保留 scale/modifier 或非零 must-zero 位为 `ILLEGAL_INSTRUCTION`，数学地址越界为 `MEMORY_BOUNDS`，自然对齐失败为 `MISALIGNED_ACCESS`；多故障仍按第 2 章优先级。vector mixed address 中任一参与 lane 失败，整条指令零事件回滚。
+`SMEMX`/VMEM/VATOMX 只能使用各自 form 结构化列出的地址项。地址空间由 opcode 决定，寄存器里的地址值不带空间身份。错误寄存器类别或非法操作数组合为 `ILLEGAL_OPERAND`，保留 scale/modifier 或非零 must-zero 位为 `ILLEGAL_INSTRUCTION`，数学地址越界为 `MEMORY_BOUNDS`，自然对齐失败为 `MISALIGNED_ACCESS`；多故障仍按第 2 章优先级。vector mixed address 中任一参与 lane 失败，整条指令零事件回滚。
 
 S_MEM 先检查 scalar-ready。一次**成功**的 S load、S store 或其他非原子 scalar memory form 必须恰好产生一个内存事件，不能是零个，也不能按 lane 复制。V_MEM 对 P 中每个 lane 产生一个事件；即使多个 lane 得到同一 EA，也仍是不同的 lane 事件。
 
@@ -3732,13 +3669,13 @@ EA[lane] = unsigned(SGPR64_base)
            + zero_extend(VGPR32_index[lane])
 ```
 
-`VATOMX` 的 scale 固定为 1，不存在额外缩放变体，`x` 必须为零。额外 scale、错误空间/provenance、越界、未对齐和任一 lane 失败分别按 7.8.1 与第 2 章处理，并整条零事件回滚。
+`VATOMX` 的 scale 固定为 1，不存在额外缩放变体，`x` 必须为零。额外 scale、非法操作数、越界、未对齐和任一 lane 失败分别按 7.8.1 与第 2 章处理，并整条零事件回滚。
 
 ## 7.10 W 控制流与隐藏重汇聚
 
 ### 7.10.1 一个 PC，隐藏状态
 
-一个 warp 只有一个架构 PC。实现保存路径集合、待执行路径、调用返回点和重汇聚信息，但这些都是隐藏状态：程序不能读栈深、伪造 token、修改 pending mask，或依赖实现内部先存哪一项。
+一个 warp 只有一个架构 PC。实现保存路径集合、待执行路径、调用返回点和重汇聚信息，但这些都是隐藏状态：程序不能读栈深、修改 pending mask，或依赖实现内部先存哪一项。
 
 隐藏不等于随意。相同入口状态、SCC 和 `vpN` 必须得到相同的 PC、active mask 和可见提交顺序。
 
@@ -3773,7 +3710,7 @@ RET                恢复最近一次 CALL 保存的 return_pc
 
 直接和间接目标都必须 8 字节对齐、完整落在当前文本内并指向合法指令。间接目标只能来自 S 域，不能逐 lane 不同。
 
-`CALL`、`CALL.IND`、`JUMP.IND` 和 `RET` 的机器 class 都是 `CONTROL`，用户可读分类都是 W，不得改标成 SALU。它们的 `required_state` 都是 `scalar_ready`，并且必须在读取间接目标 SGPR 或调用栈之前检查；不满足时产生 `SCALAR_STATE_FAULT`。
+`CALL`、`CALL.IND`、`JUMP.IND` 和 `RET` 的机器 class 都是 `CONTROL`，用户可读分类都是 W，不得改标成 SALU。它们的 `required_state` 都是 `scalar_ready`，并且必须在读取间接目标 SGPR 或调用栈之前检查；不满足时产生 `DIVERGENCE_FAULT`。
 
 调用栈是每 warp 一份、程序不可见的 LIFO 状态，不占普通 S/V 寄存器。每个调用帧**只保存一个** `return_pc=PC+8`，不保存 active mask、重汇聚深度或其他控制上下文。最大深度只取 descriptor 的 `call_stack_depth`：
 
@@ -3791,29 +3728,28 @@ RET                恢复最近一次 CALL 保存的 return_pc
 
 ## 7.11 SYNC
 
-SYNC 类包括内存栅栏和三条命名 CTA 屏障。内存栅栏只建立第 4 章定义的顺序，不是 lane 会合。屏障的规范指令名和操作数次序固定为：
+SYNC 类包括内存栅栏和唯一一条 CTA 屏障。内存栅栏只建立第 4 章定义的顺序，不是 lane 会合。屏障的规范指令名和操作数次序固定为：
 
 ```text
-BAR.SYNC.CTA   id
-BAR.ARRIVE.CTA vd, id
-BAR.WAIT.CTA   id, vs
+BAR.SYNC.CTA id
 ```
 
-每 CTA 有 8 个槽 `0..7`，每槽只有一个当前 generation。generation 是数学非负整数 `N`：从 0 开始，每次退休严格加 1，单调且永不回绕。owner 唯一身份为 CTA 内 `linear_tid=warp_id*32+lane_id`；所有 owner/arrived/consumed 集合、token tag 和 wrong-owner 检查都使用 `linear_tid`。启动为 generation 0、`EMPTY`、集合和 waiter 为空。owner 集永远是 CTA 启动时全部真实线程的 `linear_tid`：尾部不存在 lane不算 owner，`EXIT` 不删 owner。每代第一批合法 arrival 选择 `SYNC` 或 `SPLIT`，混用或同 owner 重复 arrival 都是 `BARRIER_FAULT`。
+架构没有 split 屏障、屏障 token 和 generation 计数。每 CTA 有 8 个槽 `0..7`，每槽只保存 `arrived_set` 和 waiter 映射；另有一个 8 槽共用的 CTA 级 `live_owner_set`。owner 唯一身份为 CTA 内 `linear_tid=warp_id*32+lane_id`。启动时全部槽为 idle（两者都空），`live_owner_set` 是 CTA 启动时全部真实线程的 `linear_tid`：尾部不存在 lane 从不计入，`EXIT` 把退出线程移除。
 
-- `BAR.SYNC.CTA` 把入口 active lane 转成 `owner_snapshot: set<linear_tid>`，做一次原子 arrival commit和 shared CTA release，然后用 `BarrierWaitRecord {warp_id,owner_snapshot,resume_pc=old_PC+8}` 阻塞整个 warp。全体 owner 到齐时，全部记录一起 acquire，并只写各自 `PC=resume_pc`、清 blocked record、置 ready，槽随即退休。
-- `BAR.ARRIVE.CTA` 对入口 `linear_tid` 原子登记并逐 lane 写 `vd[lane]`。每份 token 标签恰好绑定 `{CTA identity,linear_tid,id,current logical generation}`；非参与 lane 不写。arrival 是 shared CTA release，成功不阻塞并 `PC+=8`。到齐只标记 completed，不能提前退休 SPLIT 代。
-- `BAR.WAIT.CTA` 同时检查显式 id 和每个 active owner 的 `vs[lane]` 标签。只有本 CTA identity、本 `linear_tid`、本槽、当前 generation、尚未消费的 token 合法。合法时先原子登记 consume；未 completed 就用同样的 wait record 阻塞整个 warp，completed 后 acquire 并 `PC+=8`。completed 后才来的 WAIT 立即 acquire。全体 owner 的 token 都消费后才退休并进入下一代。
+`BAR.SYNC.CTA` 的 `required_state` 是 `scalar_ready`，`guard_policy` 是 `required_pt`，执行域是 `cta_sync`：
 
-每 warp 同时至多一条 blocked record。阻塞期间 PC 留在 BAR，active/live 掩码、重汇聚栈和调用栈保持不变，挂起路径不能切入；恢复也不改这些状态。
+- 先检查 scalar-ready；不满足时报告 `DIVERGENCE_FAULT`，不登记任何 arrival，也不改 PC。因为通过检查后 `active_mask == live_mask`，一个 warp 只能整体到达，不存在部分到达、重复到达或 wrong-owner 的情形。
+- 把入口 active lane 转成 `owner_snapshot: set<linear_tid>`，做一次原子 arrival commit 和 shared CTA release，然后用 `BarrierWaitRecord {warp_id,owner_snapshot,resume_pc=old_PC+8}` 阻塞整个 warp。
+- `arrived_set` 等于当前 `live_owner_set` 时，全部记录一起 acquire，并只写各自 `PC=resume_pc`、清 blocked record、置 ready，槽随即清空回 idle。
+- `EXIT` 缩小 `live_owner_set` 后必须重新检查每个非 idle 槽，因为完成条件可能刚刚被满足。`EXIT` 自身不是 shared release。
 
-token 恰好消费一次。stale、foreign、wrong-slot、wrong-owner、wrong-generation、malformed、untagged 和 duplicate token 都报 `BARRIER_FAULT`。一条 warp 动态指令只要任一 active lane 错误，就不提交任何 lane 的 arrival、consume、VGPR 写、blocked record 或 PC。`EXIT` 的未消费义务只看槽：任一退出 `linear_tid` 若位于任一 SPLIT 槽的 `arrived_set-consumed_set` 就故障，与 VGPR 是否还留有 tag 无关。
+每 warp 同时至多一条 blocked record。阻塞期间 PC 留在屏障指令上，active/live 掩码、重汇聚栈和调用栈保持不变，挂起路径不能切入；恢复也不改这些状态。
 
-有限实现可以压缩 generation 的内部表示，但必须表现得像 `N` 永不回绕。物理计数器回到相同低位、内部对象编号回收或长时间运行，都不能让旧、已消费 token 或 `V_MOV.B32` 留下的副本重新匹配；这样的 token 永远是 stale/duplicate。
+因为槽在完成时被清空，同一个槽的两次屏障之间不留任何状态，也就没有需要区分的“代”，实现不需要防止计数器回绕。
 
-BAR 只处理当前 active lane。若当前分歧路径阻塞，使同 warp 的挂起路径无法到达或 WAIT，程序可以按既有规则死锁。没有子集 barrier，也没有 `expected` 操作数。BAR 的 release/acquire 只排序 shared；global、local、param、const 和 host 不因此有序，global 通信仍需原子和需要的 `MEMBAR`。完整状态转移伪代码见第 3 章第 10 节。
+如果 CTA 内一部分 warp 到达某个槽，另一部分既不到达也不退出，`arrived_set` 永远追不上 `live_owner_set`，程序按第 3 章第 12 节报告 `DEADLOCK`。屏障的 release/acquire 只排序 shared；global、local、param、const 和 host 不因此有序，global 通信仍需原子和需要的 `MEMBAR`。完整状态转移伪代码见第 3 章第 10 节。
 
-CTA 只有在全部 warp 完成且 8 个槽都 IDLE 时完成。IDLE 固定表示 `mode=EMPTY`、arrived/consumed/waiters 为空、`completed=false`；generation 可为任意 `N` 中的退休计数值，但不能是有限计数器回绕后的旧逻辑值。
+CTA 只有在全部 warp 完成且 8 个槽都 idle 时完成。idle 固定表示 `arrived_set` 和 `waiters` 都为空。
 
 ## 7.12 X 跨 lane
 
@@ -3979,8 +3915,8 @@ coverage_tags
 - PC、live mask、active mask 和隐藏控制状态；
 - SGPR、VGPR、1 位 SCC、32 位 `vp0..vp15` 和特殊寄存器快照；
 - scalar-ready 是否成立；
-- 内存空间、allocation、provenance、初值和原子 modification order；
-- barrier 的 linear_tid 集合、BarrierWaitRecord/warp blocked record、token、MMA/collective 会合状态；
+- 内存空间、allocation、初值和原子 modification order；
+- 每槽 `arrived_set`/waiter 映射、CTA 的 `live_owner_set`、warp blocked record、MMA/collective 会合状态；
 - 文本范围、模块字段和启用 feature。
 
 测试不能依赖未初始化值，除非目标就是检查 `UNSPEC` 分类；这类测试不能要求某个具体位型。
@@ -4033,7 +3969,7 @@ scalar/vector MEMORY 分别显示在 S/V
 CONTROL 显示在 W
 SYNC/MATRIX 分别显示在 SYNC/MMA
 CROSSLANE 中 collective form 通常显示在 X；
-V_BCAST/S_READFIRST 可按数据方向显示在 V/S，但不改变 machine class
+S_READFIRST 可按数据方向显示在 S，但不改变 machine class
 SYS 中的 scalar/vector form 可分别放进 S/V 说明，纯系统 form 保持 SYS
 ```
 
@@ -4044,12 +3980,12 @@ SYS 中的 scalar/vector form 可分别放进 S/V 说明，纯系统 form 保持
 - `CONTROL` form 在用户可读说明中只能按 W 控制流解释；
 - `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 必须保持 `class=CONTROL`，不能放入 SALU；
 - SYNC、CROSSLANE、MATRIX 不能伪装成 SALU/VALU；
-- `V_BCAST`、`X_BROADCAST`、`S_READFIRST` 的 machine class、`execution_domain` 分别与 YAML 一致；
-- `V_BCAST` 固定为 S→V，`X_BROADCAST` 固定为 lane→lane，`S_READFIRST` 固定为 V→S；
-- `V_BCAST` 与 `V_GETREG` 即使分别编码在 CROSSLANE/SYS，也必须保持 `execution_domain=vector`、`guard_policy=optional`；
+- `X_BROADCAST`、`S_READFIRST` 的 machine class、`execution_domain` 分别与 YAML 一致；
+- `X_BROADCAST` 固定为 lane→lane，`S_READFIRST` 固定为 V→S，混合源固定为 SGPR 文件→各 lane；
+- `V_GETREG` 即使编码在 SYS class，也必须保持 `execution_domain=vector`、`guard_policy=optional`；
 - `S_READFIRST` 必须保持 `execution_domain=scalar`、`guard_policy=required_pt`、`required_state=scalar_ready`；
-- `V_BCAST`、`X_BROADCAST`、`S_READFIRST`、`S_GETREG`、`V_GETREG` 的名称、方向和操作数域固定；
-- 文本 `S_BROADCAST` 被汇编器拒绝；
+- `X_BROADCAST`、`S_READFIRST`、`S_GETREG`、`V_GETREG` 的名称、方向和操作数域固定；
+- 文本 `S_BROADCAST` 和 `V_BCAST` 都被汇编器按未知助记符拒绝；
 - `BRA`、`BRA.P`、`SSY`、`JOIN`、`EXIT`、`CALL`、`CALL.IND`、`JUMP.IND`、`RET` 的 canonical 文本保持这些名称。
 
 ### 8.3.3 译码负例
@@ -4102,10 +4038,10 @@ assert disassemble(W2, canonical=true) == T
 PC
 live/active mask
 隐藏重汇聚与调用状态
-全部 SGPR、VGPR、每 lane barrier-token 标签、SCC 和 `vpN`
+全部 SGPR、VGPR、SCC 和 `vpN`
 目标内存字节
 原子 modification order
-barrier 和 token 状态
+每槽 arrived_set/waiters 和 CTA live_owner_set
 collective/MMA 状态
 事件日志
 fault record
@@ -4135,12 +4071,12 @@ fault record
 - S load/store 只产生一个内存事件；
 - S atomic 只在 modification order 中占一个位置；
 - 目标与源完全别名时按入口快照计算；
-- 非 scalar-ready 时固定产生 `SCALAR_STATE_FAULT`，不读取动态源，也不产生任何数据或内存效果；
+- 非 scalar-ready 时固定产生 `DIVERGENCE_FAULT`，不读取动态源，也不产生任何数据或内存效果；
 - `guard_policy` 必须是 `required_pt`；SCC 只在 `S_SELECT` 或 YAML 明确列出的 CONTROL 条件中读取。
 
 这里的“每个 S form”必须覆盖 `SALU`、scalar `MEMORY` 和 scalar `SYS`。不能只测 S ALU 后就声称所有 S 指令通过。
 
-状态优先级还要用毒值验证：静态编码和静态操作数都合法，但动态源会除零、地址会越界或动态特殊寄存器值会非法时，只要入口非 scalar-ready，就只能得到 `SCALAR_STATE_FAULT`，证明实现根本没有读取动态源。所有多故障组合的唯一权威顺序来自 `docs/02-programming-model.md`；本章测试从该顺序生成期望值，不另写第二套优先级。
+状态优先级还要用毒值验证：静态编码和静态操作数都合法，但动态源会除零、地址会越界或动态特殊寄存器值会非法时，只要入口非 scalar-ready，就只能得到 `DIVERGENCE_FAULT`，证明实现根本没有读取动态源。所有多故障组合的唯一权威顺序来自 `docs/02-programming-model.md`；本章测试从该顺序生成期望值，不另写第二套优先级。
 
 所有 `sgpr64`/`vgpr64` 操作数还必须检查 canonical 对语法：
 
@@ -4177,7 +4113,7 @@ NS4  active_mask == live_mask，但栈中有 SECOND 帧
 SR1..SR3 必须判为 scalar-ready；NS1..NS4 必须判为非 scalar-ready。这个矩阵必须套到每个 S form；所有 NS 用例都期望：
 
 ```text
-code = SCALAR_STATE_FAULT
+code = DIVERGENCE_FAULT
 lane_mask = active_mask
 aux = 0
 ```
@@ -4189,38 +4125,61 @@ aux = 0
 - SR2 正常读取唯一 lane；
 - SR3 在只有 ARMED 帧时正常读取；
 - 其他 V lane 值不同不构成故障；
-- NS1..NS4 产生 `SCALAR_STATE_FAULT`；
+- NS1..NS4 产生 `DIVERGENCE_FAULT`；
 - 状态故障时不读取 V 源、不写 SGPR、不改 PC、不改隐藏状态。
 
 ## 8.6 跨域与 GETREG
 
-### 8.6.1 V_BCAST
+### 8.6.1 混合源 selector
 
-启用 form 清单必须至少包含 `.B32` 和 `.B64`；缺少任一项即 FAIL。对所有宽度和合法 guard 检查：
+selector 覆盖必须由 YAML 自动生成，不允许手写代表列表：
 
-- form 固定为 `execution_domain: vector`、`guard_policy: optional`，即使 machine class 是 CROSSLANE；
-- `P = E & guard`；PT、`vpN`、`!vpN` 分别覆盖全体、真子集、空集；
-- P 中每个 lane 得到同一个冻结 S 值；
-- 非参与 lane 保持旧 V 目标；
-- S 源与其他指令并行更新的实现仍使用入口快照；
-- 不要求 scalar-ready；
-- 在 NS2..NS4 中仍按入口 E 和 guard 形成 P，不能误报 `SCALAR_STATE_FAULT`；
-- 目标是 V 域，源是 S 域；
-- 反向操作数、V 源或 S 目标被拒绝。
+```text
+mixed_source_forms = 所有含 vsrc32 或 vsrc64 操作数的 form
+for form in mixed_source_forms:
+    assert form.encoding_format in {V1, V2, V3, VCMP}
+    assert form.execution_domain == vector
+    for code in legal_selector_codes(form.encoding_format):
+        assert encode_decode_round_trip(form, code)
+        assert semantic_oracle_passes(form, code)
+for form in 所有其他 form:
+    assert selector 字段（若存在）是 must-zero 洞
+```
 
-`V_BCAST.B64` 必须使用完整偶数连续 S/V 寄存器对，并增加 provenance 用例：
+合法 selector 码取自格式定义：`V1` 是 `{0,1}`，`V2` 和 `VCMP` 是 `{0,1,2}`，`V3` 是 `{0,1,2,3}`。每个 form 的每个合法码都必须有独立正例，缺任一个即 FAIL。
 
-- 把带 global、param、const provenance 的 SGPR64 分别广播到一组参与 lane，逐 lane 比较 64 位数值和完整 `{space, allocation-id, offset}`；
-- guard-false lane 的旧 VGPR64 数值和旧 provenance 都保持；
-- 无 provenance 的普通 B64 只复制位型，不凭数值猜 tag；
-- `V_BCAST.B32` 不产生 provenance；若它覆盖已带 tag 的 64 位槽的一半，按第 4 章检查 tag 清除；
-- 奇数基址、缺半、越界和部分寄存器对写回都必须拒绝或整条回滚。
+对每个混合源 form 和每个非零 selector 码检查：
+
+- 被选中的源位置从 SGPR 文件读取，其余源位置仍从 VGPR 文件读取；
+- 让 `sN` 和 `vN` 取同一个编号但不同内容，证明实现真的换了寄存器文件，而不是照旧读 VGPR；
+- P 中每个 lane 得到同一个冻结标量值；把该 SGPR 的值设成能与逐 lane VGPR 值区分的图样；
+- 非参与 lane 的目标保持旧值；
+- 实现使用入口快照：并行更新 SGPR 不影响本条指令的结果；
+- 不要求 scalar-ready；在 NS2..NS4 中仍按入口 E 和 guard 形成 P，不能误报 `DIVERGENCE_FAULT`；
+- 目标始终是 VGPR 或 `vpN`，不因 selector 变成 SGPR；
+- `P = E & guard`；PT、`vpN`、`!vpN` 分别覆盖全体、真子集、空集。
+
+selector 负例至少覆盖：
+
+- `V2`/`VCMP` 的 `ssrc_sel == 3`：`ILLEGAL_INSTRUCTION`，不读任何源；
+- 不含 `vsrc*` 操作数的 form 把 selector 位置 1：`ILLEGAL_INSTRUCTION`；
+- 汇编文本在一条指令里写两个 `sN` 源：汇编阶段报错，且不得自动插入搬运指令；
+- 汇编文本把 SGPR 写在 form 不允许的源位置（例如 `V2` 只允许 `va`/`vb`，不存在第三个位置）：汇编阶段报错；
+- 反汇编把 SGPR 源印成 `vN`：FAIL。
+
+`vsrc64` 专项：两个寄存器文件都必须使用完整偶数连续寄存器对。
+
+- `V_MOV.B64 vd_pair, s_pair`（`ssrc=1`）逐 lane 比较完整 64 位，两个半部来自同一次冻结快照；
+- `V_MOV.B64 vd_pair, v_pair`（`ssrc=0`）仍是逐 lane VGPR 复制；
+- guard-false lane 的旧 VGPR64 保持；
+- 奇数基址、缺半、越界和部分寄存器对写回都必须拒绝或整条回滚；
+- `V_MOV.B64` → `S_READFIRST.B64` 往返必须逐位保持 64 位值。
 
 ### 8.6.2 S_READFIRST
 
 启用 form 清单必须至少包含 `.B32` 和 `.B64`；缺少任一项即 FAIL。除 scalar-ready 矩阵外，还要检查 form 固定为 `guard_policy: required_pt`，first-lane 选择不受物理调度、lane 执行先后或值大小影响。first 永远是编号最小的 live lane。
 
-`S_READFIRST.B64` 必须让不同 lane 持有数值相同但 provenance 不同，以及数值不同但 provenance 相同的 VGPR64。结果的 64 位值和 tag 都只能来自同一个 first lane。再执行 `V_BCAST.B64` → `S_READFIRST.B64` 往返，必须逐位、逐字段保持 provenance。B64 目标必须整体提交，B32 不得产生 provenance。
+`S_READFIRST.B64` 必须让不同 lane 持有不同的 VGPR64 值，结果的完整 64 位只能来自同一个 first lane，不能一半来自一个 lane、另一半来自另一个 lane。B64 目标必须整体提交。
 
 ### 8.6.3 X_BROADCAST
 
@@ -4231,7 +4190,7 @@ aux = 0
 - 不同 lane 值能证明实现没有误读 SGPR；
 - 不存在源 lane、选择不一致或参与协议错误时产生 `COLLECTIVE_FAULT`；
 - 故障时所有接收者保持旧目标；
-- 汇编器不能把 `X_BROADCAST` 和 `V_BCAST` 互当别名。
+- 汇编器不能把 `X_BROADCAST` 与混合源 `V_MOV` 互当别名。
 
 ### 8.6.4 S_GETREG / V_GETREG
 
@@ -4244,9 +4203,9 @@ aux = 0
 - S_GETREG 读取 per-lane 项时报 `ILLEGAL_OPERAND`；
 - 未知编号、错误目标宽度和非法寄存器组。
 
-每个合法 `S_GETREG` form 都必须跑 scalar-ready 矩阵；NS1..NS4 只能得到 `SCALAR_STATE_FAULT`。`V_GETREG` 不套用这项检查。
+每个合法 `S_GETREG` form 都必须跑 scalar-ready 矩阵；NS1..NS4 只能得到 `DIVERGENCE_FAULT`。`V_GETREG` 不套用这项检查。
 
-每个 `V_GETREG` form 必须固定验证 `execution_domain: vector`、`guard_policy: optional`，即使 machine class 是 SYS。PT、`vpN`、`!vpN` 都要覆盖；只允许 P 中 lane 读取快照并写回，guard-false lane 保持原目标。非 scalar-ready 状态下仍按 vector 规则执行，不能误报 `SCALAR_STATE_FAULT`。
+每个 `V_GETREG` form 必须固定验证 `execution_domain: vector`、`guard_policy: optional`，即使 machine class 是 SYS。PT、`vpN`、`!vpN` 都要覆盖；只允许 P 中 lane 读取快照并写回，guard-false lane 保持原目标。非 scalar-ready 状态下仍按 vector 规则执行，不能误报 `DIVERGENCE_FAULT`。
 
 不得用被测 GETREG 实现生成 oracle 的特殊寄存器期望值。
 
@@ -4381,7 +4340,7 @@ VMEM 字段必须按模板交叉验证：
 
 local 专项必须证明它只有 vector lane-address：同一数值 offset 在不同 lane 指向不同 local allocation。任何 scalar local、uniform-base local、SV-mix local、带非零 `sbase` 的 local 机器字或汇编文本都必须拒绝。
 
-mixed/extended 地址故障逐项覆盖保留 scale/modifier、错误空间/provenance、数学下溢/溢出、allocation 越界和自然对齐失败。普通 SV-mix 的每个合法 scale 都要有正例，未声明 scale 要有负例；SMEMX 和 VATOMX 都要断言 scale 固定为 1。任一参与 lane 失败时事件数必须为零。
+mixed/extended 地址故障逐项覆盖保留 scale/modifier、非法寄存器域组合、数学下溢/溢出、allocation 越界和自然对齐失败。地址空间只由 opcode 决定：必须有一个用例把某个 shared 窗口偏移搬进 SGPR64 再交给 global load，期望结果是 `MEMORY_BOUNDS` 之类的地址故障，而不是任何“指针类型”检查。普通 SV-mix 的每个合法 scale 都要有正例，未声明 scale 要有负例；SMEMX 和 VATOMX 都要断言 scale 固定为 1。任一参与 lane 失败时事件数必须为零。
 
 ### 8.9.2 值、事件和回滚
 
@@ -4441,7 +4400,7 @@ assert 删除、交换或重复 space/order/scope 会被拒绝
 
 已定义的 modifier 组成非法组合时才期望 `ILLEGAL_OPERAND`，例如 shared 配 DEVICE scope。测试报告必须把这两类负例分栏，不能合并成“任意非法 modifier”。
 
-`VATOMX` 逐字段检查 `vdst/sbase/vindex/vdata0/vdata1/order/scope/x`，并证明它没有 immediate 容器。canonical 名称中的 space 固定为 `GLOBAL`。每 lane 地址必须等于 `SGPR64_base + zero_extend(VGPR32_index[lane])`，scale 固定为 1。任何额外缩放、非零保留 `x`、错误 provenance/空间、越界和未对齐都做负例，任一 lane 失败时所有 lane 零事件回滚。
+`VATOMX` 逐字段检查 `vdst/sbase/vindex/vdata0/vdata1/order/scope/x`，并证明它没有 immediate 容器。canonical 名称中的 space 固定为 `GLOBAL`。每 lane 地址必须等于 `SGPR64_base + zero_extend(VGPR32_index[lane])`，scale 固定为 1。任何额外缩放、非零保留 `x`、非法寄存器域、越界和未对齐都做负例，任一 lane 失败时所有 lane 零事件回滚。
 
 ### 8.10.2 atomic load/store
 
@@ -4450,7 +4409,7 @@ atomic load 必须：
 - 返回 modification order 中可读的完整旧值；
 - 不追加修改；
 - 不接受 release-only order；
-- U64 不撕裂并一同处理规范 provenance。
+- U64 不撕裂。
 
 atomic store 必须：
 
@@ -4481,7 +4440,7 @@ BRA、BRA.P、JUMP.IND 至少覆盖：
 
 每步比较 PC、active mask 和隐藏状态摘要。测试接口可以暴露只读调试摘要，但程序本身不能读取隐藏项。
 
-`JUMP.IND` 必须另外跑完整 scalar-ready 矩阵。NS1..NS4 都产生 `SCALAR_STATE_FAULT`，并且不能读取目标 SGPR；直接 `BRA`、`BRA.P` 不套用这项检查。`JUMP.IND` 成功和失败都不得改变调用栈。
+`JUMP.IND` 必须另外跑完整 scalar-ready 矩阵。NS1..NS4 都产生 `DIVERGENCE_FAULT`，并且不能读取目标 SGPR；直接 `BRA`、`BRA.P` 不套用这项检查。`JUMP.IND` 成功和失败都不得改变调用栈。
 
 ### 8.11.2 CALL/RET
 
@@ -4498,7 +4457,7 @@ BRA、BRA.P、JUMP.IND 至少覆盖：
 9. 返回前仍有未闭合 SSY 区域；
 10. 调用深度超限。
 
-`CALL`、`CALL.IND` 和 `RET` 虽然是 W/CONTROL 指令，也必须跑完整 scalar-ready 矩阵。NS1..NS4 的期望都是 `SCALAR_STATE_FAULT`；状态检查发生在读取间接目标或调用状态之前。失败用例必须证明没有半压栈或半弹栈。
+`CALL`、`CALL.IND` 和 `RET` 虽然是 W/CONTROL 指令，也必须跑完整 scalar-ready 矩阵。NS1..NS4 的期望都是 `DIVERGENCE_FAULT`；状态检查发生在读取间接目标或调用状态之前。失败用例必须证明没有半压栈或半弹栈。
 
 调用栈 oracle 必须独立维护每 warp LIFO，并逐次比较：
 
@@ -4529,9 +4488,9 @@ SSY/BRA.P/JOIN/EXIT 套件至少执行：
 - 错误 JOIN 目标；
 - 区域交叉；
 - 从区域内部跳到外部；
-- 在 FIRST/SECOND 路径的 JOIN 前执行 CALL，必须先报 `SCALAR_STATE_FAULT`；
+- 在 FIRST/SECOND 路径的 JOIN 前执行 CALL，必须先报 `DIVERGENCE_FAULT`；
 - scalar-ready 时 CALL，callee 内部建立并闭合自己的嵌套区域；
-- 在 FIRST/SECOND 路径执行 RET，必须先报 `SCALAR_STATE_FAULT`；
+- 在 FIRST/SECOND 路径执行 RET，必须先报 `DIVERGENCE_FAULT`；
 - scalar-ready 但控制区域关系仍非法的跨区域 RET。
 
 `owner_call_depth` 必须按 SSY 动态实例精确测试：
@@ -4556,72 +4515,36 @@ SSY/BRA.P/JOIN/EXIT 套件至少执行：
 先做静态清单和编码门禁：
 
 ```text
-F061 == BAR.SYNC      == (class=5, format=0, opcode=3)
-F062 == BAR.ARRIVE    == (class=5, format=0, opcode=4)
-F063 == BAR.WAIT      == (class=5, format=0, opcode=5)
+bar-sync/cta == BAR.SYNC.CTA == (class=5, format=0, opcode=3)
+(class=5, format=0, opcode=4) 未分配 -> ILLEGAL_INSTRUCTION
+(class=5, format=0, opcode=5) 未分配 -> ILLEGAL_INSTRUCTION
 ```
 
-family/form 总数必须保持 YAML 的运行时去重结果不变。汇编/反汇编只接受 `BAR.SYNC.CTA id`、`BAR.ARRIVE.CTA vd,id`、`BAR.WAIT.CTA id,vs` 作为 canonical；旧拼写和 WAIT 缺 id、S 域 token、id 超出 `0..7` 都必须拒绝。逐位核对三个 YAML 示例机器字，并对 `a/slot3` 的最小值、最大值和交叉值独立重算 64 位机器字；F063 的 `slot3` 必须可非零。
+family/form 总数必须保持 YAML 的运行时去重结果不变。汇编/反汇编只接受 `BAR.SYNC.CTA id` 作为 canonical 屏障文本；`BAR.ARRIVE.CTA`、`BAR.WAIT.CTA`、`BARRIER` 及一切旧拼写都必须按未知助记符拒绝，id 缺失或超出 `0..7` 也必须拒绝。逐位核对 YAML 示例机器字，并对 `slot3` 的最小值、最大值和中间值独立重算 64 位机器字；`a/b/imm16/scope2/order2/x6` 非零必须报 `ILLEGAL_INSTRUCTION`。
 
-每个动态用例都比较 8 槽完整状态：`generation/mode/owner_set/arrived_set/consumed_set/completed/waiters`，并比较每 warp 的 blocked record。generation oracle 必须使用数学非负整数，不能按 U32/U64 截断。所有 owner 集合元素必须是 `linear_tid=warp_id*32+lane_id`，token tag 必须恰好是 `{CTA identity,linear_tid,slot,logical generation}`。测试矩阵至少包含：
+每个动态用例都比较 8 槽完整状态 `arrived_set/waiters`、CTA 的 `live_owner_set`，以及每 warp 的 blocked record。所有集合元素必须是 `linear_tid=warp_id*32+lane_id`。测试矩阵至少包含：
 
 | 类别 | 必测情况 | 强制结果 |
 |---|---|---|
-| 启动 | 满 CTA、尾 warp、槽 0 和槽 7 | 每槽 generation 0、EMPTY、集合/waiter 空；owner_set 恰为真实 `linear_tid` |
-| owner 身份 | 不同 warp 的相同 lane_id、同 warp 不同 lane_id、尾 lane | `(warp_id,lane_id)` 映射到唯一 linear_tid；集合、tag、重复/wrong-owner 都只比较 linear_tid |
-| SYNC 正常 | 单/多 warp，不同到达顺序，active 子路径分批到达 | 每 linear_tid 每代一次 release；每条 record 冻结 `{warp_id,A,old_PC+8}`；到齐时所有记录一起恢复并立即退休 |
-| SPLIT 正常 | ARRIVE 后立刻 WAIT、先做别的工作再 WAIT、WAIT 早于/晚于 completed | ARRIVE 不阻塞且 `PC+8`；早 WAIT 先消费后记录并阻塞整个 warp；晚 WAIT 立即 acquire；全消费后退休 |
-| 多槽/多代 | 0..7 交错，两次以上复用同槽 | 槽互不干扰；退休后 generation 恰加 1，旧 token stale |
-| 物理计数边界 | 跨过实现每个有限 generation/epoch 子计数器的最大值，保留边界前已消费 token 的多个 `V_MOV.B32` 副本 | 逻辑 generation 仍严格 `old+1`、不回绕；旧副本在低位再次相等时仍 `BARRIER_FAULT`，绝不复活 |
-| 模式 | 首个 SYNC、首个 ARRIVE、同代 SYNC→ARRIVE、ARRIVE→SYNC | 首到达选模式；两种混用均整条 `BARRIER_FAULT` |
-| arrival | 同 owner 重复、warp 中最低/最高/多个 lane 重复 | 整条零 arrival、零 VGPR 写、零 PC 效果 |
-| token 身份 | foreign CTA identity、wrong slot、wrong linear_tid owner、wrong generation、malformed、untagged、stale | 每项均 `BARRIER_FAULT`，整条零 consume |
-| token 消费 | 正常一次、同寄存器重复、V_MOV 副本先后消费 | 恰好一次成功；其余 duplicate/stale 并整条回滚 |
-| token 写回 | ARRIVE 的 active、inactive、挂起路径和尾部不存在 lane | 只 active 真实 lane 写自己的 VGPR token，其他目标逐位及标签保持 |
-| tag 传播 | `V_MOV.B32 vd,vs`、原地 MOV、guard 子集、立即数 MOV | 寄存器 MOV 逐 lane 完整复制 bits+tag；非参与保持；立即数写清 tag |
-| tag 清除 | 自动枚举所有 VGPR write/read_write 目标 form | 除根规则两个例外外，每个实际写入 VGPR32 槽的 tag 都清除；非参与槽保持 |
-| warp 原子性 | 一条 ARRIVE/WAIT 中只有一个 active lane 错，其他 lane 合法 | 所有 lane 零 arrival/consume/VGPR/blocked/PC 效果 |
-| blocked record | SYNC/WAIT 阻塞、恢复、尝试第二条 record | 每 warp 至多一条；阻塞/恢复保持 active/live/reconv/call，挂起路径不能切入；恢复只写 resume PC、清记录、置 ready |
-| EXIT | 未 arrival 后 EXIT、槽中 `tid∈arrived-consumed` 但 VGPR tag 已清、已消费但 stale tag 仍在 | 第一种 owner 不缩小且可 DEADLOCK；第二种按槽状态 `BARRIER_FAULT`；第三种可退出 |
-| 分歧 | 当前路径分批 arrival；当前路径阻塞而挂起路径还需 arrival/WAIT | 只把当前 active lane 映射成 A；整个 warp blocked，后者满足既有条件时 DEADLOCK，不得切路径补票 |
-| 内存 | shared release/acquire litmus；同程序换 global/local/param/const/host | shared 禁止旧值结果；其他空间不得因 BAR 额外有序，global 需原子/MEMBAR |
-| CTA 完成 | 所有 warp 完成，分别改变 mode/集合/waiter/completed/generation | 仅 8 槽全 IDLE 才完成；非零 generation 允许，其他任一非 IDLE 状态拒绝完成 |
+| 启动 | 满 CTA、尾 warp、槽 0 和槽 7 | 每槽 idle（arrived_set/waiters 空）；`live_owner_set` 恰为真实 `linear_tid` |
+| owner 身份 | 不同 warp 的相同 lane_id、同 warp 不同 lane_id、尾 lane | `(warp_id,lane_id)` 映射到唯一 linear_tid；所有集合只比较 linear_tid |
+| 正常同步 | 单/多 warp，不同到达顺序 | 每 warp 一次整体 release；每条 record 冻结 `{warp_id,A,old_PC+8}`；`arrived_set == live_owner_set` 时所有记录一起恢复，槽立即清回 idle |
+| 槽复用 | 同一槽连续两次以上屏障，中间夹 shared 读写 | 第二次屏障从空 `arrived_set` 开始；第一次的 waiter/arrival 不残留，也不需要区分代 |
+| 多槽 | 槽 0..7 交错使用 | 槽互不干扰；一个槽阻塞不影响另一个槽的完成判定 |
+| scalar-ready | 在 FIRST/SECOND 路径上执行屏障 | `DIVERGENCE_FAULT`；零 arrival、零 blocked record、PC 不动、槽状态不变 |
+| scalar-ready | SR1/SR2/SR3 三种就绪状态 | 正常到达；只有 ARMED 帧不妨碍屏障 |
+| EXIT 完成 | 部分 warp 已到达并阻塞，剩余 owner 全部 EXIT | `live_owner_set` 缩小后立即重新判定，waiter 被唤醒，槽清回 idle |
+| EXIT 无 release | 退出线程先写 shared 再 EXIT，唤醒的 waiter 读同一地址 | `EXIT` 不建立 release/acquire 边，该读属于数据竞争，不得断言看到新值 |
+| blocked record | 阻塞、恢复、尝试第二条 record | 每 warp 至多一条；阻塞/恢复保持 active/live/reconv/call，挂起路径不能切入；恢复只写 resume PC、清记录、置 ready |
+| DEADLOCK | 一部分 warp 到达槽 N，其余 warp 既不到达也不退出 | `arrived_set` 追不上 `live_owner_set`，按第 3 章第 12 节报告 `DEADLOCK` |
+| 内存 | shared release/acquire litmus；同程序换 global/local/param/const/host | shared 禁止旧值结果；其他空间不得因屏障额外有序，global 需原子/MEMBAR |
+| CTA 完成 | 所有 warp 完成，分别注入非空 arrived_set 或非空 waiters | 仅 8 槽全 idle 才完成；任一非 idle 状态拒绝完成 |
 
-还要对所有 token 故障做组合用例：显式 id 与标签 slot 不同、位值相同但标签不同、标签相同的副本、相同 lane_id 但不同 warp_id、一个 warp 多个 lane 分别触发不同错误。故障优先级取第 2 章权威表；一旦选择 `BARRIER_FAULT`，入口的槽状态、全部 VGPR bits/tag、PC、`LIVE/EXEC`、栈和 blocked record 都保持。
+阻塞/恢复专项必须证明：`BarrierWaitRecord` 只有 `warp_id/owner_snapshot/resume_pc` 三个字段，`owner_snapshot=A` 且 `resume_pc=old_PC+8`；arrival 只提交一次；挂起期间不重复 release；恢复只写记录指定 PC 和 ready，不改 active/live/reconv/call。没有 `expected`、成员 mask 或子集参数的正例；任何测试工具自行缩小 `live_owner_set` 都是 FAIL。
 
-阻塞/恢复专项必须证明：`BarrierWaitRecord` 只有 `warp_id/owner_snapshot/resume_pc` 三个字段，`owner_snapshot=A` 且 `resume_pc=old_PC+8`；arrival 或 consume 只提交一次；挂起期间不重读 VGPR、不重复 release、不重复 consume；恢复只写记录指定 PC 和 ready，不改 active/live/reconv/call。SYNC 完成即退休，SPLIT completed 但未全消费时绝不能退休。没有 `expected`、成员 mask 或子集参数的正例；任何测试工具自行缩小 owner 都是 FAIL。
+还必须断言这些概念在整个实现中不存在：屏障 token 及其寄存器影子标签、槽 generation 计数、`SYNC`/`SPLIT` 模式字段、`consumed_set`，以及 `EXIT` 上的任何屏障前置检查。调试接口暴露其中任何一项即 FAIL。
 
-永不回绕专项不能只跑“很多代”然后比较低位。实现必须列出 token 身份中每个有限 generation/epoch 子计数器的边界，并通过可行的长跑、缩小计数位宽的验证配置、状态注入或形式证明逐个跨越。对每个边界至少执行：
-
-```text
-old = BAR.ARRIVE.CTA 产生的 token
-copy1 = V_MOV.B32(old)
-copy2 = V_MOV.B32(old)
-用 old 或其中一份副本成功 WAIT，使该代最终退休
-反复完成并退休同一 slot，跨过有限内部计数器边界
-继续到物理低位/对象编号可能再次等于 old 的时刻
-assert logical_generation == previous_logical_generation + 1
-assert BAR.WAIT.CTA(slot, copy1/copy2) == BARRIER_FAULT
-assert 槽、VGPR、blocked record、PC 全部零提交
-```
-
-若实现使用 capability ID 或安全回收，还必须制造足够的分配/回收压力，证明编号回收不会重建旧 capability 身份。通过标准是所有观察都等同于 generation 属于 `N` 且从不复用；“测试跑不到回绕点”不能替代证据。
-
-VGPR 标签闭包必须由 YAML 自动生成测试，不允许手写一小份代表列表：
-
-```text
-targets = every form operand whose resolved register_file is VGPR
-          and access is write or read_write
-for each written VGPR32 slot of each target:
-    if (family_id, form_id) == (F025, b32.reg):
-        assert action == copy_source_tag
-    elif (family_id, form_id) == (F062, cta):
-        assert action == create_tag
-    else:
-        assert action == clear
-```
-
-枚举报告必须点名覆盖 `V_MOV.B64`、`V_BCAST`、`X_BROADCAST`、`V_GETREG`、普通/原子 load 返回、ALU、CVT、FP 和 MMA，并断言没有第三个例外。多 VGPR/片段目标逐槽测试；guard-false/inactive lane不写，因此旧 tag 保持。
+寄存器无影子状态必须做正面证明：对任意 VGPR/SGPR 写入序列，只要 32 位（或 64 位对）位型相同，后续所有指令的可观察行为就必须相同。测试通过“同值不同来路”生成对照组，例如同一个位型分别来自立即数 MOV、混合源 MOV、load 返回、ALU 结果和 MMA 输出，随后执行同一段代码，要求逐位一致。任何来路差异都是 FAIL。
 
 跨 lane X 测试必须明确 C/M/P/R，并覆盖：
 
@@ -4742,7 +4665,8 @@ generated-reference
 scalar-ready
 cross-domain
 vector-optional-guard
-b64-provenance
+mixed-source-selector
+mixed-source-pair64
 wide-mul-mad
 int-mad-minmax-abs-neg
 ctz-rotate-pack
@@ -4803,7 +4727,9 @@ cross_domain_forms
 scalar_ready_forms
 ```
 
-`scalar_ready_forms` 直接选择全部 `required_state: scalar_ready` 的 form，并反向断言全部 `execution_domain: scalar` form 都在集合中。当前控制侧至少包括 `CALL`、`CALL.IND`、`JUMP.IND`、`RET`。集合中每个 form 都必须带 `scalar-ready` coverage tag，并跑完整 SR/NS 矩阵。
+`scalar_ready_forms` 直接选择全部 `required_state: scalar_ready` 的 form，并反向断言全部 `execution_domain: scalar` form 都在集合中。非 scalar 执行域的成员至少包括 `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 和 `BAR.SYNC.CTA`。集合中每个 form 都必须带 `scalar-ready` coverage tag，并跑完整 SR/NS 矩阵。
+
+`mixed_source_forms` 直接选择全部含 `vsrc32` 或 `vsrc64` 操作数的 form，并断言它们的 `encoding_format` 都属于 `{V1,V2,V3,VCMP}`、`execution_domain` 都是 `vector`。集合中每个 form 都必须带 `mixed-source-selector` tag，含 `vsrc64` 的还必须带 `mixed-source-pair64`，并按 8.6.1 覆盖该格式的每个合法 selector 码。
 
 对 `dual_pairs`，要求 S/V 有共同的数学边界向量，并额外检查执行次数、寄存器域和事件数。compare 的每个关系/类型和 CVT 的每个 `dst-type.src-type` 必须进入 `dual_pairs`，缺任一侧都失败。对 only-form，要求另一域的拼写和编码不存在。对跨域 form，要求源/目标方向与规范完全一致。
 
@@ -4840,7 +4766,7 @@ scalar_ready_forms
 - 机器 class 只能是 SYS/SALU/VALU/MEMORY/CONTROL/SYNC/CROSSLANE/MATRIX 之一；
 - 用户可读简称不得覆盖或改变机器 class；
 - S/V 域约束不会被绕过；
-- 每个 S form 在非 scalar-ready 时都只产生 `SCALAR_STATE_FAULT`；
+- 每个 S form 在非 scalar-ready 时都只产生 `DIVERGENCE_FAULT`；
 - `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 保持 CONTROL class，并执行 scalar-ready 检查；
 - 故障指令不产生部分提交；
 - CALL/RET 和隐藏重汇聚状态满足 LIFO/结构约束；
@@ -4871,26 +4797,18 @@ scalar_ready_forms
 - ISA：VTX-1 ISA 1.0 Draft
 - 版本：1.0-draft
 - 指令字宽：64 位
-- Family 数：69
-- Form 数：392
+- Family 数：66
+- Form 数：379
 - Descriptor contract：`{call_stack_depth: {maximum: 16, minimum: 0}}`
-- Barrier contract：`{generation_domain: {example_mechanisms: [wider_epoch, capability_id, safe_reclamation],
-    finite_implementation_rule: as_if_non_wrapping, initial: 0, monotonic: true, notation: N,
-    observable_identity_reuse: forbidden, retire_step: 1, stale_token_revival: forbidden,
-    type: mathematical_nonnegative_integer, wraps: false}, idle_slot: {arrived_set_empty: true,
-    completed: false, consumed_set_empty: true, generation_ignored: true, mode: EMPTY,
-    waiters_empty: true}, max_blocked_records_per_warp: 1, owner_identity: {equivalent_tuple: [
-      warp_id, lane_id], formula: linear_tid = warp_id * 32 + lane_id, name: linear_tid},
-  token_tag_fields: [cta_identity, linear_tid, slot, generation], vgpr_tag_write_policy: {
-    default_action: clear, exceptions: [{action: copy_source_tag, family_id: F025,
-        form_id: b32.reg, mnemonic: V_MOV.B32}, {action: create_tag, family_id: F062,
-        form_id: cta, mnemonic: BAR.ARRIVE.CTA}], target_selection: {accesses: [write,
-        read_write], granularity: each_vgpr32_slot, register_file: VGPR}}, wait_record_fields: [
-    warp_id, owner_snapshot, resume_pc]}`
+- Barrier contract：`{idle_slot: {arrived_set_empty: true, waiters_empty: true}, live_owner_set: {exit_contributes_release: false,
+    initial: every real linear_tid launched in the CTA, shrinks_on: EXIT}, max_blocked_records_per_warp: 1,
+  owner_identity: {equivalent_tuple: [warp_id, lane_id], formula: linear_tid = warp_id
+      * 32 + lane_id, name: linear_tid}, wait_record_fields: [warp_id, owner_snapshot,
+    resume_pc]}`
 
 ## NOP
 
-- Family ID：`F001`
+- Family ID：`nop`
 - 语义组：`system_control`
 
 No architectural effect except advancing PC.
@@ -4903,7 +4821,6 @@ No architectural effect except advancing PC.
 - `(class, format, opcode)`：`(SYS, 0, 0)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `NOP`
 
@@ -4947,7 +4864,7 @@ Advance PC by one 64-bit instruction.
 
 ## TRAP
 
-- Family ID：`F002`
+- Family ID：`trap`
 - 语义组：`system_control`
 
 Raise a software trap with a 32-bit reason.
@@ -4960,7 +4877,6 @@ Raise a software trap with a 32-bit reason.
 - `(class, format, opcode)`：`(SYS, 0, 1)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `TRAP 0`
 
@@ -5004,7 +4920,7 @@ If any guarded lane participates, raise SOFTWARE_TRAP with reason; otherwise adv
 
 ## S_GETREG
 
-- Family ID：`F003`
+- Family ID：`s-getreg`
 - 语义组：`special_register`
 
 Read a uniform special register.
@@ -5017,7 +4933,6 @@ Read a uniform special register.
 - `(class, format, opcode)`：`(SYS, 0, 2)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_GETREG.U32 s0, USR_WARP_ID`
 
@@ -5040,7 +4955,7 @@ Snapshot the selected 32-bit uniform special register into dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_GETREG.U32 s0, USR_WARP_ID`
 
@@ -5070,7 +4985,6 @@ Snapshot the selected 32-bit uniform special register into dst.
 - `(class, format, opcode)`：`(SYS, 0, 3)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_GETREG.U64 s0:s1, USR_CLOCK64`
 
@@ -5093,7 +5007,7 @@ Snapshot the selected 64-bit uniform special register into the even SGPR pair ds
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_GETREG.U64 s0:s1, USR_CLOCK64`
 
@@ -5117,7 +5031,7 @@ Snapshot the selected 64-bit uniform special register into the even SGPR pair ds
 
 ## V_GETREG
 
-- Family ID：`F004`
+- Family ID：`v-getreg`
 - 语义组：`special_register`
 
 Read a lane special register.
@@ -5130,7 +5044,6 @@ Read a lane special register.
 - `(class, format, opcode)`：`(SYS, 0, 4)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_GETREG.LANE.U32 v0, LSR_LANE_ID`
 
@@ -5181,7 +5094,6 @@ Each participating lane snapshots its selected 32-bit lane special register.
 - `(class, format, opcode)`：`(SYS, 0, 5)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_GETREG.UNIFORM.U32 v0, USR_WARP_ID`
 
@@ -5232,7 +5144,6 @@ Each participating lane snapshots its selected 32-bit lane special register.
 - `(class, format, opcode)`：`(SYS, 0, 6)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_GETREG.LANE.U64 v0:v1, LSR_LOCAL_BASE`
 
@@ -5283,7 +5194,6 @@ Each participating lane snapshots its selected 64-bit lane special register.
 - `(class, format, opcode)`：`(SYS, 0, 7)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_GETREG.UNIFORM.U64 v0:v1, USR_CLOCK64`
 
@@ -5328,7 +5238,7 @@ Each participating lane snapshots its selected 64-bit lane special register.
 
 ## S_SETREG
 
-- Family ID：`F005`
+- Family ID：`s-setreg`
 - 语义组：`special_register`
 
 Write a writable uniform special register.
@@ -5341,7 +5251,6 @@ Write a writable uniform special register.
 - `(class, format, opcode)`：`(SYS, 0, 8)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_SETREG.U32 USR_STATUS, s0`
 
@@ -5364,7 +5273,7 @@ Write src to the selected writable uniform special register.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_SETREG.U32 USR_STATUS, s0`
 
@@ -5388,7 +5297,7 @@ Write src to the selected writable uniform special register.
 
 ## V_SETREG
 
-- Family ID：`F006`
+- Family ID：`v-setreg`
 - 语义组：`special_register`
 
 Write a writable lane special register.
@@ -5401,7 +5310,6 @@ Write a writable lane special register.
 - `(class, format, opcode)`：`(SYS, 0, 9)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_SETREG.U32 LSR_DEBUG, v0`
 
@@ -5446,7 +5354,7 @@ Each participating lane writes src to its selected writable lane special registe
 
 ## S_MOV
 
-- Family ID：`F007`
+- Family ID：`s-mov`
 - 语义组：`move`
 
 Move scalar register or immediate data without conversion.
@@ -5459,7 +5367,6 @@ Move scalar register or immediate data without conversion.
 - `(class, format, opcode)`：`(SALU, 0, 0)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MOV.B32 s0, s0`
 
@@ -5482,7 +5389,7 @@ Copy all 32 source bits to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_MOV.B32 s0, s0`
 
@@ -5510,7 +5417,6 @@ Copy all 32 source bits to dst.
 - `(class, format, opcode)`：`(SALU, 4, 0)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MOV.B32 s0, 0`
 
@@ -5533,7 +5439,7 @@ Sign-extend imm24 to 32 bits and copy it to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_MOV.B32 s0, 0`
 
@@ -5562,7 +5468,6 @@ Sign-extend imm24 to 32 bits and copy it to dst.
 - `(class, format, opcode)`：`(SALU, 0, 1)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MOV.B64 s0:s1, s0:s1`
 
@@ -5585,7 +5490,7 @@ Copy all 64 source bits to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_MOV.B64 s0:s1, s0:s1`
 
@@ -5613,7 +5518,6 @@ Copy all 64 source bits to dst.
 - `(class, format, opcode)`：`(SALU, 4, 1)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MOV.B64 s0:s1, 0`
 
@@ -5636,7 +5540,7 @@ Sign-extend imm24 to 64 bits and copy it to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_MOV.B64 s0:s1, 0`
 
@@ -5659,7 +5563,7 @@ Sign-extend imm24 to 64 bits and copy it to dst.
 
 ## S_ADD
 
-- Family ID：`F008`
+- Family ID：`s-add`
 - 语义组：`integer_arithmetic`
 
 Scalar add with register or immediate second source.
@@ -5672,7 +5576,6 @@ Scalar add with register or immediate second source.
 - `(class, format, opcode)`：`(SALU, 1, 0)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ADD.U32 s0, s0, s0`
 
@@ -5695,7 +5598,7 @@ Add a and b, writing the low 32 bits to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_ADD.U32 s0, s0, s0`
 
@@ -5724,7 +5627,6 @@ Add a and b, writing the low 32 bits to dst.
 - `(class, format, opcode)`：`(SALU, 4, 2)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ADD.U32 s0, s0, 0`
 
@@ -5748,7 +5650,7 @@ Add a and sign-extended imm24, writing the low 32 bits to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_ADD.U32 s0, s0, 0`
 
@@ -5777,7 +5679,6 @@ Add a and sign-extended imm24, writing the low 32 bits to dst.
 - `(class, format, opcode)`：`(SALU, 1, 1)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ADD.U64 s0:s1, s0:s1, s0:s1`
 
@@ -5800,7 +5701,7 @@ Add a and b, writing the low 64 bits to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_ADD.U64 s0:s1, s0:s1, s0:s1`
 
@@ -5829,7 +5730,6 @@ Add a and b, writing the low 64 bits to dst.
 - `(class, format, opcode)`：`(SALU, 4, 3)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ADD.U64 s0:s1, s0:s1, 0`
 
@@ -5853,7 +5753,7 @@ Add a and sign-extended imm24, writing the low 64 bits to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_ADD.U64 s0:s1, s0:s1, 0`
 
@@ -5876,7 +5776,7 @@ Add a and sign-extended imm24, writing the low 64 bits to dst.
 
 ## S_SUB
 
-- Family ID：`F009`
+- Family ID：`s-sub`
 - 语义组：`integer_arithmetic`
 
 Scalar subtract with register or immediate second source.
@@ -5889,7 +5789,6 @@ Scalar subtract with register or immediate second source.
 - `(class, format, opcode)`：`(SALU, 1, 2)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_SUB.U32 s0, s0, s0`
 
@@ -5912,7 +5811,7 @@ Subtract b from a, writing the low 32 bits to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_SUB.U32 s0, s0, s0`
 
@@ -5941,7 +5840,6 @@ Subtract b from a, writing the low 32 bits to dst.
 - `(class, format, opcode)`：`(SALU, 4, 4)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_SUB.U32 s0, s0, 0`
 
@@ -5965,7 +5863,7 @@ Subtract a and sign-extended imm24, writing the low 32 bits to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_SUB.U32 s0, s0, 0`
 
@@ -5994,7 +5892,6 @@ Subtract a and sign-extended imm24, writing the low 32 bits to dst.
 - `(class, format, opcode)`：`(SALU, 1, 3)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_SUB.U64 s0:s1, s0:s1, s0:s1`
 
@@ -6017,7 +5914,7 @@ Subtract b from a, writing the low 64 bits to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_SUB.U64 s0:s1, s0:s1, s0:s1`
 
@@ -6046,7 +5943,6 @@ Subtract b from a, writing the low 64 bits to dst.
 - `(class, format, opcode)`：`(SALU, 4, 5)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_SUB.U64 s0:s1, s0:s1, 0`
 
@@ -6070,7 +5966,7 @@ Subtract a and sign-extended imm24, writing the low 64 bits to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_SUB.U64 s0:s1, s0:s1, 0`
 
@@ -6093,7 +5989,7 @@ Subtract a and sign-extended imm24, writing the low 64 bits to dst.
 
 ## S_MUL
 
-- Family ID：`F010`
+- Family ID：`s-mul`
 - 语义组：`integer_arithmetic`
 
 Scalar multiply with register or immediate second source.
@@ -6106,7 +6002,6 @@ Scalar multiply with register or immediate second source.
 - `(class, format, opcode)`：`(SALU, 1, 4)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MUL.U32 s0, s0, s0`
 
@@ -6129,7 +6024,7 @@ Multiply a by b, writing the low 32 bits to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_MUL.U32 s0, s0, s0`
 
@@ -6158,7 +6053,6 @@ Multiply a by b, writing the low 32 bits to dst.
 - `(class, format, opcode)`：`(SALU, 4, 6)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MUL.U32 s0, s0, 0`
 
@@ -6182,7 +6076,7 @@ Multiply a and sign-extended imm24, writing the low 32 bits to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_MUL.U32 s0, s0, 0`
 
@@ -6211,7 +6105,6 @@ Multiply a and sign-extended imm24, writing the low 32 bits to dst.
 - `(class, format, opcode)`：`(SALU, 1, 5)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MUL.U64 s0:s1, s0:s1, s0:s1`
 
@@ -6234,7 +6127,7 @@ Multiply a by b, writing the low 64 bits to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_MUL.U64 s0:s1, s0:s1, s0:s1`
 
@@ -6263,7 +6156,6 @@ Multiply a by b, writing the low 64 bits to dst.
 - `(class, format, opcode)`：`(SALU, 4, 7)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MUL.U64 s0:s1, s0:s1, 0`
 
@@ -6287,7 +6179,7 @@ Multiply a and sign-extended imm24, writing the low 64 bits to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_MUL.U64 s0:s1, s0:s1, 0`
 
@@ -6310,7 +6202,7 @@ Multiply a and sign-extended imm24, writing the low 64 bits to dst.
 
 ## S_MAD
 
-- Family ID：`F011`
+- Family ID：`s-mad`
 - 语义组：`integer_arithmetic`
 
 Scalar integer multiply-add.
@@ -6323,7 +6215,6 @@ Scalar integer multiply-add.
 - `(class, format, opcode)`：`(SALU, 2, 0)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MAD.U32 s0, s0, s0, s0`
 
@@ -6348,7 +6239,7 @@ Compute (a*b+c) modulo 2^32.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_MAD.U32 s0, s0, s0, s0`
 
@@ -6372,7 +6263,7 @@ Compute (a*b+c) modulo 2^32.
 
 ## S_MUL.WIDE
 
-- Family ID：`F012`
+- Family ID：`s-mul-wide`
 - 语义组：`wide_integer`
 
 Produce the full 64-bit product of two 32-bit operands.
@@ -6385,7 +6276,6 @@ Produce the full 64-bit product of two 32-bit operands.
 - `(class, format, opcode)`：`(SALU, 1, 6)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MUL.WIDE.U32 s0:s1, s0, s0`
 
@@ -6409,7 +6299,7 @@ Write the unsigned 32-by-32 full product to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_MUL.WIDE.U32 s0:s1, s0, s0`
 
@@ -6438,7 +6328,6 @@ Write the unsigned 32-by-32 full product to dst.
 - `(class, format, opcode)`：`(SALU, 1, 7)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MUL.WIDE.S32 s0:s1, s0, s0`
 
@@ -6462,7 +6351,7 @@ Write the signed two-complement 32-by-32 full product to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_MUL.WIDE.S32 s0:s1, s0, s0`
 
@@ -6485,7 +6374,7 @@ Write the signed two-complement 32-by-32 full product to dst.
 
 ## S_MAD.WIDE
 
-- Family ID：`F013`
+- Family ID：`s-mad-wide`
 - 语义组：`wide_integer`
 
 Multiply two 32-bit operands and add a 64-bit accumulator.
@@ -6498,7 +6387,6 @@ Multiply two 32-bit operands and add a 64-bit accumulator.
 - `(class, format, opcode)`：`(SALU, 2, 1)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MAD.WIDE.U32 s0:s1, s0, s0, s0:s1`
 
@@ -6523,7 +6411,7 @@ Write (unsigned(a)*unsigned(b)+c) modulo 2^64 to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_MAD.WIDE.U32 s0:s1, s0, s0, s0:s1`
 
@@ -6553,7 +6441,6 @@ Write (unsigned(a)*unsigned(b)+c) modulo 2^64 to dst.
 - `(class, format, opcode)`：`(SALU, 2, 2)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MAD.WIDE.S32 s0:s1, s0, s0, s0:s1`
 
@@ -6578,7 +6465,7 @@ Write (signed(a)*signed(b)+c) modulo 2^64 to dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_MAD.WIDE.S32 s0:s1, s0, s0, s0:s1`
 
@@ -6602,7 +6489,7 @@ Write (signed(a)*signed(b)+c) modulo 2^64 to dst.
 
 ## S_INT_MISC
 
-- Family ID：`F014`
+- Family ID：`s-int-misc`
 - 语义组：`integer_arithmetic`
 
 S integer min, max, abs, and neg.
@@ -6615,7 +6502,6 @@ S integer min, max, abs, and neg.
 - `(class, format, opcode)`：`(SALU, 1, 8)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MIN.S32 s0, s0, s0`
 
@@ -6639,7 +6525,7 @@ Compute S32 MIN of a and b.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_MIN.S32 s0, s0, s0`
 
@@ -6668,7 +6554,6 @@ Compute S32 MIN of a and b.
 - `(class, format, opcode)`：`(SALU, 1, 9)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MIN.U32 s0, s0, s0`
 
@@ -6692,7 +6577,7 @@ Compute U32 MIN of a and b.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_MIN.U32 s0, s0, s0`
 
@@ -6721,7 +6606,6 @@ Compute U32 MIN of a and b.
 - `(class, format, opcode)`：`(SALU, 1, 10)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MAX.S32 s0, s0, s0`
 
@@ -6745,7 +6629,7 @@ Compute S32 MAX of a and b.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_MAX.S32 s0, s0, s0`
 
@@ -6774,7 +6658,6 @@ Compute S32 MAX of a and b.
 - `(class, format, opcode)`：`(SALU, 1, 11)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_MAX.U32 s0, s0, s0`
 
@@ -6798,7 +6681,7 @@ Compute U32 MAX of a and b.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_MAX.U32 s0, s0, s0`
 
@@ -6827,7 +6710,6 @@ Compute U32 MAX of a and b.
 - `(class, format, opcode)`：`(SALU, 0, 2)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ABS.S32 s0, s0`
 
@@ -6850,7 +6732,7 @@ Compute two-complement signed 32-bit ABS.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_ABS.S32 s0, s0`
 
@@ -6878,7 +6760,6 @@ Compute two-complement signed 32-bit ABS.
 - `(class, format, opcode)`：`(SALU, 0, 3)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_NEG.S32 s0, s0`
 
@@ -6901,7 +6782,7 @@ Compute two-complement signed 32-bit NEG.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_NEG.S32 s0, s0`
 
@@ -6923,7 +6804,7 @@ Compute two-complement signed 32-bit NEG.
 
 ## S_DIV_REM
 
-- Family ID：`F015`
+- Family ID：`s-div-rem`
 - 语义组：`integer_arithmetic`
 
 Scalar signed and unsigned division and remainder.
@@ -6936,7 +6817,6 @@ Scalar signed and unsigned division and remainder.
 - `(class, format, opcode)`：`(SALU, 1, 12)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_DIV.U32 s0, s0, s0`
 
@@ -6960,7 +6840,7 @@ Compute u 32-bit quotient of a by b.
 **Faults：**
 
 - INTEGER_FAULT on divisor zero or signed overflow; ILLEGAL_OPERAND on an invalid register.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_DIV.U32 s0, s0, s0`
 
@@ -6989,7 +6869,6 @@ Compute u 32-bit quotient of a by b.
 - `(class, format, opcode)`：`(SALU, 1, 13)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_DIV.S32 s0, s0, s0`
 
@@ -7013,7 +6892,7 @@ Compute s 32-bit quotient of a by b.
 **Faults：**
 
 - INTEGER_FAULT on divisor zero or signed overflow; ILLEGAL_OPERAND on an invalid register.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_DIV.S32 s0, s0, s0`
 
@@ -7042,7 +6921,6 @@ Compute s 32-bit quotient of a by b.
 - `(class, format, opcode)`：`(SALU, 1, 14)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_REM.U32 s0, s0, s0`
 
@@ -7066,7 +6944,7 @@ Compute u 32-bit remainder of a by b.
 **Faults：**
 
 - INTEGER_FAULT on divisor zero or signed overflow; ILLEGAL_OPERAND on an invalid register.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_REM.U32 s0, s0, s0`
 
@@ -7095,7 +6973,6 @@ Compute u 32-bit remainder of a by b.
 - `(class, format, opcode)`：`(SALU, 1, 15)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_REM.S32 s0, s0, s0`
 
@@ -7119,7 +6996,7 @@ Compute s 32-bit remainder of a by b.
 **Faults：**
 
 - INTEGER_FAULT on divisor zero or signed overflow; ILLEGAL_OPERAND on an invalid register.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_REM.S32 s0, s0, s0`
 
@@ -7142,7 +7019,7 @@ Compute s 32-bit remainder of a by b.
 
 ## S_BITWISE
 
-- Family ID：`F016`
+- Family ID：`s-bitwise`
 - 语义组：`bit_manipulation`
 
 Scalar Boolean bit operations.
@@ -7155,7 +7032,6 @@ Scalar Boolean bit operations.
 - `(class, format, opcode)`：`(SALU, 1, 16)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_AND.B32 s0, s0, s0`
 
@@ -7179,7 +7055,7 @@ Apply bitwise AND to the source bits and write dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_AND.B32 s0, s0, s0`
 
@@ -7208,7 +7084,6 @@ Apply bitwise AND to the source bits and write dst.
 - `(class, format, opcode)`：`(SALU, 1, 17)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_OR.B32 s0, s0, s0`
 
@@ -7232,7 +7107,7 @@ Apply bitwise OR to the source bits and write dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_OR.B32 s0, s0, s0`
 
@@ -7261,7 +7136,6 @@ Apply bitwise OR to the source bits and write dst.
 - `(class, format, opcode)`：`(SALU, 1, 18)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_XOR.B32 s0, s0, s0`
 
@@ -7285,7 +7159,7 @@ Apply bitwise XOR to the source bits and write dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_XOR.B32 s0, s0, s0`
 
@@ -7314,7 +7188,6 @@ Apply bitwise XOR to the source bits and write dst.
 - `(class, format, opcode)`：`(SALU, 0, 4)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_NOT.B32 s0, s0`
 
@@ -7337,7 +7210,7 @@ Apply bitwise NOT to the source bits and write dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_NOT.B32 s0, s0`
 
@@ -7365,7 +7238,6 @@ Apply bitwise NOT to the source bits and write dst.
 - `(class, format, opcode)`：`(SALU, 0, 5)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_BREV.B32 s0, s0`
 
@@ -7388,7 +7260,7 @@ Reverse all 32 bits.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_BREV.B32 s0, s0`
 
@@ -7416,7 +7288,6 @@ Reverse all 32 bits.
 - `(class, format, opcode)`：`(SALU, 2, 3)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_BFE.B32 s0, s0, s0, s0`
 
@@ -7441,7 +7312,7 @@ Extract width bits at offset with zero fill.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_BFE.B32 s0, s0, s0, s0`
 
@@ -7471,7 +7342,6 @@ Extract width bits at offset with zero fill.
 - `(class, format, opcode)`：`(SALU, 2, 4)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_BFI.B32 s0, s0, s0, s0`
 
@@ -7496,7 +7366,7 @@ Insert selected bits into base according to mask.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_BFI.B32 s0, s0, s0, s0`
 
@@ -7520,7 +7390,7 @@ Insert selected bits into base according to mask.
 
 ## S_SHIFT_ROTATE
 
-- Family ID：`F017`
+- Family ID：`s-shift-rotate`
 - 语义组：`bit_manipulation`
 
 Scalar shifts and rotates by an immediate count.
@@ -7533,7 +7403,6 @@ Scalar shifts and rotates by an immediate count.
 - `(class, format, opcode)`：`(SALU, 4, 8)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_SHL.B32 s0, s0, 0`
 
@@ -7557,7 +7426,7 @@ Apply SHL to src by count modulo 32 and write dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_SHL.B32 s0, s0, 0`
 
@@ -7586,7 +7455,6 @@ Apply SHL to src by count modulo 32 and write dst.
 - `(class, format, opcode)`：`(SALU, 4, 9)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_SHR.B32 s0, s0, 0`
 
@@ -7610,7 +7478,7 @@ Apply SHR to src by count modulo 32 and write dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_SHR.B32 s0, s0, 0`
 
@@ -7639,7 +7507,6 @@ Apply SHR to src by count modulo 32 and write dst.
 - `(class, format, opcode)`：`(SALU, 4, 10)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_SAR.S32 s0, s0, 0`
 
@@ -7663,7 +7530,7 @@ Apply SAR to src by count modulo 32 and write dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_SAR.S32 s0, s0, 0`
 
@@ -7692,7 +7559,6 @@ Apply SAR to src by count modulo 32 and write dst.
 - `(class, format, opcode)`：`(SALU, 4, 11)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ROL.B32 s0, s0, 0`
 
@@ -7716,7 +7582,7 @@ Apply ROL to src by count modulo 32 and write dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_ROL.B32 s0, s0, 0`
 
@@ -7745,7 +7611,6 @@ Apply ROL to src by count modulo 32 and write dst.
 - `(class, format, opcode)`：`(SALU, 4, 12)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ROR.B32 s0, s0, 0`
 
@@ -7769,7 +7634,7 @@ Apply ROR to src by count modulo 32 and write dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_ROR.B32 s0, s0, 0`
 
@@ -7792,7 +7657,7 @@ Apply ROR to src by count modulo 32 and write dst.
 
 ## S_BITCOUNT
 
-- Family ID：`F018`
+- Family ID：`s-bitcount`
 - 语义组：`bit_manipulation`
 
 Scalar leading-zero, trailing-zero, and population counts.
@@ -7805,7 +7670,6 @@ Scalar leading-zero, trailing-zero, and population counts.
 - `(class, format, opcode)`：`(SALU, 0, 6)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CLZ.B32 s0, s0`
 
@@ -7828,7 +7692,7 @@ Write the 32-bit CLZ result for src; zero input yields 32 for CLZ/CTZ.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CLZ.B32 s0, s0`
 
@@ -7856,7 +7720,6 @@ Write the 32-bit CLZ result for src; zero input yields 32 for CLZ/CTZ.
 - `(class, format, opcode)`：`(SALU, 0, 7)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CTZ.B32 s0, s0`
 
@@ -7879,7 +7742,7 @@ Write the 32-bit CTZ result for src; zero input yields 32 for CLZ/CTZ.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CTZ.B32 s0, s0`
 
@@ -7907,7 +7770,6 @@ Write the 32-bit CTZ result for src; zero input yields 32 for CLZ/CTZ.
 - `(class, format, opcode)`：`(SALU, 0, 8)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_POPC.B32 s0, s0`
 
@@ -7930,7 +7792,7 @@ Write the 32-bit POPC result for src; zero input yields 32 for CLZ/CTZ.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_POPC.B32 s0, s0`
 
@@ -7952,7 +7814,7 @@ Write the 32-bit POPC result for src; zero input yields 32 for CLZ/CTZ.
 
 ## S_PACK
 
-- Family ID：`F019`
+- Family ID：`s-pack`
 - 语义组：`bit_manipulation`
 
 Pack and unpack scalar subwords.
@@ -7965,7 +7827,6 @@ Pack and unpack scalar subwords.
 - `(class, format, opcode)`：`(SALU, 1, 19)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_PACK.U16X2 s0, s0, s0`
 
@@ -7989,7 +7850,7 @@ Pack lo[15:0] into dst[15:0] and hi[15:0] into dst[31:16].
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_PACK.U16X2 s0, s0, s0`
 
@@ -8018,7 +7879,6 @@ Pack lo[15:0] into dst[15:0] and hi[15:0] into dst[31:16].
 - `(class, format, opcode)`：`(SALU, 0, 9)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_UNPACK.LO16 s0, s0`
 
@@ -8041,7 +7901,7 @@ Zero-extend src[15:0] into dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_UNPACK.LO16 s0, s0`
 
@@ -8069,7 +7929,6 @@ Zero-extend src[15:0] into dst.
 - `(class, format, opcode)`：`(SALU, 0, 10)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_UNPACK.HI16 s0, s0`
 
@@ -8092,7 +7951,7 @@ Zero-extend src[31:16] into dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_UNPACK.HI16 s0, s0`
 
@@ -8114,7 +7973,7 @@ Zero-extend src[31:16] into dst.
 
 ## S_COMPARE
 
-- Family ID：`F020`
+- Family ID：`s-compare`
 - 语义组：`compare`
 
 Compare scalar operands and update SCC.
@@ -8127,7 +7986,6 @@ Compare scalar operands and update SCC.
 - `(class, format, opcode)`：`(SALU, 3, 0)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.EQ s0, s0`
 
@@ -8151,7 +8009,7 @@ Set SCC to the result of the equal comparison of a and b.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CMP.EQ s0, s0`
 
@@ -8180,7 +8038,6 @@ Set SCC to the result of the equal comparison of a and b.
 - `(class, format, opcode)`：`(SALU, 3, 1)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.NE s0, s0`
 
@@ -8204,7 +8061,7 @@ Set SCC to the result of the not-equal comparison of a and b.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CMP.NE s0, s0`
 
@@ -8233,7 +8090,6 @@ Set SCC to the result of the not-equal comparison of a and b.
 - `(class, format, opcode)`：`(SALU, 3, 2)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.LT.S32 s0, s0`
 
@@ -8257,7 +8113,7 @@ Set SCC to the result of the signed-less comparison of a and b.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CMP.LT.S32 s0, s0`
 
@@ -8286,7 +8142,6 @@ Set SCC to the result of the signed-less comparison of a and b.
 - `(class, format, opcode)`：`(SALU, 3, 3)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.LE.S32 s0, s0`
 
@@ -8310,7 +8165,7 @@ Set SCC to the result of the signed-less-or-equal comparison of a and b.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CMP.LE.S32 s0, s0`
 
@@ -8339,7 +8194,6 @@ Set SCC to the result of the signed-less-or-equal comparison of a and b.
 - `(class, format, opcode)`：`(SALU, 3, 4)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.GT.S32 s0, s0`
 
@@ -8363,7 +8217,7 @@ Set SCC to the result of the signed-greater comparison of a and b.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CMP.GT.S32 s0, s0`
 
@@ -8392,7 +8246,6 @@ Set SCC to the result of the signed-greater comparison of a and b.
 - `(class, format, opcode)`：`(SALU, 3, 5)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.GE.S32 s0, s0`
 
@@ -8416,7 +8269,7 @@ Set SCC to the result of the signed-greater-or-equal comparison of a and b.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CMP.GE.S32 s0, s0`
 
@@ -8445,7 +8298,6 @@ Set SCC to the result of the signed-greater-or-equal comparison of a and b.
 - `(class, format, opcode)`：`(SALU, 3, 6)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.LT.U32 s0, s0`
 
@@ -8469,7 +8321,7 @@ Set SCC to the result of the unsigned-less comparison of a and b.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CMP.LT.U32 s0, s0`
 
@@ -8498,7 +8350,6 @@ Set SCC to the result of the unsigned-less comparison of a and b.
 - `(class, format, opcode)`：`(SALU, 3, 7)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.LE.U32 s0, s0`
 
@@ -8522,7 +8373,7 @@ Set SCC to the result of the unsigned-less-or-equal comparison of a and b.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CMP.LE.U32 s0, s0`
 
@@ -8551,7 +8402,6 @@ Set SCC to the result of the unsigned-less-or-equal comparison of a and b.
 - `(class, format, opcode)`：`(SALU, 3, 8)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.GT.U32 s0, s0`
 
@@ -8575,7 +8425,7 @@ Set SCC to the result of the unsigned-greater comparison of a and b.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CMP.GT.U32 s0, s0`
 
@@ -8604,7 +8454,6 @@ Set SCC to the result of the unsigned-greater comparison of a and b.
 - `(class, format, opcode)`：`(SALU, 3, 9)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.GE.U32 s0, s0`
 
@@ -8628,7 +8477,7 @@ Set SCC to the result of the unsigned-greater-or-equal comparison of a and b.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CMP.GE.U32 s0, s0`
 
@@ -8657,7 +8506,6 @@ Set SCC to the result of the unsigned-greater-or-equal comparison of a and b.
 - `(class, format, opcode)`：`(SALU, 3, 10)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.EQ.F32 s0, s0`
 
@@ -8681,7 +8529,7 @@ Ordered IEEE F32 EQ comparison writes SCC implicitly.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_CMP.EQ.F32 s0, s0`
 
@@ -8710,7 +8558,6 @@ Ordered IEEE F32 EQ comparison writes SCC implicitly.
 - `(class, format, opcode)`：`(SALU, 3, 11)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.NE.F32 s0, s0`
 
@@ -8734,7 +8581,7 @@ Ordered IEEE F32 NE comparison writes SCC implicitly.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_CMP.NE.F32 s0, s0`
 
@@ -8763,7 +8610,6 @@ Ordered IEEE F32 NE comparison writes SCC implicitly.
 - `(class, format, opcode)`：`(SALU, 3, 12)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.LT.F32 s0, s0`
 
@@ -8787,7 +8633,7 @@ Ordered IEEE F32 LT comparison writes SCC implicitly.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_CMP.LT.F32 s0, s0`
 
@@ -8816,7 +8662,6 @@ Ordered IEEE F32 LT comparison writes SCC implicitly.
 - `(class, format, opcode)`：`(SALU, 3, 13)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.LE.F32 s0, s0`
 
@@ -8840,7 +8685,7 @@ Ordered IEEE F32 LE comparison writes SCC implicitly.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_CMP.LE.F32 s0, s0`
 
@@ -8869,7 +8714,6 @@ Ordered IEEE F32 LE comparison writes SCC implicitly.
 - `(class, format, opcode)`：`(SALU, 3, 14)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.GT.F32 s0, s0`
 
@@ -8893,7 +8737,7 @@ Ordered IEEE F32 GT comparison writes SCC implicitly.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_CMP.GT.F32 s0, s0`
 
@@ -8922,7 +8766,6 @@ Ordered IEEE F32 GT comparison writes SCC implicitly.
 - `(class, format, opcode)`：`(SALU, 3, 15)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.GE.F32 s0, s0`
 
@@ -8946,7 +8789,7 @@ Ordered IEEE F32 GE comparison writes SCC implicitly.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_CMP.GE.F32 s0, s0`
 
@@ -8975,7 +8818,6 @@ Ordered IEEE F32 GE comparison writes SCC implicitly.
 - `(class, format, opcode)`：`(SALU, 3, 16)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.ORD.F32 s0, s0`
 
@@ -9026,7 +8868,6 @@ Apply IEEE F32 ORD: NaN handling follows docs/05-numeric-environment.md.
 - `(class, format, opcode)`：`(SALU, 3, 17)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CMP.UNO.F32 s0, s0`
 
@@ -9071,7 +8912,7 @@ Apply IEEE F32 UNO: NaN handling follows docs/05-numeric-environment.md.
 
 ## S_SELECT
 
-- Family ID：`F021`
+- Family ID：`s-select`
 - 语义组：`select`
 
 Select one scalar source according to SCC.
@@ -9084,7 +8925,6 @@ Select one scalar source according to SCC.
 - `(class, format, opcode)`：`(SALU, 1, 20)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_SELECT.B32 s0, s0, s0`
 
@@ -9109,7 +8949,7 @@ Write on_true when SCC is one, otherwise on_false.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_SELECT.B32 s0, s0, s0`
 
@@ -9138,7 +8978,6 @@ Write on_true when SCC is one, otherwise on_false.
 - `(class, format, opcode)`：`(SALU, 1, 21)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_SELECT.B64 s0:s1, s0:s1, s0:s1`
 
@@ -9163,7 +9002,7 @@ Write the selected 64-bit source according to SCC.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_SELECT.B64 s0:s1, s0:s1, s0:s1`
 
@@ -9186,7 +9025,7 @@ Write the selected 64-bit source according to SCC.
 
 ## S_CVT
 
-- Family ID：`F022`
+- Family ID：`s-cvt`
 - 语义组：`conversion`
 
 Convert scalar integer and F32 values.
@@ -9199,7 +9038,6 @@ Convert scalar integer and F32 values.
 - `(class, format, opcode)`：`(SALU, 0, 11)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CVT.S32.F32 s0, s0`
 
@@ -9222,7 +9060,7 @@ Convert IEEE F32 src to signed 32-bit integer using round-to-zero.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CVT.S32.F32 s0, s0`
 
@@ -9250,7 +9088,6 @@ Convert IEEE F32 src to signed 32-bit integer using round-to-zero.
 - `(class, format, opcode)`：`(SALU, 0, 12)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CVT.U32.F32 s0, s0`
 
@@ -9273,7 +9110,7 @@ Convert IEEE F32 src to unsigned 32-bit integer using round-to-zero.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CVT.U32.F32 s0, s0`
 
@@ -9301,7 +9138,6 @@ Convert IEEE F32 src to unsigned 32-bit integer using round-to-zero.
 - `(class, format, opcode)`：`(SALU, 0, 13)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CVT.F32.S32 s0, s0`
 
@@ -9324,7 +9160,7 @@ Convert signed 32-bit src to IEEE F32 round-to-nearest-even.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CVT.F32.S32 s0, s0`
 
@@ -9352,7 +9188,6 @@ Convert signed 32-bit src to IEEE F32 round-to-nearest-even.
 - `(class, format, opcode)`：`(SALU, 0, 14)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CVT.F32.U32 s0, s0`
 
@@ -9375,7 +9210,7 @@ Convert unsigned 32-bit src to IEEE F32 round-to-nearest-even.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CVT.F32.U32 s0, s0`
 
@@ -9403,7 +9238,6 @@ Convert unsigned 32-bit src to IEEE F32 round-to-nearest-even.
 - `(class, format, opcode)`：`(SALU, 0, 15)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CVT.U16.U32 s0, s0`
 
@@ -9426,7 +9260,7 @@ Truncate src to unsigned 16 bits and zero-extend to 32 bits.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CVT.U16.U32 s0, s0`
 
@@ -9454,7 +9288,6 @@ Truncate src to unsigned 16 bits and zero-extend to 32 bits.
 - `(class, format, opcode)`：`(SALU, 0, 16)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_CVT.S16.S32 s0, s0`
 
@@ -9477,7 +9310,7 @@ Truncate src to 16 bits and sign-extend to 32 bits.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_CVT.S16.S32 s0, s0`
 
@@ -9499,7 +9332,7 @@ Truncate src to 16 bits and sign-extend to 32 bits.
 
 ## S_F32_ARITH
 
-- Family ID：`F023`
+- Family ID：`s-f32-arith`
 - 语义组：`floating_point`
 
 Scalar IEEE-754 binary32 arithmetic.
@@ -9512,7 +9345,6 @@ Scalar IEEE-754 binary32 arithmetic.
 - `(class, format, opcode)`：`(SALU, 1, 22)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_FADD.F32 s0, s0, s0`
 
@@ -9536,7 +9368,7 @@ Compute IEEE binary32 ADD with round-to-nearest-even and canonical NaN propagati
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_FADD.F32 s0, s0, s0`
 
@@ -9565,7 +9397,6 @@ Compute IEEE binary32 ADD with round-to-nearest-even and canonical NaN propagati
 - `(class, format, opcode)`：`(SALU, 1, 23)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_FSUB.F32 s0, s0, s0`
 
@@ -9589,7 +9420,7 @@ Compute IEEE binary32 SUB with round-to-nearest-even and canonical NaN propagati
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_FSUB.F32 s0, s0, s0`
 
@@ -9618,7 +9449,6 @@ Compute IEEE binary32 SUB with round-to-nearest-even and canonical NaN propagati
 - `(class, format, opcode)`：`(SALU, 1, 24)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_FMUL.F32 s0, s0, s0`
 
@@ -9642,7 +9472,7 @@ Compute IEEE binary32 MUL with round-to-nearest-even and canonical NaN propagati
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_FMUL.F32 s0, s0, s0`
 
@@ -9671,7 +9501,6 @@ Compute IEEE binary32 MUL with round-to-nearest-even and canonical NaN propagati
 - `(class, format, opcode)`：`(SALU, 2, 5)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_FFMA.F32 s0, s0, s0, s0`
 
@@ -9696,7 +9525,7 @@ Compute IEEE binary32 FMA with round-to-nearest-even and canonical NaN propagati
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_FFMA.F32 s0, s0, s0, s0`
 
@@ -9726,7 +9555,6 @@ Compute IEEE binary32 FMA with round-to-nearest-even and canonical NaN propagati
 - `(class, format, opcode)`：`(SALU, 1, 25)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_FMIN.F32 s0, s0, s0`
 
@@ -9750,7 +9578,7 @@ Compute IEEE binary32 MIN with round-to-nearest-even and canonical NaN propagati
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_FMIN.F32 s0, s0, s0`
 
@@ -9779,7 +9607,6 @@ Compute IEEE binary32 MIN with round-to-nearest-even and canonical NaN propagati
 - `(class, format, opcode)`：`(SALU, 1, 26)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_FMAX.F32 s0, s0, s0`
 
@@ -9803,7 +9630,7 @@ Compute IEEE binary32 MAX with round-to-nearest-even and canonical NaN propagati
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_FMAX.F32 s0, s0, s0`
 
@@ -9832,7 +9659,6 @@ Compute IEEE binary32 MAX with round-to-nearest-even and canonical NaN propagati
 - `(class, format, opcode)`：`(SALU, 0, 17)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_FSQRT.F32 s0, s0`
 
@@ -9855,7 +9681,7 @@ Compute IEEE binary32 SQRT with round-to-nearest-even and canonical NaN propagat
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_FSQRT.F32 s0, s0`
 
@@ -9883,7 +9709,6 @@ Compute IEEE binary32 SQRT with round-to-nearest-even and canonical NaN propagat
 - `(class, format, opcode)`：`(SALU, 0, 18)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_FABS.F32 s0, s0`
 
@@ -9906,7 +9731,7 @@ IEEE F32 ABS by sign-bit transform, preserving NaN payload.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_FABS.F32 s0, s0`
 
@@ -9934,7 +9759,6 @@ IEEE F32 ABS by sign-bit transform, preserving NaN payload.
 - `(class, format, opcode)`：`(SALU, 0, 19)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_FNEG.F32 s0, s0`
 
@@ -9957,7 +9781,7 @@ IEEE F32 NEG by sign-bit transform, preserving NaN payload.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-- SCALAR_STATE_FAULT when not scalar-ready; no source is read and no effect commits.
+- DIVERGENCE_FAULT when not scalar-ready; no source is read and no effect commits.
 
 **示例：** `S_FNEG.F32 s0, s0`
 
@@ -9979,7 +9803,7 @@ IEEE F32 NEG by sign-bit transform, preserving NaN payload.
 
 ## S_F32_DIV
 
-- Family ID：`F024`
+- Family ID：`s-f32-div`
 - 语义组：`floating_point`
 
 Scalar binary32 division and reciprocal.
@@ -9992,7 +9816,6 @@ Scalar binary32 division and reciprocal.
 - `(class, format, opcode)`：`(SALU, 1, 27)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_FDIV.F32 s0, s0, s0`
 
@@ -10016,7 +9839,7 @@ Compute IEEE binary32 a divided by b.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_FDIV.F32 s0, s0, s0`
 
@@ -10045,7 +9868,6 @@ Compute IEEE binary32 a divided by b.
 - `(class, format, opcode)`：`(SALU, 0, 20)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_FRCP.F32 s0, s0`
 
@@ -10068,7 +9890,7 @@ Compute IEEE binary32 reciprocal of a.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_FRCP.F32 s0, s0`
 
@@ -10090,7 +9912,7 @@ Compute IEEE binary32 reciprocal of a.
 
 ## V_MOV
 
-- Family ID：`F025`
+- Family ID：`v-mov`
 - 语义组：`move`
 
 Per-lane move of register or immediate bits.
@@ -10103,25 +9925,31 @@ Per-lane move of register or immediate bits.
 - `(class, format, opcode)`：`(VALU, 0, 0)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`copy_source_tag`
 
 **语法：** `V_MOV.B32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
-Copy 32 source bits in each participating lane; this register form is a root-policy exception and copies the source lane's complete barrier-token tag too.
+Copy 32 source bits into each participating lane. The source is a VGPR when ssrc is 0 and the frozen uniform SGPR when ssrc is 1, so this form is also the SGPR-to-VGPR broadcast.
 
 **Constraints：**
 
 - Encoded registers must belong to the declared register files; every unused payload field is zero.
-- Except for BAR.ARRIVE.CTA creating a tag, this is the only VGPR-writing form that does not apply the root default-action clear to every written VGPR32 slot.
+- ssrc selects the source register file; there is no separate broadcast opcode.
 
 **Faults：**
 
@@ -10143,7 +9971,8 @@ Copy 32 source bits in each participating lane; this register form is a root-pol
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_MOV.B32 — `b32.imm`
 
@@ -10153,7 +9982,6 @@ Copy 32 source bits in each participating lane; this register form is a root-pol
 - `(class, format, opcode)`：`(VALU, 4, 0)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_MOV.B32 v0, 0`
 
@@ -10166,7 +9994,7 @@ Copy 32 source bits in each participating lane; this register form is a root-pol
 
 **Semantics：**
 
-Sign-extend imm24 to 32 bits in each participating lane and clear that destination lane's barrier-token tag.
+Sign-extend imm24 to 32 bits in each participating lane.
 
 **Constraints：**
 
@@ -10203,16 +10031,22 @@ Sign-extend imm24 to 32 bits in each participating lane and clear that destinati
 - `(class, format, opcode)`：`(VALU, 0, 1)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_MOV.B64 v0:v1, v0:v1`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr64 | write | vd | — |
-| src | vgpr64 | read | va | — |
+| src | vsrc64 | read | va | — |
 
 **Semantics：**
 
@@ -10242,7 +10076,8 @@ Copy 64 source bits in each participating lane.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_MOV.B64 — `b64.imm`
 
@@ -10252,7 +10087,6 @@ Copy 64 source bits in each participating lane.
 - `(class, format, opcode)`：`(VALU, 4, 1)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_MOV.B64 v0:v1, 0`
 
@@ -10296,7 +10130,7 @@ Sign-extend imm24 to 64 bits in each participating lane.
 
 ## V_ADD
 
-- Family ID：`F026`
+- Family ID：`v-add`
 - 语义组：`integer_arithmetic`
 
 Per-lane vector add with VGPR or immediate source.
@@ -10309,17 +10143,24 @@ Per-lane vector add with VGPR or immediate source.
 - `(class, format, opcode)`：`(VALU, 1, 0)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ADD.U32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -10350,7 +10191,8 @@ Each participating lane adds a and b, writing the low 32 bits to dst.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_ADD.U32 — `u32.imm`
 
@@ -10360,7 +10202,6 @@ Each participating lane adds a and b, writing the low 32 bits to dst.
 - `(class, format, opcode)`：`(VALU, 4, 2)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ADD.U32 v0, v0, 0`
 
@@ -10411,17 +10252,24 @@ Each participating lane computes add of a and sign-extended imm24.
 - `(class, format, opcode)`：`(VALU, 1, 1)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ADD.U64 v0:v1, v0:v1, v0:v1`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr64 | write | vd | — |
-| a | vgpr64 | read | va | — |
-| b | vgpr64 | read | vb | — |
+| a | vsrc64 | read | va | — |
+| b | vsrc64 | read | vb | — |
 
 **Semantics：**
 
@@ -10452,7 +10300,8 @@ Each participating lane adds a and b, writing the low 64 bits to dst.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_ADD.U64 — `u64.imm`
 
@@ -10462,7 +10311,6 @@ Each participating lane adds a and b, writing the low 64 bits to dst.
 - `(class, format, opcode)`：`(VALU, 4, 3)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ADD.U64 v0:v1, v0:v1, 0`
 
@@ -10507,7 +10355,7 @@ Each participating lane computes 64-bit add with sign-extended imm24.
 
 ## V_SUB
 
-- Family ID：`F027`
+- Family ID：`v-sub`
 - 语义组：`integer_arithmetic`
 
 Per-lane vector subtract with VGPR or immediate source.
@@ -10520,17 +10368,24 @@ Per-lane vector subtract with VGPR or immediate source.
 - `(class, format, opcode)`：`(VALU, 1, 2)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_SUB.U32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -10561,7 +10416,8 @@ Each participating lane subtracts b from a, writing the low 32 bits to dst.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_SUB.U32 — `u32.imm`
 
@@ -10571,7 +10427,6 @@ Each participating lane subtracts b from a, writing the low 32 bits to dst.
 - `(class, format, opcode)`：`(VALU, 4, 4)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_SUB.U32 v0, v0, 0`
 
@@ -10622,17 +10477,24 @@ Each participating lane computes subtract of a and sign-extended imm24.
 - `(class, format, opcode)`：`(VALU, 1, 3)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_SUB.U64 v0:v1, v0:v1, v0:v1`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr64 | write | vd | — |
-| a | vgpr64 | read | va | — |
-| b | vgpr64 | read | vb | — |
+| a | vsrc64 | read | va | — |
+| b | vsrc64 | read | vb | — |
 
 **Semantics：**
 
@@ -10663,7 +10525,8 @@ Each participating lane subtracts b from a, writing the low 64 bits to dst.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_SUB.U64 — `u64.imm`
 
@@ -10673,7 +10536,6 @@ Each participating lane subtracts b from a, writing the low 64 bits to dst.
 - `(class, format, opcode)`：`(VALU, 4, 5)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_SUB.U64 v0:v1, v0:v1, 0`
 
@@ -10718,7 +10580,7 @@ Each participating lane computes 64-bit subtract with sign-extended imm24.
 
 ## V_MUL
 
-- Family ID：`F028`
+- Family ID：`v-mul`
 - 语义组：`integer_arithmetic`
 
 Per-lane vector multiply with VGPR or immediate source.
@@ -10731,17 +10593,24 @@ Per-lane vector multiply with VGPR or immediate source.
 - `(class, format, opcode)`：`(VALU, 1, 4)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_MUL.U32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -10772,7 +10641,8 @@ Each participating lane multiplies a by b, writing the low 32 bits to dst.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_MUL.U32 — `u32.imm`
 
@@ -10782,7 +10652,6 @@ Each participating lane multiplies a by b, writing the low 32 bits to dst.
 - `(class, format, opcode)`：`(VALU, 4, 6)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_MUL.U32 v0, v0, 0`
 
@@ -10833,17 +10702,24 @@ Each participating lane computes multiply of a and sign-extended imm24.
 - `(class, format, opcode)`：`(VALU, 1, 5)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_MUL.U64 v0:v1, v0:v1, v0:v1`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr64 | write | vd | — |
-| a | vgpr64 | read | va | — |
-| b | vgpr64 | read | vb | — |
+| a | vsrc64 | read | va | — |
+| b | vsrc64 | read | vb | — |
 
 **Semantics：**
 
@@ -10874,7 +10750,8 @@ Each participating lane multiplies a by b, writing the low 64 bits to dst.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_MUL.U64 — `u64.imm`
 
@@ -10884,7 +10761,6 @@ Each participating lane multiplies a by b, writing the low 64 bits to dst.
 - `(class, format, opcode)`：`(VALU, 4, 7)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_MUL.U64 v0:v1, v0:v1, 0`
 
@@ -10929,7 +10805,7 @@ Each participating lane computes 64-bit multiply with sign-extended imm24.
 
 ## V_MAD
 
-- Family ID：`F029`
+- Family ID：`v-mad`
 - 语义组：`integer_arithmetic`
 
 Vector integer multiply-add.
@@ -10942,18 +10818,26 @@ Vector integer multiply-add.
 - `(class, format, opcode)`：`(VALU, 2, 0)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_MAD.U32 v0, v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 3 | c | `vc` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
-| c | vgpr32 | read | vc | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
+| c | vsrc32 | read | vc | — |
 
 **Semantics：**
 
@@ -10985,11 +10869,12 @@ Each participating lane computes (a*b+c) modulo 2^32.
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
 | vc | 50:43 | — | 否 | — | Vector source C. |
-| x13 | 63:51 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 52:51 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 vc. At most one source may come from the SGPR file. |
+| x11 | 63:53 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ## V_MUL.WIDE
 
-- Family ID：`F030`
+- Family ID：`v-mul-wide`
 - 语义组：`wide_integer`
 
 Per-lane full 32-by-32 product.
@@ -11002,17 +10887,24 @@ Per-lane full 32-by-32 product.
 - `(class, format, opcode)`：`(VALU, 1, 6)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_MUL.WIDE.U32 v0:v1, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr64 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -11043,7 +10935,8 @@ Each participating lane writes the unsigned full product.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_MUL.WIDE.S32 — `s32`
 
@@ -11053,17 +10946,24 @@ Each participating lane writes the unsigned full product.
 - `(class, format, opcode)`：`(VALU, 1, 7)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_MUL.WIDE.S32 v0:v1, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr64 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -11094,11 +10994,12 @@ Each participating lane writes the signed full product.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ## V_MAD.WIDE
 
-- Family ID：`F031`
+- Family ID：`v-mad-wide`
 - 语义组：`wide_integer`
 
 Per-lane wide multiply-add.
@@ -11111,18 +11012,26 @@ Per-lane wide multiply-add.
 - `(class, format, opcode)`：`(VALU, 2, 1)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_MAD.WIDE.U32 v0:v1, v0, v0, v0:v1`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 3 | c | `vc` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr64 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
-| c | vgpr64 | read | vc | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
+| c | vsrc64 | read | vc | — |
 
 **Semantics：**
 
@@ -11154,7 +11063,8 @@ Each participating lane computes unsigned(a)*unsigned(b)+c modulo 2^64.
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
 | vc | 50:43 | — | 否 | — | Vector source C. |
-| x13 | 63:51 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 52:51 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 vc. At most one source may come from the SGPR file. |
+| x11 | 63:53 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_MAD.WIDE.S32 — `s32`
 
@@ -11164,18 +11074,26 @@ Each participating lane computes unsigned(a)*unsigned(b)+c modulo 2^64.
 - `(class, format, opcode)`：`(VALU, 2, 2)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_MAD.WIDE.S32 v0:v1, v0, v0, v0:v1`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 3 | c | `vc` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr64 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
-| c | vgpr64 | read | vc | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
+| c | vsrc64 | read | vc | — |
 
 **Semantics：**
 
@@ -11207,11 +11125,12 @@ Each participating lane computes signed(a)*signed(b)+c modulo 2^64.
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
 | vc | 50:43 | — | 否 | — | Vector source C. |
-| x13 | 63:51 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 52:51 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 vc. At most one source may come from the SGPR file. |
+| x11 | 63:53 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ## V_INT_MISC
 
-- Family ID：`F032`
+- Family ID：`v-int-misc`
 - 语义组：`integer_arithmetic`
 
 V integer min, max, abs, and neg.
@@ -11224,17 +11143,24 @@ V integer min, max, abs, and neg.
 - `(class, format, opcode)`：`(VALU, 1, 8)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_MIN.S32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -11265,7 +11191,8 @@ Compute S32 MIN of a and b.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_MIN.U32 — `min.u32`
 
@@ -11275,17 +11202,24 @@ Compute S32 MIN of a and b.
 - `(class, format, opcode)`：`(VALU, 1, 9)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_MIN.U32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -11316,7 +11250,8 @@ Compute U32 MIN of a and b.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_MAX.S32 — `max.s32`
 
@@ -11326,17 +11261,24 @@ Compute U32 MIN of a and b.
 - `(class, format, opcode)`：`(VALU, 1, 10)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_MAX.S32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -11367,7 +11309,8 @@ Compute S32 MAX of a and b.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_MAX.U32 — `max.u32`
 
@@ -11377,17 +11320,24 @@ Compute S32 MAX of a and b.
 - `(class, format, opcode)`：`(VALU, 1, 11)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_MAX.U32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -11418,7 +11368,8 @@ Compute U32 MAX of a and b.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_ABS.S32 — `abs.s32`
 
@@ -11428,16 +11379,22 @@ Compute U32 MAX of a and b.
 - `(class, format, opcode)`：`(VALU, 0, 2)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ABS.S32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -11467,7 +11424,8 @@ Compute two-complement signed 32-bit ABS.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_NEG.S32 — `neg.s32`
 
@@ -11477,16 +11435,22 @@ Compute two-complement signed 32-bit ABS.
 - `(class, format, opcode)`：`(VALU, 0, 3)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_NEG.S32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -11516,11 +11480,12 @@ Compute two-complement signed 32-bit NEG.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ## V_DIV_REM
 
-- Family ID：`F033`
+- Family ID：`v-div-rem`
 - 语义组：`integer_arithmetic`
 
 Per-lane signed and unsigned division and remainder.
@@ -11533,17 +11498,24 @@ Per-lane signed and unsigned division and remainder.
 - `(class, format, opcode)`：`(VALU, 1, 12)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_DIV.U32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -11574,7 +11546,8 @@ Each participating lane computes u div.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_DIV.S32 — `div.s`
 
@@ -11584,17 +11557,24 @@ Each participating lane computes u div.
 - `(class, format, opcode)`：`(VALU, 1, 13)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_DIV.S32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -11625,7 +11605,8 @@ Each participating lane computes s div.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_REM.U32 — `rem.u`
 
@@ -11635,17 +11616,24 @@ Each participating lane computes s div.
 - `(class, format, opcode)`：`(VALU, 1, 14)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_REM.U32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -11676,7 +11664,8 @@ Each participating lane computes u rem.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_REM.S32 — `rem.s`
 
@@ -11686,17 +11675,24 @@ Each participating lane computes u rem.
 - `(class, format, opcode)`：`(VALU, 1, 15)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_REM.S32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -11727,11 +11723,12 @@ Each participating lane computes s rem.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ## V_BITWISE
 
-- Family ID：`F034`
+- Family ID：`v-bitwise`
 - 语义组：`bit_manipulation`
 
 Per-lane Boolean operations.
@@ -11744,17 +11741,24 @@ Per-lane Boolean operations.
 - `(class, format, opcode)`：`(VALU, 1, 16)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_AND.B32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -11785,7 +11789,8 @@ Each participating lane applies bitwise AND.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_OR.B32 — `or`
 
@@ -11795,17 +11800,24 @@ Each participating lane applies bitwise AND.
 - `(class, format, opcode)`：`(VALU, 1, 17)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_OR.B32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -11836,7 +11848,8 @@ Each participating lane applies bitwise OR.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_XOR.B32 — `xor`
 
@@ -11846,17 +11859,24 @@ Each participating lane applies bitwise OR.
 - `(class, format, opcode)`：`(VALU, 1, 18)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_XOR.B32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -11887,7 +11907,8 @@ Each participating lane applies bitwise XOR.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_NOT.B32 — `not`
 
@@ -11897,16 +11918,22 @@ Each participating lane applies bitwise XOR.
 - `(class, format, opcode)`：`(VALU, 0, 4)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_NOT.B32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
+| a | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -11936,7 +11963,8 @@ Each participating lane applies bitwise NOT.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_BREV.B32 — `brev.b32`
 
@@ -11946,16 +11974,22 @@ Each participating lane applies bitwise NOT.
 - `(class, format, opcode)`：`(VALU, 0, 5)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_BREV.B32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -11985,7 +12019,8 @@ Reverse all 32 bits.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_BFE.B32 — `bfe.b32`
 
@@ -11995,18 +12030,26 @@ Reverse all 32 bits.
 - `(class, format, opcode)`：`(VALU, 2, 3)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_BFE.B32 v0, v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | offset | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 3 | width | `vc` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
-| offset | vgpr32 | read | vb | — |
-| width | vgpr32 | read | vc | — |
+| src | vsrc32 | read | va | — |
+| offset | vsrc32 | read | vb | — |
+| width | vsrc32 | read | vc | — |
 
 **Semantics：**
 
@@ -12038,7 +12081,8 @@ Extract width bits at offset with zero fill.
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
 | vc | 50:43 | — | 否 | — | Vector source C. |
-| x13 | 63:51 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 52:51 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 vc. At most one source may come from the SGPR file. |
+| x11 | 63:53 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_BFI.B32 — `bfi.b32`
 
@@ -12048,18 +12092,26 @@ Extract width bits at offset with zero fill.
 - `(class, format, opcode)`：`(VALU, 2, 4)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_BFI.B32 v0, v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | base | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | insert | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 3 | mask | `vc` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| base | vgpr32 | read | va | — |
-| insert | vgpr32 | read | vb | — |
-| mask | vgpr32 | read | vc | — |
+| base | vsrc32 | read | va | — |
+| insert | vsrc32 | read | vb | — |
+| mask | vsrc32 | read | vc | — |
 
 **Semantics：**
 
@@ -12091,11 +12143,12 @@ Insert selected bits into base according to mask.
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
 | vc | 50:43 | — | 否 | — | Vector source C. |
-| x13 | 63:51 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 52:51 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 vc. At most one source may come from the SGPR file. |
+| x11 | 63:53 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ## V_SHIFT_ROTATE
 
-- Family ID：`F035`
+- Family ID：`v-shift-rotate`
 - 语义组：`bit_manipulation`
 
 Per-lane shifts and rotates.
@@ -12108,7 +12161,6 @@ Per-lane shifts and rotates.
 - `(class, format, opcode)`：`(VALU, 4, 8)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_SHL.B32 v0, v0, 0`
 
@@ -12159,7 +12211,6 @@ Each participating lane applies SHL by count modulo 32.
 - `(class, format, opcode)`：`(VALU, 4, 9)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_SHR.B32 v0, v0, 0`
 
@@ -12210,7 +12261,6 @@ Each participating lane applies SHR by count modulo 32.
 - `(class, format, opcode)`：`(VALU, 4, 10)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_SAR.S32 v0, v0, 0`
 
@@ -12261,7 +12311,6 @@ Each participating lane applies SAR by count modulo 32.
 - `(class, format, opcode)`：`(VALU, 4, 11)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ROL.B32 v0, v0, 0`
 
@@ -12312,7 +12361,6 @@ Each participating lane applies ROL by count modulo 32.
 - `(class, format, opcode)`：`(VALU, 4, 12)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ROR.B32 v0, v0, 0`
 
@@ -12355,9 +12403,309 @@ Each participating lane applies ROR by count modulo 32.
 | imm24 | 58:35 | — | 否 | — | Signed or unsigned opcode-defined 24-bit immediate. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
+### V_SHL.B32 — `shl.reg`
+
+- 执行域：`vector`
+- 编码格式：`V2`
+- 语义组：`bit_manipulation`
+- `(class, format, opcode)`：`(VALU, 1, 35)`
+- Guard policy：`optional`
+- Required state：`none`
+
+**语法：** `V_SHL.B32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | count | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
+
+#### Operands
+
+| 名称 | 类型 | 访问 | 字段 | 说明 |
+|---|---|---|---|---|
+| dst | vgpr32 | write | vd | — |
+| src | vsrc32 | read | va | — |
+| count | vsrc32 | read | vb | — |
+
+**Semantics：**
+
+Shift each lane left by the low 5 bits of the count source. Only the low 5 bits of the count are used.
+
+**Constraints：**
+
+- At most one of the two sources may name an SGPR, chosen by ssrc_sel.
+- All unused extension and reserved bits are zero.
+
+**Faults：**
+
+- ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
+
+**示例：** `V_SHL.B32 v0, v0, v0`
+
+**示例字段值：** —
+
+**64 位机器字：** `0x0000000000001192`
+
+#### 编码字段
+
+| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
+|---|---:|---:|:---:|---|---|
+| class | 3:0 | 2 | 否 | — | Execution class. |
+| format | 6:4 | 1 | 否 | — | Class-local payload format. |
+| opcode | 12:7 | 35 | 否 | — | Opcode local to class and format. |
+| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
+| vd | 26:19 | — | 否 | — | Vector destination. |
+| va | 34:27 | — | 否 | — | Vector source A. |
+| vb | 42:35 | — | 否 | — | Vector source B. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+
+### V_SHR.B32 — `shr.reg`
+
+- 执行域：`vector`
+- 编码格式：`V2`
+- 语义组：`bit_manipulation`
+- `(class, format, opcode)`：`(VALU, 1, 36)`
+- Guard policy：`optional`
+- Required state：`none`
+
+**语法：** `V_SHR.B32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | count | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
+
+#### Operands
+
+| 名称 | 类型 | 访问 | 字段 | 说明 |
+|---|---|---|---|---|
+| dst | vgpr32 | write | vd | — |
+| src | vsrc32 | read | va | — |
+| count | vsrc32 | read | vb | — |
+
+**Semantics：**
+
+Shift each lane right logically by the low 5 bits of the count source. Only the low 5 bits of the count are used.
+
+**Constraints：**
+
+- At most one of the two sources may name an SGPR, chosen by ssrc_sel.
+- All unused extension and reserved bits are zero.
+
+**Faults：**
+
+- ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
+
+**示例：** `V_SHR.B32 v0, v0, v0`
+
+**示例字段值：** —
+
+**64 位机器字：** `0x0000000000001212`
+
+#### 编码字段
+
+| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
+|---|---:|---:|:---:|---|---|
+| class | 3:0 | 2 | 否 | — | Execution class. |
+| format | 6:4 | 1 | 否 | — | Class-local payload format. |
+| opcode | 12:7 | 36 | 否 | — | Opcode local to class and format. |
+| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
+| vd | 26:19 | — | 否 | — | Vector destination. |
+| va | 34:27 | — | 否 | — | Vector source A. |
+| vb | 42:35 | — | 否 | — | Vector source B. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+
+### V_SAR.S32 — `sar.reg`
+
+- 执行域：`vector`
+- 编码格式：`V2`
+- 语义组：`bit_manipulation`
+- `(class, format, opcode)`：`(VALU, 1, 37)`
+- Guard policy：`optional`
+- Required state：`none`
+
+**语法：** `V_SAR.S32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | count | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
+
+#### Operands
+
+| 名称 | 类型 | 访问 | 字段 | 说明 |
+|---|---|---|---|---|
+| dst | vgpr32 | write | vd | — |
+| src | vsrc32 | read | va | — |
+| count | vsrc32 | read | vb | — |
+
+**Semantics：**
+
+Shift each lane right arithmetically by the low 5 bits of the count source. Only the low 5 bits of the count are used.
+
+**Constraints：**
+
+- At most one of the two sources may name an SGPR, chosen by ssrc_sel.
+- All unused extension and reserved bits are zero.
+
+**Faults：**
+
+- ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
+
+**示例：** `V_SAR.S32 v0, v0, v0`
+
+**示例字段值：** —
+
+**64 位机器字：** `0x0000000000001292`
+
+#### 编码字段
+
+| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
+|---|---:|---:|:---:|---|---|
+| class | 3:0 | 2 | 否 | — | Execution class. |
+| format | 6:4 | 1 | 否 | — | Class-local payload format. |
+| opcode | 12:7 | 37 | 否 | — | Opcode local to class and format. |
+| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
+| vd | 26:19 | — | 否 | — | Vector destination. |
+| va | 34:27 | — | 否 | — | Vector source A. |
+| vb | 42:35 | — | 否 | — | Vector source B. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+
+### V_ROL.B32 — `rotl.reg`
+
+- 执行域：`vector`
+- 编码格式：`V2`
+- 语义组：`bit_manipulation`
+- `(class, format, opcode)`：`(VALU, 1, 38)`
+- Guard policy：`optional`
+- Required state：`none`
+
+**语法：** `V_ROL.B32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | count | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
+
+#### Operands
+
+| 名称 | 类型 | 访问 | 字段 | 说明 |
+|---|---|---|---|---|
+| dst | vgpr32 | write | vd | — |
+| src | vsrc32 | read | va | — |
+| count | vsrc32 | read | vb | — |
+
+**Semantics：**
+
+Rotate each lane left by the low 5 bits of the count source. Only the low 5 bits of the count are used.
+
+**Constraints：**
+
+- At most one of the two sources may name an SGPR, chosen by ssrc_sel.
+- All unused extension and reserved bits are zero.
+
+**Faults：**
+
+- ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
+
+**示例：** `V_ROL.B32 v0, v0, v0`
+
+**示例字段值：** —
+
+**64 位机器字：** `0x0000000000001312`
+
+#### 编码字段
+
+| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
+|---|---:|---:|:---:|---|---|
+| class | 3:0 | 2 | 否 | — | Execution class. |
+| format | 6:4 | 1 | 否 | — | Class-local payload format. |
+| opcode | 12:7 | 38 | 否 | — | Opcode local to class and format. |
+| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
+| vd | 26:19 | — | 否 | — | Vector destination. |
+| va | 34:27 | — | 否 | — | Vector source A. |
+| vb | 42:35 | — | 否 | — | Vector source B. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+
+### V_ROR.B32 — `rotr.reg`
+
+- 执行域：`vector`
+- 编码格式：`V2`
+- 语义组：`bit_manipulation`
+- `(class, format, opcode)`：`(VALU, 1, 39)`
+- Guard policy：`optional`
+- Required state：`none`
+
+**语法：** `V_ROR.B32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | count | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
+
+#### Operands
+
+| 名称 | 类型 | 访问 | 字段 | 说明 |
+|---|---|---|---|---|
+| dst | vgpr32 | write | vd | — |
+| src | vsrc32 | read | va | — |
+| count | vsrc32 | read | vb | — |
+
+**Semantics：**
+
+Rotate each lane right by the low 5 bits of the count source. Only the low 5 bits of the count are used.
+
+**Constraints：**
+
+- At most one of the two sources may name an SGPR, chosen by ssrc_sel.
+- All unused extension and reserved bits are zero.
+
+**Faults：**
+
+- ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register or modifier.
+
+**示例：** `V_ROR.B32 v0, v0, v0`
+
+**示例字段值：** —
+
+**64 位机器字：** `0x0000000000001392`
+
+#### 编码字段
+
+| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
+|---|---:|---:|:---:|---|---|
+| class | 3:0 | 2 | 否 | — | Execution class. |
+| format | 6:4 | 1 | 否 | — | Class-local payload format. |
+| opcode | 12:7 | 39 | 否 | — | Opcode local to class and format. |
+| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
+| vd | 26:19 | — | 否 | — | Vector destination. |
+| va | 34:27 | — | 否 | — | Vector source A. |
+| vb | 42:35 | — | 否 | — | Vector source B. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+
 ## V_BITCOUNT
 
-- Family ID：`F036`
+- Family ID：`v-bitcount`
 - 语义组：`bit_manipulation`
 
 Per-lane bit counts including CTZ.
@@ -12370,16 +12718,22 @@ Per-lane bit counts including CTZ.
 - `(class, format, opcode)`：`(VALU, 0, 6)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_CLZ.B32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -12409,7 +12763,8 @@ Each participating lane writes its CLZ result; zero yields 32 for CLZ/CTZ.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CTZ.B32 — `ctz`
 
@@ -12419,16 +12774,22 @@ Each participating lane writes its CLZ result; zero yields 32 for CLZ/CTZ.
 - `(class, format, opcode)`：`(VALU, 0, 7)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_CTZ.B32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -12458,7 +12819,8 @@ Each participating lane writes its CTZ result; zero yields 32 for CLZ/CTZ.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_POPC.B32 — `popc`
 
@@ -12468,16 +12830,22 @@ Each participating lane writes its CTZ result; zero yields 32 for CLZ/CTZ.
 - `(class, format, opcode)`：`(VALU, 0, 8)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_POPC.B32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -12507,11 +12875,12 @@ Each participating lane writes its POPC result; zero yields 32 for CLZ/CTZ.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ## V_PACK
 
-- Family ID：`F037`
+- Family ID：`v-pack`
 - 语义组：`bit_manipulation`
 
 Per-lane pack and unpack operations.
@@ -12524,17 +12893,24 @@ Per-lane pack and unpack operations.
 - `(class, format, opcode)`：`(VALU, 1, 19)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_PACK.U16X2 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | lo | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | hi | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| lo | vgpr32 | read | va | — |
-| hi | vgpr32 | read | vb | — |
+| lo | vsrc32 | read | va | — |
+| hi | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -12565,7 +12941,8 @@ Pack low 16-bit halves into one 32-bit value per lane.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_UNPACK.LO16 — `unpack.lo16`
 
@@ -12575,16 +12952,22 @@ Pack low 16-bit halves into one 32-bit value per lane.
 - `(class, format, opcode)`：`(VALU, 0, 9)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_UNPACK.LO16 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -12614,7 +12997,8 @@ Zero-extend the low 16 bits per lane.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_UNPACK.HI16 — `unpack.hi16`
 
@@ -12624,16 +13008,22 @@ Zero-extend the low 16 bits per lane.
 - `(class, format, opcode)`：`(VALU, 0, 10)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_UNPACK.HI16 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -12663,11 +13053,12 @@ Zero-extend the high 16 bits per lane.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ## V_COMPARE
 
-- Family ID：`F038`
+- Family ID：`v-compare`
 - 语义组：`compare`
 
 Compare per-lane values and write a vector predicate.
@@ -12680,17 +13071,24 @@ Compare per-lane values and write a vector predicate.
 - `(class, format, opcode)`：`(VALU, 3, 0)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.EQ vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -12722,7 +13120,8 @@ Set each participating destination predicate bit to the equal comparison.
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.NE — `not-equal`
 
@@ -12732,17 +13131,24 @@ Set each participating destination predicate bit to the equal comparison.
 - `(class, format, opcode)`：`(VALU, 3, 1)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.NE vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -12774,7 +13180,8 @@ Set each participating destination predicate bit to the not-equal comparison.
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.LT.S32 — `signed-less`
 
@@ -12784,17 +13191,24 @@ Set each participating destination predicate bit to the not-equal comparison.
 - `(class, format, opcode)`：`(VALU, 3, 2)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.LT.S32 vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -12826,7 +13240,8 @@ Set each participating destination predicate bit to the signed-less comparison.
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.LE.S32 — `signed-less-or-equal`
 
@@ -12836,17 +13251,24 @@ Set each participating destination predicate bit to the signed-less comparison.
 - `(class, format, opcode)`：`(VALU, 3, 3)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.LE.S32 vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -12878,7 +13300,8 @@ Set each participating destination predicate bit to the signed-less-or-equal com
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.LT.U32 — `unsigned-less`
 
@@ -12888,17 +13311,24 @@ Set each participating destination predicate bit to the signed-less-or-equal com
 - `(class, format, opcode)`：`(VALU, 3, 4)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.LT.U32 vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -12930,7 +13360,8 @@ Set each participating destination predicate bit to the unsigned-less comparison
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.LE.U32 — `unsigned-less-or-equal`
 
@@ -12940,17 +13371,24 @@ Set each participating destination predicate bit to the unsigned-less comparison
 - `(class, format, opcode)`：`(VALU, 3, 5)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.LE.U32 vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -12982,7 +13420,8 @@ Set each participating destination predicate bit to the unsigned-less-or-equal c
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.EQ.F32 — `ordered-equal_f32`
 
@@ -12992,17 +13431,24 @@ Set each participating destination predicate bit to the unsigned-less-or-equal c
 - `(class, format, opcode)`：`(VALU, 3, 6)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.EQ.F32 vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -13034,7 +13480,8 @@ Set each participating destination predicate bit to the ordered-equal F32 compar
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.LT.F32 — `ordered-less_f32`
 
@@ -13044,17 +13491,24 @@ Set each participating destination predicate bit to the ordered-equal F32 compar
 - `(class, format, opcode)`：`(VALU, 3, 7)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.LT.F32 vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -13086,7 +13540,8 @@ Set each participating destination predicate bit to the ordered-less F32 compari
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.NE.F32 — `f32.ne`
 
@@ -13096,17 +13551,24 @@ Set each participating destination predicate bit to the ordered-less F32 compari
 - `(class, format, opcode)`：`(VALU, 3, 8)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.NE.F32 vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -13138,7 +13600,8 @@ Ordered IEEE F32 NE updates only participating destination predicate bits.
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.LE.F32 — `f32.le`
 
@@ -13148,17 +13611,24 @@ Ordered IEEE F32 NE updates only participating destination predicate bits.
 - `(class, format, opcode)`：`(VALU, 3, 9)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.LE.F32 vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -13190,7 +13660,8 @@ Ordered IEEE F32 LE updates only participating destination predicate bits.
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.GT.F32 — `f32.gt`
 
@@ -13200,17 +13671,24 @@ Ordered IEEE F32 LE updates only participating destination predicate bits.
 - `(class, format, opcode)`：`(VALU, 3, 10)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.GT.F32 vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -13242,7 +13720,8 @@ Ordered IEEE F32 GT updates only participating destination predicate bits.
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.GE.F32 — `f32.ge`
 
@@ -13252,17 +13731,24 @@ Ordered IEEE F32 GT updates only participating destination predicate bits.
 - `(class, format, opcode)`：`(VALU, 3, 11)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.GE.F32 vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -13294,7 +13780,8 @@ Ordered IEEE F32 GE updates only participating destination predicate bits.
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.GT.S32 — `gt.s32`
 
@@ -13304,17 +13791,24 @@ Ordered IEEE F32 GE updates only participating destination predicate bits.
 - `(class, format, opcode)`：`(VALU, 3, 12)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.GT.S32 vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -13346,7 +13840,8 @@ Update participating predicate bits with S32 GT.
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.GE.S32 — `ge.s32`
 
@@ -13356,17 +13851,24 @@ Update participating predicate bits with S32 GT.
 - `(class, format, opcode)`：`(VALU, 3, 13)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.GE.S32 vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -13398,7 +13900,8 @@ Update participating predicate bits with S32 GE.
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.GT.U32 — `gt.u32`
 
@@ -13408,17 +13911,24 @@ Update participating predicate bits with S32 GE.
 - `(class, format, opcode)`：`(VALU, 3, 14)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.GT.U32 vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -13450,7 +13960,8 @@ Update participating predicate bits with U32 GT.
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.GE.U32 — `ge.u32`
 
@@ -13460,17 +13971,24 @@ Update participating predicate bits with U32 GT.
 - `(class, format, opcode)`：`(VALU, 3, 15)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.GE.U32 vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -13502,7 +14020,8 @@ Update participating predicate bits with U32 GE.
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.ORD.F32 — `f32.ord`
 
@@ -13512,17 +14031,24 @@ Update participating predicate bits with U32 GE.
 - `(class, format, opcode)`：`(VALU, 3, 16)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.ORD.F32 vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -13554,7 +14080,8 @@ Apply IEEE F32 ORD: NaN handling follows docs/05-numeric-environment.md.
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CMP.UNO.F32 — `f32.uno`
 
@@ -13564,17 +14091,24 @@ Apply IEEE F32 ORD: NaN handling follows docs/05-numeric-environment.md.
 - `(class, format, opcode)`：`(VALU, 3, 17)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_CMP.UNO.F32 vp0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vpred | write | vpd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -13606,11 +14140,12 @@ Apply IEEE F32 UNO: NaN handling follows docs/05-numeric-environment.md.
 | zero4 | 26:23 | — | 是 | — | Must be zero. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ## V_SELECT
 
-- Family ID：`F039`
+- Family ID：`v-select`
 - 语义组：`select`
 
 Select per-lane sources according to a vector predicate.
@@ -13623,17 +14158,25 @@ Select per-lane sources according to a vector predicate.
 - `(class, format, opcode)`：`(VALU, 2, 5)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_SELECT.B32 v0, v0, v0, vp0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | on_true | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | on_false | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 3 | — | 保留；本形式没有绑定该字段 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| on_true | vgpr32 | read | va | — |
-| on_false | vgpr32 | read | vb | — |
+| on_true | vsrc32 | read | va | — |
+| on_false | vsrc32 | read | vb | — |
 | condition | vpred | read | vc | — |
 
 **Semantics：**
@@ -13666,7 +14209,8 @@ Each participating lane selects on_true when its predicate bit is one.
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
 | vc | 50:43 | — | 否 | — | Vector source C. |
-| x13 | 63:51 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 52:51 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 vc. At most one source may come from the SGPR file. |
+| x11 | 63:53 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_SELECT.B64 — `b64`
 
@@ -13676,17 +14220,25 @@ Each participating lane selects on_true when its predicate bit is one.
 - `(class, format, opcode)`：`(VALU, 2, 6)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_SELECT.B64 v0:v1, v0:v1, v0:v1, vp0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | on_true | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | on_false | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 3 | — | 保留；本形式没有绑定该字段 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr64 | write | vd | — |
-| on_true | vgpr64 | read | va | — |
-| on_false | vgpr64 | read | vb | — |
+| on_true | vsrc64 | read | va | — |
+| on_false | vsrc64 | read | vb | — |
 | condition | vpred | read | vc | — |
 
 **Semantics：**
@@ -13719,11 +14271,12 @@ Each participating lane selects one 64-bit source.
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
 | vc | 50:43 | — | 否 | — | Vector source C. |
-| x13 | 63:51 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 52:51 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 vc. At most one source may come from the SGPR file. |
+| x11 | 63:53 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ## V_CVT
 
-- Family ID：`F040`
+- Family ID：`v-cvt`
 - 语义组：`conversion`
 
 Per-lane integer and F32 conversion.
@@ -13736,16 +14289,22 @@ Per-lane integer and F32 conversion.
 - `(class, format, opcode)`：`(VALU, 0, 11)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_CVT.S32.F32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -13775,7 +14334,8 @@ Convert F32 to signed 32-bit integer per lane using round-to-zero.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CVT.U32.F32 — `u32.f32`
 
@@ -13785,16 +14345,22 @@ Convert F32 to signed 32-bit integer per lane using round-to-zero.
 - `(class, format, opcode)`：`(VALU, 0, 12)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_CVT.U32.F32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -13824,7 +14390,8 @@ Convert F32 to unsigned 32-bit integer per lane using round-to-zero.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CVT.F32.S32 — `f32.s32`
 
@@ -13834,16 +14401,22 @@ Convert F32 to unsigned 32-bit integer per lane using round-to-zero.
 - `(class, format, opcode)`：`(VALU, 0, 13)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_CVT.F32.S32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -13873,7 +14446,8 @@ Convert signed 32-bit integer to F32 per lane.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CVT.F32.U32 — `f32.u32`
 
@@ -13883,16 +14457,22 @@ Convert signed 32-bit integer to F32 per lane.
 - `(class, format, opcode)`：`(VALU, 0, 14)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_CVT.F32.U32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -13922,7 +14502,8 @@ Convert unsigned 32-bit integer to F32 per lane.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CVT.U16.U32 — `u16.u32`
 
@@ -13932,16 +14513,22 @@ Convert unsigned 32-bit integer to F32 per lane.
 - `(class, format, opcode)`：`(VALU, 0, 15)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_CVT.U16.U32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -13971,7 +14558,8 @@ Truncate to low U16 then zero-extend to U32.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CVT.S16.S32 — `s16.s32`
 
@@ -13981,16 +14569,22 @@ Truncate to low U16 then zero-extend to U32.
 - `(class, format, opcode)`：`(VALU, 0, 16)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_CVT.S16.S32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -14020,11 +14614,12 @@ Truncate to low S16 then sign-extend to S32.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ## V_F32_ARITH
 
-- Family ID：`F041`
+- Family ID：`v-f32-arith`
 - 语义组：`floating_point`
 
 Per-lane IEEE binary32 arithmetic.
@@ -14037,17 +14632,24 @@ Per-lane IEEE binary32 arithmetic.
 - `(class, format, opcode)`：`(VALU, 1, 20)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FADD.F32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -14078,7 +14680,8 @@ Each participating lane computes IEEE binary32 ADD with round-to-nearest-even.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FSUB.F32 — `sub`
 
@@ -14088,17 +14691,24 @@ Each participating lane computes IEEE binary32 ADD with round-to-nearest-even.
 - `(class, format, opcode)`：`(VALU, 1, 21)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FSUB.F32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -14129,7 +14739,8 @@ Each participating lane computes IEEE binary32 SUB with round-to-nearest-even.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FMUL.F32 — `mul`
 
@@ -14139,17 +14750,24 @@ Each participating lane computes IEEE binary32 SUB with round-to-nearest-even.
 - `(class, format, opcode)`：`(VALU, 1, 22)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FMUL.F32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -14180,7 +14798,8 @@ Each participating lane computes IEEE binary32 MUL with round-to-nearest-even.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FFMA.F32 — `fma`
 
@@ -14190,18 +14809,26 @@ Each participating lane computes IEEE binary32 MUL with round-to-nearest-even.
 - `(class, format, opcode)`：`(VALU, 2, 7)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FFMA.F32 v0, v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 3 | c | `vc` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
-| c | vgpr32 | read | vc | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
+| c | vsrc32 | read | vc | — |
 
 **Semantics：**
 
@@ -14233,7 +14860,8 @@ Each participating lane computes IEEE binary32 FMA with round-to-nearest-even.
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
 | vc | 50:43 | — | 否 | — | Vector source C. |
-| x13 | 63:51 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 52:51 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 vc. At most one source may come from the SGPR file. |
+| x11 | 63:53 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FMIN.F32 — `min`
 
@@ -14243,17 +14871,24 @@ Each participating lane computes IEEE binary32 FMA with round-to-nearest-even.
 - `(class, format, opcode)`：`(VALU, 1, 23)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FMIN.F32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -14284,7 +14919,8 @@ Each participating lane computes IEEE binary32 MIN with round-to-nearest-even.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FMAX.F32 — `max`
 
@@ -14294,17 +14930,24 @@ Each participating lane computes IEEE binary32 MIN with round-to-nearest-even.
 - `(class, format, opcode)`：`(VALU, 1, 24)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FMAX.F32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -14335,7 +14978,8 @@ Each participating lane computes IEEE binary32 MAX with round-to-nearest-even.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FSQRT.F32 — `sqrt`
 
@@ -14345,16 +14989,22 @@ Each participating lane computes IEEE binary32 MAX with round-to-nearest-even.
 - `(class, format, opcode)`：`(VALU, 0, 17)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FSQRT.F32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
+| a | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -14384,7 +15034,8 @@ Each participating lane computes IEEE binary32 SQRT with round-to-nearest-even.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FABS.F32 — `abs.f32`
 
@@ -14394,16 +15045,22 @@ Each participating lane computes IEEE binary32 SQRT with round-to-nearest-even.
 - `(class, format, opcode)`：`(VALU, 0, 18)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FABS.F32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -14433,7 +15090,8 @@ IEEE F32 ABS by sign-bit transform, preserving NaN payload.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FNEG.F32 — `neg.f32`
 
@@ -14443,16 +15101,22 @@ IEEE F32 ABS by sign-bit transform, preserving NaN payload.
 - `(class, format, opcode)`：`(VALU, 0, 19)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FNEG.F32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -14482,11 +15146,12 @@ IEEE F32 NEG by sign-bit transform, preserving NaN payload.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ## V_F32_DIV
 
-- Family ID：`F042`
+- Family ID：`v-f32-div`
 - 语义组：`floating_point`
 
 Per-lane binary32 division and reciprocal.
@@ -14499,17 +15164,24 @@ Per-lane binary32 division and reciprocal.
 - `(class, format, opcode)`：`(VALU, 1, 25)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FDIV.F32 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -14540,7 +15212,8 @@ Each participating lane computes IEEE binary32 a/b.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FRCP.F32 — `rcp`
 
@@ -14550,16 +15223,22 @@ Each participating lane computes IEEE binary32 a/b.
 - `(class, format, opcode)`：`(VALU, 0, 20)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FRCP.F32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
+| a | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -14589,11 +15268,12 @@ Each participating lane computes IEEE binary32 reciprocal.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ## V_F16_ARITH
 
-- Family ID：`F043`
+- Family ID：`v-f16-arith`
 - 语义组：`floating_point`
 
 Per-lane IEEE binary16 arithmetic in packed low halves.
@@ -14606,17 +15286,24 @@ Per-lane IEEE binary16 arithmetic in packed low halves.
 - `(class, format, opcode)`：`(VALU, 1, 26)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FADD.F16 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -14647,7 +15334,8 @@ Compute binary16 ADD from low 16-bit elements and zero the upper half.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FSUB.F16 — `sub`
 
@@ -14657,17 +15345,24 @@ Compute binary16 ADD from low 16-bit elements and zero the upper half.
 - `(class, format, opcode)`：`(VALU, 1, 27)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FSUB.F16 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -14698,7 +15393,8 @@ Compute binary16 SUB from low 16-bit elements and zero the upper half.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FMUL.F16 — `mul`
 
@@ -14708,17 +15404,24 @@ Compute binary16 SUB from low 16-bit elements and zero the upper half.
 - `(class, format, opcode)`：`(VALU, 1, 28)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FMUL.F16 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -14749,7 +15452,8 @@ Compute binary16 MUL from low 16-bit elements and zero the upper half.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FFMA.F16 — `fma`
 
@@ -14759,18 +15463,26 @@ Compute binary16 MUL from low 16-bit elements and zero the upper half.
 - `(class, format, opcode)`：`(VALU, 2, 8)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FFMA.F16 v0, v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 3 | c | `vc` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
-| c | vgpr32 | read | vc | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
+| c | vsrc32 | read | vc | — |
 
 **Semantics：**
 
@@ -14802,7 +15514,8 @@ Compute binary16 FMA from low 16-bit elements and zero the upper half.
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
 | vc | 50:43 | — | 否 | — | Vector source C. |
-| x13 | 63:51 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 52:51 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 vc. At most one source may come from the SGPR file. |
+| x11 | 63:53 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FMIN.F16 — `min`
 
@@ -14812,17 +15525,24 @@ Compute binary16 FMA from low 16-bit elements and zero the upper half.
 - `(class, format, opcode)`：`(VALU, 1, 29)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FMIN.F16 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -14853,7 +15573,8 @@ Compute binary16 MIN from low 16-bit elements and zero the upper half.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FMAX.F16 — `max`
 
@@ -14863,17 +15584,24 @@ Compute binary16 MIN from low 16-bit elements and zero the upper half.
 - `(class, format, opcode)`：`(VALU, 1, 30)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FMAX.F16 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -14904,7 +15632,8 @@ Compute binary16 MAX from low 16-bit elements and zero the upper half.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FDIV.F16 — `div`
 
@@ -14914,17 +15643,24 @@ Compute binary16 MAX from low 16-bit elements and zero the upper half.
 - `(class, format, opcode)`：`(VALU, 1, 31)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FDIV.F16 v0, v0, v0`
+
+#### Scalar source selector
+
+| `ssrc_sel` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | a | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
+| 2 | b | `vb` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| a | vgpr32 | read | va | — |
-| b | vgpr32 | read | vb | — |
+| a | vsrc32 | read | va | — |
+| b | vsrc32 | read | vb | — |
 
 **Semantics：**
 
@@ -14955,7 +15691,8 @@ Divide IEEE F16 low halves and zero the upper half.
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 否 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FSQRT.F16 — `sqrt`
 
@@ -14965,16 +15702,22 @@ Divide IEEE F16 low halves and zero the upper half.
 - `(class, format, opcode)`：`(VALU, 0, 21)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FSQRT.F16 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -15004,7 +15747,8 @@ Square root IEEE F16 low half and zero upper half.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FABS.F16 — `abs`
 
@@ -15014,16 +15758,22 @@ Square root IEEE F16 low half and zero upper half.
 - `(class, format, opcode)`：`(VALU, 0, 22)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FABS.F16 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -15053,7 +15803,8 @@ Clear F16 sign and zero upper half.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_FNEG.F16 — `neg`
 
@@ -15063,16 +15814,22 @@ Clear F16 sign and zero upper half.
 - `(class, format, opcode)`：`(VALU, 0, 23)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_FNEG.F16 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -15102,11 +15859,12 @@ Toggle F16 sign and zero upper half.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ## V_F16_CVT
 
-- Family ID：`F044`
+- Family ID：`v-f16-cvt`
 - 语义组：`conversion`
 
 Convert between IEEE binary16 and binary32.
@@ -15119,16 +15877,22 @@ Convert between IEEE binary16 and binary32.
 - `(class, format, opcode)`：`(VALU, 0, 24)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_CVT.F32.F16 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -15158,7 +15922,8 @@ Convert src[15:0] binary16 to binary32.
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_CVT.F16.F32 — `f16.f32`
 
@@ -15168,16 +15933,22 @@ Convert src[15:0] binary16 to binary32.
 - `(class, format, opcode)`：`(VALU, 0, 25)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_CVT.F16.F32 v0, v0`
+
+#### Scalar source selector
+
+| `ssrc` | 标量源 | 说明 |
+|---:|---|---|
+| 0 | — | 所有源都来自 VGPR 文件 |
+| 1 | src | `va` 改从 SGPR 文件读取，warp 内广播同一个值 |
 
 #### Operands
 
 | 名称 | 类型 | 访问 | 字段 | 说明 |
 |---|---|---|---|---|
 | dst | vgpr32 | write | vd | — |
-| src | vgpr32 | read | va | — |
+| src | vsrc32 | read | va | — |
 
 **Semantics：**
 
@@ -15207,11 +15978,12 @@ Round binary32 to binary16 in dst[15:0] and zero dst[31:16].
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 否 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ## V_PRED_LOGIC
 
-- Family ID：`F045`
+- Family ID：`v-pred-logic`
 - 语义组：`predicate`
 
 Boolean operations on vector predicates.
@@ -15224,7 +15996,6 @@ Boolean operations on vector predicates.
 - `(class, format, opcode)`：`(VALU, 1, 32)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_PAND vp0, vp0, vp0`
 
@@ -15265,7 +16036,8 @@ Apply predicate AND independently to all lane bits. Only participating predicate
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 是 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_POR — `or`
 
@@ -15275,7 +16047,6 @@ Apply predicate AND independently to all lane bits. Only participating predicate
 - `(class, format, opcode)`：`(VALU, 1, 33)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_POR vp0, vp0, vp0`
 
@@ -15316,7 +16087,8 @@ Apply predicate OR independently to all lane bits. Only participating predicate 
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 是 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_PXOR — `xor`
 
@@ -15326,7 +16098,6 @@ Apply predicate OR independently to all lane bits. Only participating predicate 
 - `(class, format, opcode)`：`(VALU, 1, 34)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_PXOR vp0, vp0, vp0`
 
@@ -15367,7 +16138,8 @@ Apply predicate XOR independently to all lane bits. Only participating predicate
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
 | vb | 42:35 | — | 否 | — | Vector source B. |
-| x21 | 63:43 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc_sel | 44:43 | — | 是 | — | Scalar-source selector: 0 none, 1 va, 2 vb, 3 reserved. At most one source may come from the SGPR file. |
+| x19 | 63:45 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ### V_PNOT — `not`
 
@@ -15377,7 +16149,6 @@ Apply predicate XOR independently to all lane bits. Only participating predicate
 - `(class, format, opcode)`：`(VALU, 0, 26)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_PNOT vp0, vp0`
 
@@ -15416,11 +16187,12 @@ Apply predicate NOT independently to all lane bits. Only participating predicate
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vd | 26:19 | — | 否 | — | Vector destination. |
 | va | 34:27 | — | 否 | — | Vector source A. |
-| x29 | 63:35 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
+| ssrc | 35:35 | — | 是 | — | Scalar-source selector: 0 reads va from the VGPR file, 1 reads it from the SGPR file. |
+| x28 | 63:36 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
 ## S_LD
 
-- Family ID：`F046`
+- Family ID：`s-ld`
 - 语义组：`memory_load`
 
 Uniform scalar loads across all architectural address spaces.
@@ -15433,7 +16205,6 @@ Uniform scalar loads across all architectural address spaces.
 - `(class, format, opcode)`：`(MEMORY, 0, 0)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_LD.GLOBAL.U32 s0, [s0:s1 + 0]`
 
@@ -15460,13 +16231,13 @@ Load U32 at byte address sbase + sign_extend(simm24) in global space.
 
 **Constraints：**
 
-- The effective address must retain the declared address-space provenance and satisfy natural alignment.
+- Every byte the access covers must be mapped and permitted in the declared address space, and the address must satisfy natural alignment.
 - The warp must be scalar-ready before source snapshot, validation, and commit.
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on an address-space mismatch.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on an address-space mismatch.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_LD.GLOBAL.U32 s0, [s0:s1 + 0]`
 
@@ -15495,7 +16266,6 @@ Load U32 at byte address sbase + sign_extend(simm24) in global space.
 - `(class, format, opcode)`：`(MEMORY, 0, 1)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_LD.GLOBAL.U64 s0:s1, [s0:s1 + 0]`
 
@@ -15522,13 +16292,13 @@ Load U64 at byte address sbase + sign_extend(simm24) in global space.
 
 **Constraints：**
 
-- The effective address must retain the declared address-space provenance and satisfy natural alignment.
+- Every byte the access covers must be mapped and permitted in the declared address space, and the address must satisfy natural alignment.
 - The warp must be scalar-ready before source snapshot, validation, and commit.
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on an address-space mismatch.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on an address-space mismatch.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_LD.GLOBAL.U64 s0:s1, [s0:s1 + 0]`
 
@@ -15557,7 +16327,6 @@ Load U64 at byte address sbase + sign_extend(simm24) in global space.
 - `(class, format, opcode)`：`(MEMORY, 6, 0)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_LD.GLOBAL.U32 s0, [s0:s1 + s0 + 0]`
 
@@ -15585,13 +16354,13 @@ Load U32 at byte address sbase + zero_extend(sindex) + sign_extend(imm16) in glo
 
 **Constraints：**
 
-- The effective address must retain the declared address-space provenance and satisfy natural alignment.
+- Every byte the access covers must be mapped and permitted in the declared address space, and the address must satisfy natural alignment.
 - The warp must be scalar-ready before source snapshot, validation, and commit.
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on an address-space mismatch.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on an address-space mismatch.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_LD.GLOBAL.U32 s0, [s0:s1 + s0 + 0]`
 
@@ -15621,7 +16390,6 @@ Load U32 at byte address sbase + zero_extend(sindex) + sign_extend(imm16) in glo
 - `(class, format, opcode)`：`(MEMORY, 0, 2)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_LD.SHARED.U32 s0, [s0 + 0]`
 
@@ -15648,13 +16416,13 @@ Load U32 at byte address sbase + sign_extend(simm24) in shared space.
 
 **Constraints：**
 
-- The effective address must retain the declared address-space provenance and satisfy natural alignment.
+- Every byte the access covers must be mapped and permitted in the declared address space, and the address must satisfy natural alignment.
 - The warp must be scalar-ready before source snapshot, validation, and commit.
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on an address-space mismatch.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on an address-space mismatch.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_LD.SHARED.U32 s0, [s0 + 0]`
 
@@ -15683,7 +16451,6 @@ Load U32 at byte address sbase + sign_extend(simm24) in shared space.
 - `(class, format, opcode)`：`(MEMORY, 0, 3)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_LD.CONST.U32 s0, [s0:s1 + 0]`
 
@@ -15710,13 +16477,13 @@ Load U32 at byte address sbase + sign_extend(simm24) in const space.
 
 **Constraints：**
 
-- The effective address must retain the declared address-space provenance and satisfy natural alignment.
+- Every byte the access covers must be mapped and permitted in the declared address space, and the address must satisfy natural alignment.
 - The warp must be scalar-ready before source snapshot, validation, and commit.
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on an address-space mismatch.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on an address-space mismatch.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_LD.CONST.U32 s0, [s0:s1 + 0]`
 
@@ -15745,7 +16512,6 @@ Load U32 at byte address sbase + sign_extend(simm24) in const space.
 - `(class, format, opcode)`：`(MEMORY, 0, 4)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_LD.PARAM.U32 s0, [s0:s1 + 0]`
 
@@ -15772,13 +16538,13 @@ Load U32 at byte address sbase + sign_extend(simm24) in param space.
 
 **Constraints：**
 
-- The effective address must retain the declared address-space provenance and satisfy natural alignment.
+- Every byte the access covers must be mapped and permitted in the declared address space, and the address must satisfy natural alignment.
 - The warp must be scalar-ready before source snapshot, validation, and commit.
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on an address-space mismatch.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on an address-space mismatch.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_LD.PARAM.U32 s0, [s0:s1 + 0]`
 
@@ -15799,73 +16565,9 @@ Load U32 at byte address sbase + sign_extend(simm24) in param space.
 | simm24 | 58:35 | — | 否 | — | Signed 24-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
-### S_LD.GENERIC.U32 — `generic.u32.index`
-
-- 执行域：`scalar`
-- 编码格式：`SMEMX`
-- 语义组：`memory_load`
-- `(class, format, opcode)`：`(MEMORY, 6, 1)`
-- Guard policy：`required_pt`
-- Required state：`scalar_ready`
-- VGPR tag effect：`none`
-
-**语法：** `S_LD.GENERIC.U32 s0, [s0:s1 + s0 + 0]`
-
-#### Address template
-
-- 地址空间：`generic`
-- 地址模式：`scalar_indexed`
-- 表达式：`sbase + zero_extend(sindex) + sign_extend(imm16)`
-- 地址操作数：`[sbase, sindex, imm16]`
-- 偏移单位：`bytes`
-- 缩放：`1`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| dst | sgpr32 | write | sdata | — |
-| base | address_generic_uniform | read | sbase | — |
-| index | sgpr_index | read | sindex | — |
-| offset | simm16 | read | imm16 | — |
-
-**Semantics：**
-
-Load U32 at byte address sbase + zero_extend(sindex) + sign_extend(imm16) in generic space.
-
-**Constraints：**
-
-- The effective address must retain the declared address-space provenance and satisfy natural alignment.
-- The warp must be scalar-ready before source snapshot, validation, and commit.
-
-**Faults：**
-
-- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on an address-space mismatch.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
-
-**示例：** `S_LD.GENERIC.U32 s0, [s0:s1 + s0 + 0]`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x00000000000000E3`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 3 | 否 | — | Execution class. |
-| format | 6:4 | 6 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 1 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | 0 | 否 | — | Header lane guard; zero is PT. |
-| sdata | 26:19 | — | 否 | — | Scalar memory data. |
-| sbase | 34:27 | — | 否 | — | Uniform base. |
-| sindex | 42:35 | — | 否 | — | Scalar index. |
-| imm16 | 58:43 | — | 否 | — | Signed byte offset. |
-| mods | 63:59 | — | 是 | — | Address modifiers. |
-
 ## S_ST
 
-- Family ID：`F047`
+- Family ID：`s-st`
 - 语义组：`memory_store`
 
 Uniform scalar stores with base, indexed, and mixed addressing.
@@ -15878,7 +16580,6 @@ Uniform scalar stores with base, indexed, and mixed addressing.
 - `(class, format, opcode)`：`(MEMORY, 0, 5)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ST.GLOBAL.U32 [s0:s1 + 0], s0`
 
@@ -15910,8 +16611,8 @@ Store U32 at byte address sbase + sign_extend(simm24) in global space.
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on an address-space mismatch.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on an address-space mismatch.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_ST.GLOBAL.U32 [s0:s1 + 0], s0`
 
@@ -15940,7 +16641,6 @@ Store U32 at byte address sbase + sign_extend(simm24) in global space.
 - `(class, format, opcode)`：`(MEMORY, 0, 6)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ST.GLOBAL.U64 [s0:s1 + 0], s0:s1`
 
@@ -15972,8 +16672,8 @@ Store U64 at byte address sbase + sign_extend(simm24) in global space.
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on an address-space mismatch.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on an address-space mismatch.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_ST.GLOBAL.U64 [s0:s1 + 0], s0:s1`
 
@@ -16002,7 +16702,6 @@ Store U64 at byte address sbase + sign_extend(simm24) in global space.
 - `(class, format, opcode)`：`(MEMORY, 6, 2)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ST.GLOBAL.U32 [s0:s1 + s0 + 0], s0`
 
@@ -16035,8 +16734,8 @@ Store U32 at byte address sbase + zero_extend(sindex) + sign_extend(imm16) in gl
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on an address-space mismatch.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on an address-space mismatch.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_ST.GLOBAL.U32 [s0:s1 + s0 + 0], s0`
 
@@ -16066,7 +16765,6 @@ Store U32 at byte address sbase + zero_extend(sindex) + sign_extend(imm16) in gl
 - `(class, format, opcode)`：`(MEMORY, 0, 7)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ST.SHARED.U32 [s0 + 0], s0`
 
@@ -16098,8 +16796,8 @@ Store U32 at byte address sbase + sign_extend(simm24) in shared space.
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on an address-space mismatch.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on an address-space mismatch.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_ST.SHARED.U32 [s0 + 0], s0`
 
@@ -16120,73 +16818,9 @@ Store U32 at byte address sbase + sign_extend(simm24) in shared space.
 | simm24 | 58:35 | — | 否 | — | Signed 24-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
-### S_ST.GENERIC.U32 — `generic.u32.index`
-
-- 执行域：`scalar`
-- 编码格式：`SMEMX`
-- 语义组：`memory_store`
-- `(class, format, opcode)`：`(MEMORY, 6, 3)`
-- Guard policy：`required_pt`
-- Required state：`scalar_ready`
-- VGPR tag effect：`none`
-
-**语法：** `S_ST.GENERIC.U32 [s0:s1 + s0 + 0], s0`
-
-#### Address template
-
-- 地址空间：`generic`
-- 地址模式：`scalar_indexed`
-- 表达式：`sbase + zero_extend(sindex) + sign_extend(imm16)`
-- 地址操作数：`[sbase, sindex, imm16]`
-- 偏移单位：`bytes`
-- 缩放：`1`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| src | sgpr32 | read | sdata | — |
-| base | address_generic_uniform | read | sbase | — |
-| index | sgpr_index | read | sindex | — |
-| offset | simm16 | read | imm16 | — |
-
-**Semantics：**
-
-Store U32 at byte address sbase + zero_extend(sindex) + sign_extend(imm16) in generic space.
-
-**Constraints：**
-
-- Const and param spaces are not valid store destinations; effective address must be naturally aligned.
-- The warp must be scalar-ready before source snapshot, validation, and commit.
-
-**Faults：**
-
-- MISALIGNED_ACCESS on a participating address that is not naturally aligned; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on an address-space mismatch.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
-
-**示例：** `S_ST.GENERIC.U32 [s0:s1 + s0 + 0], s0`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x00000000000001E3`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 3 | 否 | — | Execution class. |
-| format | 6:4 | 6 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 3 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | 0 | 否 | — | Header lane guard; zero is PT. |
-| sdata | 26:19 | — | 否 | — | Scalar memory data. |
-| sbase | 34:27 | — | 否 | — | Uniform base. |
-| sindex | 42:35 | — | 否 | — | Scalar index. |
-| imm16 | 58:43 | — | 否 | — | Signed byte offset. |
-| mods | 63:59 | — | 是 | — | Address modifiers. |
-
 ## V_LD
 
-- Family ID：`F048`
+- Family ID：`v-ld`
 - 语义组：`memory_load`
 
 Per-lane vector loads including uniform-base plus lane-index addressing.
@@ -16199,7 +16833,6 @@ Per-lane vector loads including uniform-base plus lane-index addressing.
 - `(class, format, opcode)`：`(MEMORY, 1, 0)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.GLOBAL.U32 v0, [s0:s1 + 0]`
 
@@ -16230,7 +16863,7 @@ Load U32 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.GLOBAL.U32 v0, [s0:s1 + 0]`
 
@@ -16247,7 +16880,7 @@ Load U32 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 | opcode | 12:7 | 0 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 是 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 是 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -16260,7 +16893,6 @@ Load U32 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 1, 1)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.GLOBAL.U32 v0, [v0:v1 + 0]`
 
@@ -16291,7 +16923,7 @@ Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.GLOBAL.U32 v0, [v0:v1 + 0]`
 
@@ -16308,7 +16940,7 @@ Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 | opcode | 12:7 | 1 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 否 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 是 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -16321,7 +16953,6 @@ Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 1, 2)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.GLOBAL.U32 v0, [s0:s1 + v0 + 0]`
 
@@ -16353,7 +16984,7 @@ Load U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.GLOBAL.U32 v0, [s0:s1 + v0 + 0]`
 
@@ -16370,7 +17001,7 @@ Load U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 | opcode | 12:7 | 2 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 否 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -16383,7 +17014,6 @@ Load U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 - `(class, format, opcode)`：`(MEMORY, 1, 3)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.GLOBAL.U64 v0:v1, [s0:s1 + 0]`
 
@@ -16414,7 +17044,7 @@ Load U64 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.GLOBAL.U64 v0:v1, [s0:s1 + 0]`
 
@@ -16431,7 +17061,7 @@ Load U64 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 | opcode | 12:7 | 3 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 是 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 是 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -16444,7 +17074,6 @@ Load U64 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 1, 4)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.GLOBAL.U64 v0:v1, [v0:v1 + 0]`
 
@@ -16475,7 +17104,7 @@ Load U64 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.GLOBAL.U64 v0:v1, [v0:v1 + 0]`
 
@@ -16492,7 +17121,7 @@ Load U64 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 | opcode | 12:7 | 4 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 否 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 是 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -16505,7 +17134,6 @@ Load U64 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 1, 5)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.GLOBAL.U64 v0:v1, [s0:s1 + v0 + 0]`
 
@@ -16537,7 +17165,7 @@ Load U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.GLOBAL.U64 v0:v1, [s0:s1 + v0 + 0]`
 
@@ -16554,375 +17182,7 @@ Load U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 | opcode | 12:7 | 5 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
-| sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
-| simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
-| x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
-
-### V_LD.GENERIC.U32 — `generic.u32.uniform_base`
-
-- 执行域：`vector`
-- 编码格式：`VMEM`
-- 语义组：`memory_load`
-- `(class, format, opcode)`：`(MEMORY, 1, 6)`
-- Guard policy：`optional`
-- Required state：`none`
-- VGPR tag effect：`clear`
-
-**语法：** `V_LD.GENERIC.U32 v0, [s0:s1 + 0]`
-
-#### Address template
-
-- 地址空间：`generic`
-- 地址模式：`uniform_base`
-- 表达式：`unsigned(sbase) + sign_extend(simm16)`
-- 地址操作数：`[sbase, simm16]`
-- 偏移单位：`bytes`
-- 缩放：`1`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| dst | vgpr32 | write | vdata | — |
-| base | address_generic_uniform | read | sbase | — |
-| offset | simm16 | read | simm16 | — |
-
-**Semantics：**
-
-Load U32 per participating lane using uniform_base: unsigned(sbase) + sign_extend(simm16).
-
-**Constraints：**
-
-- All unused extension and reserved bits are zero.
-
-**Faults：**
-
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
-
-**示例：** `V_LD.GENERIC.U32 v0, [s0:s1 + 0]`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x0000000000000313`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 3 | 否 | — | Execution class. |
-| format | 6:4 | 1 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 6 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
-| vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 是 | — | Per-lane global/generic address or index. |
-| sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
-| simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
-| x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
-
-### V_LD.GENERIC.U32 — `generic.u32.lane_address`
-
-- 执行域：`vector`
-- 编码格式：`VMEM`
-- 语义组：`memory_load`
-- `(class, format, opcode)`：`(MEMORY, 1, 7)`
-- Guard policy：`optional`
-- Required state：`none`
-- VGPR tag effect：`clear`
-
-**语法：** `V_LD.GENERIC.U32 v0, [v0:v1 + 0]`
-
-#### Address template
-
-- 地址空间：`generic`
-- 地址模式：`lane_address`
-- 表达式：`unsigned(vaddr) + sign_extend(simm16)`
-- 地址操作数：`[vaddr, simm16]`
-- 偏移单位：`bytes`
-- 缩放：`1`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| dst | vgpr32 | write | vdata | — |
-| address | address_generic_lane | read | vaddr | — |
-| offset | simm16 | read | simm16 | — |
-
-**Semantics：**
-
-Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_extend(simm16).
-
-**Constraints：**
-
-- All unused extension and reserved bits are zero.
-
-**Faults：**
-
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
-
-**示例：** `V_LD.GENERIC.U32 v0, [v0:v1 + 0]`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x0000000000000393`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 3 | 否 | — | Execution class. |
-| format | 6:4 | 1 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 7 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
-| vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
-| sbase | 42:35 | — | 是 | — | Optional uniform scalar base. |
-| simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
-| x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
-
-### V_LD.GENERIC.U32 — `generic.u32.sv_mix`
-
-- 执行域：`vector`
-- 编码格式：`VMEM`
-- 语义组：`memory_load`
-- `(class, format, opcode)`：`(MEMORY, 1, 8)`
-- Guard policy：`optional`
-- Required state：`none`
-- VGPR tag effect：`clear`
-
-**语法：** `V_LD.GENERIC.U32 v0, [s0:s1 + v0 + 0]`
-
-#### Address template
-
-- 地址空间：`generic`
-- 地址模式：`sv_mix`
-- 表达式：`unsigned(sbase) + zero_extend(vaddr) + sign_extend(simm16)`
-- 地址操作数：`[sbase, vaddr, simm16]`
-- 偏移单位：`bytes`
-- 缩放：`1`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| dst | vgpr32 | write | vdata | — |
-| base | address_generic_uniform | read | sbase | — |
-| index | vgpr_index | read | vaddr | — |
-| offset | simm16 | read | simm16 | — |
-
-**Semantics：**
-
-Load U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vaddr) + sign_extend(simm16).
-
-**Constraints：**
-
-- All unused extension and reserved bits are zero.
-
-**Faults：**
-
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
-
-**示例：** `V_LD.GENERIC.U32 v0, [s0:s1 + v0 + 0]`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x0000000000000413`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 3 | 否 | — | Execution class. |
-| format | 6:4 | 1 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 8 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
-| vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
-| sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
-| simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
-| x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
-
-### V_LD.GENERIC.U64 — `generic.u64.uniform_base`
-
-- 执行域：`vector`
-- 编码格式：`VMEM`
-- 语义组：`memory_load`
-- `(class, format, opcode)`：`(MEMORY, 1, 9)`
-- Guard policy：`optional`
-- Required state：`none`
-- VGPR tag effect：`clear`
-
-**语法：** `V_LD.GENERIC.U64 v0:v1, [s0:s1 + 0]`
-
-#### Address template
-
-- 地址空间：`generic`
-- 地址模式：`uniform_base`
-- 表达式：`unsigned(sbase) + sign_extend(simm16)`
-- 地址操作数：`[sbase, simm16]`
-- 偏移单位：`bytes`
-- 缩放：`1`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| dst | vgpr64 | write | vdata | — |
-| base | address_generic_uniform | read | sbase | — |
-| offset | simm16 | read | simm16 | — |
-
-**Semantics：**
-
-Load U64 per participating lane using uniform_base: unsigned(sbase) + sign_extend(simm16).
-
-**Constraints：**
-
-- All unused extension and reserved bits are zero.
-
-**Faults：**
-
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
-
-**示例：** `V_LD.GENERIC.U64 v0:v1, [s0:s1 + 0]`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x0000000000000493`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 3 | 否 | — | Execution class. |
-| format | 6:4 | 1 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 9 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
-| vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 是 | — | Per-lane global/generic address or index. |
-| sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
-| simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
-| x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
-
-### V_LD.GENERIC.U64 — `generic.u64.lane_address`
-
-- 执行域：`vector`
-- 编码格式：`VMEM`
-- 语义组：`memory_load`
-- `(class, format, opcode)`：`(MEMORY, 1, 10)`
-- Guard policy：`optional`
-- Required state：`none`
-- VGPR tag effect：`clear`
-
-**语法：** `V_LD.GENERIC.U64 v0:v1, [v0:v1 + 0]`
-
-#### Address template
-
-- 地址空间：`generic`
-- 地址模式：`lane_address`
-- 表达式：`unsigned(vaddr) + sign_extend(simm16)`
-- 地址操作数：`[vaddr, simm16]`
-- 偏移单位：`bytes`
-- 缩放：`1`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| dst | vgpr64 | write | vdata | — |
-| address | address_generic_lane | read | vaddr | — |
-| offset | simm16 | read | simm16 | — |
-
-**Semantics：**
-
-Load U64 per participating lane using lane_address: unsigned(vaddr) + sign_extend(simm16).
-
-**Constraints：**
-
-- All unused extension and reserved bits are zero.
-
-**Faults：**
-
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
-
-**示例：** `V_LD.GENERIC.U64 v0:v1, [v0:v1 + 0]`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x0000000000000513`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 3 | 否 | — | Execution class. |
-| format | 6:4 | 1 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 10 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
-| vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
-| sbase | 42:35 | — | 是 | — | Optional uniform scalar base. |
-| simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
-| x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
-
-### V_LD.GENERIC.U64 — `generic.u64.sv_mix`
-
-- 执行域：`vector`
-- 编码格式：`VMEM`
-- 语义组：`memory_load`
-- `(class, format, opcode)`：`(MEMORY, 1, 11)`
-- Guard policy：`optional`
-- Required state：`none`
-- VGPR tag effect：`clear`
-
-**语法：** `V_LD.GENERIC.U64 v0:v1, [s0:s1 + v0 + 0]`
-
-#### Address template
-
-- 地址空间：`generic`
-- 地址模式：`sv_mix`
-- 表达式：`unsigned(sbase) + zero_extend(vaddr) + sign_extend(simm16)`
-- 地址操作数：`[sbase, vaddr, simm16]`
-- 偏移单位：`bytes`
-- 缩放：`1`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| dst | vgpr64 | write | vdata | — |
-| base | address_generic_uniform | read | sbase | — |
-| index | vgpr_index | read | vaddr | — |
-| offset | simm16 | read | simm16 | — |
-
-**Semantics：**
-
-Load U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vaddr) + sign_extend(simm16).
-
-**Constraints：**
-
-- All unused extension and reserved bits are zero.
-
-**Faults：**
-
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
-
-**示例：** `V_LD.GENERIC.U64 v0:v1, [s0:s1 + v0 + 0]`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x0000000000000593`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 3 | 否 | — | Execution class. |
-| format | 6:4 | 1 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 11 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
-| vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 否 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -16935,7 +17195,6 @@ Load U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 - `(class, format, opcode)`：`(MEMORY, 1, 12)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.CONST.U32 v0, [s0:s1 + 0]`
 
@@ -16966,7 +17225,7 @@ Load U32 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.CONST.U32 v0, [s0:s1 + 0]`
 
@@ -16983,7 +17242,7 @@ Load U32 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 | opcode | 12:7 | 12 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 是 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 是 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -16996,7 +17255,6 @@ Load U32 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 1, 13)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.CONST.U32 v0, [v0:v1 + 0]`
 
@@ -17027,7 +17285,7 @@ Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.CONST.U32 v0, [v0:v1 + 0]`
 
@@ -17044,7 +17302,7 @@ Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 | opcode | 12:7 | 13 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 否 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 是 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -17057,7 +17315,6 @@ Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 1, 14)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.CONST.U32 v0, [s0:s1 + v0 + 0]`
 
@@ -17089,7 +17346,7 @@ Load U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.CONST.U32 v0, [s0:s1 + v0 + 0]`
 
@@ -17106,7 +17363,7 @@ Load U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 | opcode | 12:7 | 14 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 否 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -17119,7 +17376,6 @@ Load U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 - `(class, format, opcode)`：`(MEMORY, 1, 15)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.CONST.U64 v0:v1, [s0:s1 + 0]`
 
@@ -17150,7 +17406,7 @@ Load U64 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.CONST.U64 v0:v1, [s0:s1 + 0]`
 
@@ -17167,7 +17423,7 @@ Load U64 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 | opcode | 12:7 | 15 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 是 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 是 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -17180,7 +17436,6 @@ Load U64 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 1, 16)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.CONST.U64 v0:v1, [v0:v1 + 0]`
 
@@ -17211,7 +17466,7 @@ Load U64 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.CONST.U64 v0:v1, [v0:v1 + 0]`
 
@@ -17228,7 +17483,7 @@ Load U64 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 | opcode | 12:7 | 16 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 否 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 是 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -17241,7 +17496,6 @@ Load U64 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 1, 17)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.CONST.U64 v0:v1, [s0:s1 + v0 + 0]`
 
@@ -17273,7 +17527,7 @@ Load U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.CONST.U64 v0:v1, [s0:s1 + v0 + 0]`
 
@@ -17290,7 +17544,7 @@ Load U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 | opcode | 12:7 | 17 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 否 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -17303,7 +17557,6 @@ Load U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 - `(class, format, opcode)`：`(MEMORY, 1, 18)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.PARAM.U32 v0, [s0:s1 + 0]`
 
@@ -17334,7 +17587,7 @@ Load U32 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.PARAM.U32 v0, [s0:s1 + 0]`
 
@@ -17351,7 +17604,7 @@ Load U32 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 | opcode | 12:7 | 18 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 是 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 是 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -17364,7 +17617,6 @@ Load U32 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 1, 19)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.PARAM.U32 v0, [v0:v1 + 0]`
 
@@ -17395,7 +17647,7 @@ Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.PARAM.U32 v0, [v0:v1 + 0]`
 
@@ -17412,7 +17664,7 @@ Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 | opcode | 12:7 | 19 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 否 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 是 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -17425,7 +17677,6 @@ Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 1, 20)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.PARAM.U32 v0, [s0:s1 + v0 + 0]`
 
@@ -17457,7 +17708,7 @@ Load U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.PARAM.U32 v0, [s0:s1 + v0 + 0]`
 
@@ -17474,7 +17725,7 @@ Load U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 | opcode | 12:7 | 20 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 否 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -17487,7 +17738,6 @@ Load U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 - `(class, format, opcode)`：`(MEMORY, 1, 21)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.PARAM.U64 v0:v1, [s0:s1 + 0]`
 
@@ -17518,7 +17768,7 @@ Load U64 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.PARAM.U64 v0:v1, [s0:s1 + 0]`
 
@@ -17535,7 +17785,7 @@ Load U64 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 | opcode | 12:7 | 21 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 是 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 是 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -17548,7 +17798,6 @@ Load U64 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 1, 22)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.PARAM.U64 v0:v1, [v0:v1 + 0]`
 
@@ -17579,7 +17828,7 @@ Load U64 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.PARAM.U64 v0:v1, [v0:v1 + 0]`
 
@@ -17596,7 +17845,7 @@ Load U64 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 | opcode | 12:7 | 22 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 否 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 是 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -17609,7 +17858,6 @@ Load U64 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 1, 23)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.PARAM.U64 v0:v1, [s0:s1 + v0 + 0]`
 
@@ -17641,7 +17889,7 @@ Load U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.PARAM.U64 v0:v1, [s0:s1 + v0 + 0]`
 
@@ -17658,7 +17906,7 @@ Load U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 | opcode | 12:7 | 23 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 否 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -17671,7 +17919,6 @@ Load U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 - `(class, format, opcode)`：`(MEMORY, 2, 0)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.SHARED.U32 v0, [s0 + 0]`
 
@@ -17702,7 +17949,7 @@ Load U32 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.SHARED.U32 v0, [s0 + 0]`
 
@@ -17732,7 +17979,6 @@ Load U32 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 2, 1)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.SHARED.U32 v0, [v0 + 0]`
 
@@ -17763,7 +18009,7 @@ Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.SHARED.U32 v0, [v0 + 0]`
 
@@ -17793,7 +18039,6 @@ Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 2, 2)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.SHARED.U32 v0, [s0 + v0 + 0]`
 
@@ -17825,7 +18070,7 @@ Load U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.SHARED.U32 v0, [s0 + v0 + 0]`
 
@@ -17855,7 +18100,6 @@ Load U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 - `(class, format, opcode)`：`(MEMORY, 2, 3)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.SHARED.U64 v0:v1, [s0 + 0]`
 
@@ -17886,7 +18130,7 @@ Load U64 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.SHARED.U64 v0:v1, [s0 + 0]`
 
@@ -17916,7 +18160,6 @@ Load U64 per participating lane using uniform_base: unsigned(sbase) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 2, 4)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.SHARED.U64 v0:v1, [v0 + 0]`
 
@@ -17947,7 +18190,7 @@ Load U64 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.SHARED.U64 v0:v1, [v0 + 0]`
 
@@ -17977,7 +18220,6 @@ Load U64 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 2, 5)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.SHARED.U64 v0:v1, [s0 + v0 + 0]`
 
@@ -18009,7 +18251,7 @@ Load U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.SHARED.U64 v0:v1, [s0 + v0 + 0]`
 
@@ -18039,7 +18281,6 @@ Load U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 - `(class, format, opcode)`：`(MEMORY, 3, 0)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.LOCAL.U32 v0, [v0 + 0]`
 
@@ -18062,7 +18303,7 @@ Load U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vadd
 
 **Semantics：**
 
-Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_extend(simm16). The local allocation is always the current lane private allocation.
+Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_extend(simm16). Local space always addresses the current lane's private window.
 
 **Constraints：**
 
@@ -18070,7 +18311,7 @@ Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.LOCAL.U32 v0, [v0 + 0]`
 
@@ -18100,7 +18341,6 @@ Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 - `(class, format, opcode)`：`(MEMORY, 3, 1)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_LD.LOCAL.U64 v0:v1, [v0 + 0]`
 
@@ -18123,7 +18363,7 @@ Load U32 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 
 **Semantics：**
 
-Load U64 per participating lane using lane_address: unsigned(vaddr) + sign_extend(simm16). The local allocation is always the current lane private allocation.
+Load U64 per participating lane using lane_address: unsigned(vaddr) + sign_extend(simm16). Local space always addresses the current lane's private window.
 
 **Constraints：**
 
@@ -18131,7 +18371,7 @@ Load U64 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_LD.LOCAL.U64 v0:v1, [v0 + 0]`
 
@@ -18155,7 +18395,7 @@ Load U64 per participating lane using lane_address: unsigned(vaddr) + sign_exten
 
 ## V_ST
 
-- Family ID：`F049`
+- Family ID：`v-st`
 - 语义组：`memory_store`
 
 Per-lane vector stores including uniform-base plus lane-index addressing.
@@ -18168,7 +18408,6 @@ Per-lane vector stores including uniform-base plus lane-index addressing.
 - `(class, format, opcode)`：`(MEMORY, 1, 24)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ST.GLOBAL.U32 [s0:s1 + 0], v0`
 
@@ -18199,7 +18438,7 @@ Store U32 per participating lane using uniform_base: unsigned(sbase) + sign_exte
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_ST.GLOBAL.U32 [s0:s1 + 0], v0`
 
@@ -18216,7 +18455,7 @@ Store U32 per participating lane using uniform_base: unsigned(sbase) + sign_exte
 | opcode | 12:7 | 24 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 是 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 是 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -18229,7 +18468,6 @@ Store U32 per participating lane using uniform_base: unsigned(sbase) + sign_exte
 - `(class, format, opcode)`：`(MEMORY, 1, 25)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ST.GLOBAL.U32 [v0:v1 + 0], v0`
 
@@ -18260,7 +18498,7 @@ Store U32 per participating lane using lane_address: unsigned(vaddr) + sign_exte
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_ST.GLOBAL.U32 [v0:v1 + 0], v0`
 
@@ -18277,7 +18515,7 @@ Store U32 per participating lane using lane_address: unsigned(vaddr) + sign_exte
 | opcode | 12:7 | 25 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 否 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 是 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -18290,7 +18528,6 @@ Store U32 per participating lane using lane_address: unsigned(vaddr) + sign_exte
 - `(class, format, opcode)`：`(MEMORY, 1, 26)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ST.GLOBAL.U32 [s0:s1 + v0 + 0], v0`
 
@@ -18322,7 +18559,7 @@ Store U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vad
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_ST.GLOBAL.U32 [s0:s1 + v0 + 0], v0`
 
@@ -18339,7 +18576,7 @@ Store U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vad
 | opcode | 12:7 | 26 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 否 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -18352,7 +18589,6 @@ Store U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vad
 - `(class, format, opcode)`：`(MEMORY, 1, 27)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ST.GLOBAL.U64 [s0:s1 + 0], v0:v1`
 
@@ -18383,7 +18619,7 @@ Store U64 per participating lane using uniform_base: unsigned(sbase) + sign_exte
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_ST.GLOBAL.U64 [s0:s1 + 0], v0:v1`
 
@@ -18400,7 +18636,7 @@ Store U64 per participating lane using uniform_base: unsigned(sbase) + sign_exte
 | opcode | 12:7 | 27 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 是 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 是 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -18413,7 +18649,6 @@ Store U64 per participating lane using uniform_base: unsigned(sbase) + sign_exte
 - `(class, format, opcode)`：`(MEMORY, 1, 28)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ST.GLOBAL.U64 [v0:v1 + 0], v0:v1`
 
@@ -18444,7 +18679,7 @@ Store U64 per participating lane using lane_address: unsigned(vaddr) + sign_exte
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_ST.GLOBAL.U64 [v0:v1 + 0], v0:v1`
 
@@ -18461,7 +18696,7 @@ Store U64 per participating lane using lane_address: unsigned(vaddr) + sign_exte
 | opcode | 12:7 | 28 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 否 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 是 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -18474,7 +18709,6 @@ Store U64 per participating lane using lane_address: unsigned(vaddr) + sign_exte
 - `(class, format, opcode)`：`(MEMORY, 1, 29)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ST.GLOBAL.U64 [s0:s1 + v0 + 0], v0:v1`
 
@@ -18506,7 +18740,7 @@ Store U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vad
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_ST.GLOBAL.U64 [s0:s1 + v0 + 0], v0:v1`
 
@@ -18523,375 +18757,7 @@ Store U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vad
 | opcode | 12:7 | 29 | 否 | — | Opcode local to class and format. |
 | guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
 | vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
-| sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
-| simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
-| x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
-
-### V_ST.GENERIC.U32 — `generic.u32.uniform_base`
-
-- 执行域：`vector`
-- 编码格式：`VMEM`
-- 语义组：`memory_store`
-- `(class, format, opcode)`：`(MEMORY, 1, 30)`
-- Guard policy：`optional`
-- Required state：`none`
-- VGPR tag effect：`none`
-
-**语法：** `V_ST.GENERIC.U32 [s0:s1 + 0], v0`
-
-#### Address template
-
-- 地址空间：`generic`
-- 地址模式：`uniform_base`
-- 表达式：`unsigned(sbase) + sign_extend(simm16)`
-- 地址操作数：`[sbase, simm16]`
-- 偏移单位：`bytes`
-- 缩放：`1`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| src | vgpr32 | read | vdata | — |
-| base | address_generic_uniform | read | sbase | — |
-| offset | simm16 | read | simm16 | — |
-
-**Semantics：**
-
-Store U32 per participating lane using uniform_base: unsigned(sbase) + sign_extend(simm16).
-
-**Constraints：**
-
-- All unused extension and reserved bits are zero.
-
-**Faults：**
-
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
-
-**示例：** `V_ST.GENERIC.U32 [s0:s1 + 0], v0`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x0000000000000F13`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 3 | 否 | — | Execution class. |
-| format | 6:4 | 1 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 30 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
-| vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 是 | — | Per-lane global/generic address or index. |
-| sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
-| simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
-| x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
-
-### V_ST.GENERIC.U32 — `generic.u32.lane_address`
-
-- 执行域：`vector`
-- 编码格式：`VMEM`
-- 语义组：`memory_store`
-- `(class, format, opcode)`：`(MEMORY, 1, 31)`
-- Guard policy：`optional`
-- Required state：`none`
-- VGPR tag effect：`none`
-
-**语法：** `V_ST.GENERIC.U32 [v0:v1 + 0], v0`
-
-#### Address template
-
-- 地址空间：`generic`
-- 地址模式：`lane_address`
-- 表达式：`unsigned(vaddr) + sign_extend(simm16)`
-- 地址操作数：`[vaddr, simm16]`
-- 偏移单位：`bytes`
-- 缩放：`1`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| src | vgpr32 | read | vdata | — |
-| address | address_generic_lane | read | vaddr | — |
-| offset | simm16 | read | simm16 | — |
-
-**Semantics：**
-
-Store U32 per participating lane using lane_address: unsigned(vaddr) + sign_extend(simm16).
-
-**Constraints：**
-
-- All unused extension and reserved bits are zero.
-
-**Faults：**
-
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
-
-**示例：** `V_ST.GENERIC.U32 [v0:v1 + 0], v0`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x0000000000000F93`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 3 | 否 | — | Execution class. |
-| format | 6:4 | 1 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 31 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
-| vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
-| sbase | 42:35 | — | 是 | — | Optional uniform scalar base. |
-| simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
-| x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
-
-### V_ST.GENERIC.U32 — `generic.u32.sv_mix`
-
-- 执行域：`vector`
-- 编码格式：`VMEM`
-- 语义组：`memory_store`
-- `(class, format, opcode)`：`(MEMORY, 1, 32)`
-- Guard policy：`optional`
-- Required state：`none`
-- VGPR tag effect：`none`
-
-**语法：** `V_ST.GENERIC.U32 [s0:s1 + v0 + 0], v0`
-
-#### Address template
-
-- 地址空间：`generic`
-- 地址模式：`sv_mix`
-- 表达式：`unsigned(sbase) + zero_extend(vaddr) + sign_extend(simm16)`
-- 地址操作数：`[sbase, vaddr, simm16]`
-- 偏移单位：`bytes`
-- 缩放：`1`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| src | vgpr32 | read | vdata | — |
-| base | address_generic_uniform | read | sbase | — |
-| index | vgpr_index | read | vaddr | — |
-| offset | simm16 | read | simm16 | — |
-
-**Semantics：**
-
-Store U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vaddr) + sign_extend(simm16).
-
-**Constraints：**
-
-- All unused extension and reserved bits are zero.
-
-**Faults：**
-
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
-
-**示例：** `V_ST.GENERIC.U32 [s0:s1 + v0 + 0], v0`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x0000000000001013`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 3 | 否 | — | Execution class. |
-| format | 6:4 | 1 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 32 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
-| vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
-| sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
-| simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
-| x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
-
-### V_ST.GENERIC.U64 — `generic.u64.uniform_base`
-
-- 执行域：`vector`
-- 编码格式：`VMEM`
-- 语义组：`memory_store`
-- `(class, format, opcode)`：`(MEMORY, 1, 33)`
-- Guard policy：`optional`
-- Required state：`none`
-- VGPR tag effect：`none`
-
-**语法：** `V_ST.GENERIC.U64 [s0:s1 + 0], v0:v1`
-
-#### Address template
-
-- 地址空间：`generic`
-- 地址模式：`uniform_base`
-- 表达式：`unsigned(sbase) + sign_extend(simm16)`
-- 地址操作数：`[sbase, simm16]`
-- 偏移单位：`bytes`
-- 缩放：`1`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| src | vgpr64 | read | vdata | — |
-| base | address_generic_uniform | read | sbase | — |
-| offset | simm16 | read | simm16 | — |
-
-**Semantics：**
-
-Store U64 per participating lane using uniform_base: unsigned(sbase) + sign_extend(simm16).
-
-**Constraints：**
-
-- All unused extension and reserved bits are zero.
-
-**Faults：**
-
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
-
-**示例：** `V_ST.GENERIC.U64 [s0:s1 + 0], v0:v1`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x0000000000001093`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 3 | 否 | — | Execution class. |
-| format | 6:4 | 1 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 33 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
-| vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 是 | — | Per-lane global/generic address or index. |
-| sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
-| simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
-| x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
-
-### V_ST.GENERIC.U64 — `generic.u64.lane_address`
-
-- 执行域：`vector`
-- 编码格式：`VMEM`
-- 语义组：`memory_store`
-- `(class, format, opcode)`：`(MEMORY, 1, 34)`
-- Guard policy：`optional`
-- Required state：`none`
-- VGPR tag effect：`none`
-
-**语法：** `V_ST.GENERIC.U64 [v0:v1 + 0], v0:v1`
-
-#### Address template
-
-- 地址空间：`generic`
-- 地址模式：`lane_address`
-- 表达式：`unsigned(vaddr) + sign_extend(simm16)`
-- 地址操作数：`[vaddr, simm16]`
-- 偏移单位：`bytes`
-- 缩放：`1`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| src | vgpr64 | read | vdata | — |
-| address | address_generic_lane | read | vaddr | — |
-| offset | simm16 | read | simm16 | — |
-
-**Semantics：**
-
-Store U64 per participating lane using lane_address: unsigned(vaddr) + sign_extend(simm16).
-
-**Constraints：**
-
-- All unused extension and reserved bits are zero.
-
-**Faults：**
-
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
-
-**示例：** `V_ST.GENERIC.U64 [v0:v1 + 0], v0:v1`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x0000000000001113`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 3 | 否 | — | Execution class. |
-| format | 6:4 | 1 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 34 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
-| vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
-| sbase | 42:35 | — | 是 | — | Optional uniform scalar base. |
-| simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
-| x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
-
-### V_ST.GENERIC.U64 — `generic.u64.sv_mix`
-
-- 执行域：`vector`
-- 编码格式：`VMEM`
-- 语义组：`memory_store`
-- `(class, format, opcode)`：`(MEMORY, 1, 35)`
-- Guard policy：`optional`
-- Required state：`none`
-- VGPR tag effect：`none`
-
-**语法：** `V_ST.GENERIC.U64 [s0:s1 + v0 + 0], v0:v1`
-
-#### Address template
-
-- 地址空间：`generic`
-- 地址模式：`sv_mix`
-- 表达式：`unsigned(sbase) + zero_extend(vaddr) + sign_extend(simm16)`
-- 地址操作数：`[sbase, vaddr, simm16]`
-- 偏移单位：`bytes`
-- 缩放：`1`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| src | vgpr64 | read | vdata | — |
-| base | address_generic_uniform | read | sbase | — |
-| index | vgpr_index | read | vaddr | — |
-| offset | simm16 | read | simm16 | — |
-
-**Semantics：**
-
-Store U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vaddr) + sign_extend(simm16).
-
-**Constraints：**
-
-- All unused extension and reserved bits are zero.
-
-**Faults：**
-
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
-
-**示例：** `V_ST.GENERIC.U64 [s0:s1 + v0 + 0], v0:v1`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x0000000000001193`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 3 | 否 | — | Execution class. |
-| format | 6:4 | 1 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 35 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
-| vdata | 26:19 | — | 否 | — | Vector load destination or store source. |
-| vaddr | 34:27 | — | 否 | — | Per-lane global/generic address or index. |
+| vaddr | 34:27 | — | 否 | — | Per-lane byte address or index. |
 | sbase | 42:35 | — | 否 | — | Optional uniform scalar base. |
 | simm16 | 58:43 | — | 否 | — | Signed 16-bit byte offset. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
@@ -18904,7 +18770,6 @@ Store U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vad
 - `(class, format, opcode)`：`(MEMORY, 2, 6)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ST.SHARED.U32 [s0 + 0], v0`
 
@@ -18935,7 +18800,7 @@ Store U32 per participating lane using uniform_base: unsigned(sbase) + sign_exte
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_ST.SHARED.U32 [s0 + 0], v0`
 
@@ -18965,7 +18830,6 @@ Store U32 per participating lane using uniform_base: unsigned(sbase) + sign_exte
 - `(class, format, opcode)`：`(MEMORY, 2, 7)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ST.SHARED.U32 [v0 + 0], v0`
 
@@ -18996,7 +18860,7 @@ Store U32 per participating lane using lane_address: unsigned(vaddr) + sign_exte
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_ST.SHARED.U32 [v0 + 0], v0`
 
@@ -19026,7 +18890,6 @@ Store U32 per participating lane using lane_address: unsigned(vaddr) + sign_exte
 - `(class, format, opcode)`：`(MEMORY, 2, 8)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ST.SHARED.U32 [s0 + v0 + 0], v0`
 
@@ -19058,7 +18921,7 @@ Store U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vad
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_ST.SHARED.U32 [s0 + v0 + 0], v0`
 
@@ -19088,7 +18951,6 @@ Store U32 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vad
 - `(class, format, opcode)`：`(MEMORY, 2, 9)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ST.SHARED.U64 [s0 + 0], v0:v1`
 
@@ -19119,7 +18981,7 @@ Store U64 per participating lane using uniform_base: unsigned(sbase) + sign_exte
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_ST.SHARED.U64 [s0 + 0], v0:v1`
 
@@ -19149,7 +19011,6 @@ Store U64 per participating lane using uniform_base: unsigned(sbase) + sign_exte
 - `(class, format, opcode)`：`(MEMORY, 2, 10)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ST.SHARED.U64 [v0 + 0], v0:v1`
 
@@ -19180,7 +19041,7 @@ Store U64 per participating lane using lane_address: unsigned(vaddr) + sign_exte
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_ST.SHARED.U64 [v0 + 0], v0:v1`
 
@@ -19210,7 +19071,6 @@ Store U64 per participating lane using lane_address: unsigned(vaddr) + sign_exte
 - `(class, format, opcode)`：`(MEMORY, 2, 11)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ST.SHARED.U64 [s0 + v0 + 0], v0:v1`
 
@@ -19242,7 +19102,7 @@ Store U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vad
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_ST.SHARED.U64 [s0 + v0 + 0], v0:v1`
 
@@ -19272,7 +19132,6 @@ Store U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vad
 - `(class, format, opcode)`：`(MEMORY, 3, 2)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ST.LOCAL.U32 [v0 + 0], v0`
 
@@ -19295,7 +19154,7 @@ Store U64 per participating lane using sv_mix: unsigned(sbase) + zero_extend(vad
 
 **Semantics：**
 
-Store U32 per participating lane using lane_address: unsigned(vaddr) + sign_extend(simm16). The local allocation is always the current lane private allocation.
+Store U32 per participating lane using lane_address: unsigned(vaddr) + sign_extend(simm16). Local space always addresses the current lane's private window.
 
 **Constraints：**
 
@@ -19303,7 +19162,7 @@ Store U32 per participating lane using lane_address: unsigned(vaddr) + sign_exte
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_ST.LOCAL.U32 [v0 + 0], v0`
 
@@ -19333,7 +19192,6 @@ Store U32 per participating lane using lane_address: unsigned(vaddr) + sign_exte
 - `(class, format, opcode)`：`(MEMORY, 3, 3)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ST.LOCAL.U64 [v0 + 0], v0:v1`
 
@@ -19356,7 +19214,7 @@ Store U32 per participating lane using lane_address: unsigned(vaddr) + sign_exte
 
 **Semantics：**
 
-Store U64 per participating lane using lane_address: unsigned(vaddr) + sign_extend(simm16). The local allocation is always the current lane private allocation.
+Store U64 per participating lane using lane_address: unsigned(vaddr) + sign_extend(simm16). Local space always addresses the current lane's private window.
 
 **Constraints：**
 
@@ -19364,7 +19222,7 @@ Store U64 per participating lane using lane_address: unsigned(vaddr) + sign_exte
 
 **Faults：**
 
-- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or out-of-allocation access; ILLEGAL_OPERAND on address-space/type mismatch.
+- MISALIGNED_ACCESS on a participating misaligned address; MEMORY_BOUNDS on overflow or on an unmapped or permission-denied byte; ILLEGAL_OPERAND on address-space/type mismatch.
 
 **示例：** `V_ST.LOCAL.U64 [v0 + 0], v0:v1`
 
@@ -19388,7 +19246,7 @@ Store U64 per participating lane using lane_address: unsigned(vaddr) + sign_exte
 
 ## S_ATOM
 
-- Family ID：`F050`
+- Family ID：`s-atom`
 - 语义组：`atomic`
 
 Scalar atomic load, store, RMW, and CAS.
@@ -19401,7 +19259,6 @@ Scalar atomic load, store, RMW, and CAS.
 - `(class, format, opcode)`：`(MEMORY, 4, 0)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.LOAD.U32.GLOBAL.{order}.{scope} s0, [s0:s1 + 0]`
 
@@ -19442,8 +19299,8 @@ Perform one LOAD U32 atomic event in global space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.LOAD.U32.GLOBAL.RELAXED.DEVICE s0, [s0:s1 + 0]`
 
@@ -19476,7 +19333,6 @@ Perform one LOAD U32 atomic event in global space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 4, 1)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.STORE.U32.GLOBAL.{order}.{scope} [s0:s1 + 0], s0`
 
@@ -19517,8 +19373,8 @@ Perform one STORE U32 atomic event in global space using runtime-selected legal 
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.STORE.U32.GLOBAL.RELAXED.DEVICE [s0:s1 + 0], s0`
 
@@ -19551,7 +19407,6 @@ Perform one STORE U32 atomic event in global space using runtime-selected legal 
 - `(class, format, opcode)`：`(MEMORY, 4, 2)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.ADD.U32.GLOBAL.{order}.{scope} s0, [s0:s1 + 0], s0`
 
@@ -19593,8 +19448,8 @@ Perform one ADD U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.ADD.U32.GLOBAL.RELAXED.DEVICE s0, [s0:s1 + 0], s0`
 
@@ -19627,7 +19482,6 @@ Perform one ADD U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 3)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.XCHG.U32.GLOBAL.{order}.{scope} s0, [s0:s1 + 0], s0`
 
@@ -19669,8 +19523,8 @@ Perform one XCHG U32 atomic event in global space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.XCHG.U32.GLOBAL.RELAXED.DEVICE s0, [s0:s1 + 0], s0`
 
@@ -19703,7 +19557,6 @@ Perform one XCHG U32 atomic event in global space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 4, 4)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.AND.U32.GLOBAL.{order}.{scope} s0, [s0:s1 + 0], s0`
 
@@ -19745,8 +19598,8 @@ Perform one AND U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.AND.U32.GLOBAL.RELAXED.DEVICE s0, [s0:s1 + 0], s0`
 
@@ -19779,7 +19632,6 @@ Perform one AND U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 5)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.OR.U32.GLOBAL.{order}.{scope} s0, [s0:s1 + 0], s0`
 
@@ -19821,8 +19673,8 @@ Perform one OR U32 atomic event in global space using runtime-selected legal ord
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.OR.U32.GLOBAL.RELAXED.DEVICE s0, [s0:s1 + 0], s0`
 
@@ -19855,7 +19707,6 @@ Perform one OR U32 atomic event in global space using runtime-selected legal ord
 - `(class, format, opcode)`：`(MEMORY, 4, 6)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.XOR.U32.GLOBAL.{order}.{scope} s0, [s0:s1 + 0], s0`
 
@@ -19897,8 +19748,8 @@ Perform one XOR U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.XOR.U32.GLOBAL.RELAXED.DEVICE s0, [s0:s1 + 0], s0`
 
@@ -19931,7 +19782,6 @@ Perform one XOR U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 7)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.MIN.U32.GLOBAL.{order}.{scope} s0, [s0:s1 + 0], s0`
 
@@ -19973,8 +19823,8 @@ Perform one MIN U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.MIN.U32.GLOBAL.RELAXED.DEVICE s0, [s0:s1 + 0], s0`
 
@@ -20007,7 +19857,6 @@ Perform one MIN U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 8)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.MAX.U32.GLOBAL.{order}.{scope} s0, [s0:s1 + 0], s0`
 
@@ -20049,8 +19898,8 @@ Perform one MAX U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.MAX.U32.GLOBAL.RELAXED.DEVICE s0, [s0:s1 + 0], s0`
 
@@ -20083,7 +19932,6 @@ Perform one MAX U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 9)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.CAS.U32.GLOBAL.{order}.{scope} s0, [s0:s1 + 0], s0, s0`
 
@@ -20126,8 +19974,8 @@ Perform one CAS U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.CAS.U32.GLOBAL.RELAXED.DEVICE s0, [s0:s1 + 0], s0, s0`
 
@@ -20160,7 +20008,6 @@ Perform one CAS U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 10)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.LOAD.U64.GLOBAL.{order}.{scope} s0:s1, [s0:s1 + 0]`
 
@@ -20201,8 +20048,8 @@ Perform one LOAD U64 atomic event in global space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.LOAD.U64.GLOBAL.RELAXED.DEVICE s0:s1, [s0:s1 + 0]`
 
@@ -20235,7 +20082,6 @@ Perform one LOAD U64 atomic event in global space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 4, 11)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.STORE.U64.GLOBAL.{order}.{scope} [s0:s1 + 0], s0:s1`
 
@@ -20276,8 +20122,8 @@ Perform one STORE U64 atomic event in global space using runtime-selected legal 
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.STORE.U64.GLOBAL.RELAXED.DEVICE [s0:s1 + 0], s0:s1`
 
@@ -20310,7 +20156,6 @@ Perform one STORE U64 atomic event in global space using runtime-selected legal 
 - `(class, format, opcode)`：`(MEMORY, 4, 12)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.ADD.U64.GLOBAL.{order}.{scope} s0:s1, [s0:s1 + 0], s0:s1`
 
@@ -20352,8 +20197,8 @@ Perform one ADD U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.ADD.U64.GLOBAL.RELAXED.DEVICE s0:s1, [s0:s1 + 0], s0:s1`
 
@@ -20386,7 +20231,6 @@ Perform one ADD U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 13)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.XCHG.U64.GLOBAL.{order}.{scope} s0:s1, [s0:s1 + 0], s0:s1`
 
@@ -20428,8 +20272,8 @@ Perform one XCHG U64 atomic event in global space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.XCHG.U64.GLOBAL.RELAXED.DEVICE s0:s1, [s0:s1 + 0], s0:s1`
 
@@ -20462,7 +20306,6 @@ Perform one XCHG U64 atomic event in global space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 4, 14)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.AND.U64.GLOBAL.{order}.{scope} s0:s1, [s0:s1 + 0], s0:s1`
 
@@ -20504,8 +20347,8 @@ Perform one AND U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.AND.U64.GLOBAL.RELAXED.DEVICE s0:s1, [s0:s1 + 0], s0:s1`
 
@@ -20538,7 +20381,6 @@ Perform one AND U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 15)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.OR.U64.GLOBAL.{order}.{scope} s0:s1, [s0:s1 + 0], s0:s1`
 
@@ -20580,8 +20422,8 @@ Perform one OR U64 atomic event in global space using runtime-selected legal ord
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.OR.U64.GLOBAL.RELAXED.DEVICE s0:s1, [s0:s1 + 0], s0:s1`
 
@@ -20614,7 +20456,6 @@ Perform one OR U64 atomic event in global space using runtime-selected legal ord
 - `(class, format, opcode)`：`(MEMORY, 4, 16)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.XOR.U64.GLOBAL.{order}.{scope} s0:s1, [s0:s1 + 0], s0:s1`
 
@@ -20656,8 +20497,8 @@ Perform one XOR U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.XOR.U64.GLOBAL.RELAXED.DEVICE s0:s1, [s0:s1 + 0], s0:s1`
 
@@ -20690,7 +20531,6 @@ Perform one XOR U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 17)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.MIN.U64.GLOBAL.{order}.{scope} s0:s1, [s0:s1 + 0], s0:s1`
 
@@ -20732,8 +20572,8 @@ Perform one MIN U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.MIN.U64.GLOBAL.RELAXED.DEVICE s0:s1, [s0:s1 + 0], s0:s1`
 
@@ -20766,7 +20606,6 @@ Perform one MIN U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 18)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.MAX.U64.GLOBAL.{order}.{scope} s0:s1, [s0:s1 + 0], s0:s1`
 
@@ -20808,8 +20647,8 @@ Perform one MAX U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.MAX.U64.GLOBAL.RELAXED.DEVICE s0:s1, [s0:s1 + 0], s0:s1`
 
@@ -20842,7 +20681,6 @@ Perform one MAX U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 19)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.CAS.U64.GLOBAL.{order}.{scope} s0:s1, [s0:s1 + 0], s0:s1, s0:s1`
 
@@ -20885,8 +20723,8 @@ Perform one CAS U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.CAS.U64.GLOBAL.RELAXED.DEVICE s0:s1, [s0:s1 + 0], s0:s1, s0:s1`
 
@@ -20919,7 +20757,6 @@ Perform one CAS U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 20)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.LOAD.U32.SHARED.{order}.{scope} s0, [s0 + 0]`
 
@@ -20960,8 +20797,8 @@ Perform one LOAD U32 atomic event in shared space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.LOAD.U32.SHARED.RELAXED.CTA s0, [s0 + 0]`
 
@@ -20994,7 +20831,6 @@ Perform one LOAD U32 atomic event in shared space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 4, 21)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.STORE.U32.SHARED.{order}.{scope} [s0 + 0], s0`
 
@@ -21035,8 +20871,8 @@ Perform one STORE U32 atomic event in shared space using runtime-selected legal 
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.STORE.U32.SHARED.RELAXED.CTA [s0 + 0], s0`
 
@@ -21069,7 +20905,6 @@ Perform one STORE U32 atomic event in shared space using runtime-selected legal 
 - `(class, format, opcode)`：`(MEMORY, 4, 22)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.ADD.U32.SHARED.{order}.{scope} s0, [s0 + 0], s0`
 
@@ -21111,8 +20946,8 @@ Perform one ADD U32 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.ADD.U32.SHARED.RELAXED.CTA s0, [s0 + 0], s0`
 
@@ -21145,7 +20980,6 @@ Perform one ADD U32 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 23)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.XCHG.U32.SHARED.{order}.{scope} s0, [s0 + 0], s0`
 
@@ -21187,8 +21021,8 @@ Perform one XCHG U32 atomic event in shared space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.XCHG.U32.SHARED.RELAXED.CTA s0, [s0 + 0], s0`
 
@@ -21221,7 +21055,6 @@ Perform one XCHG U32 atomic event in shared space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 4, 24)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.AND.U32.SHARED.{order}.{scope} s0, [s0 + 0], s0`
 
@@ -21263,8 +21096,8 @@ Perform one AND U32 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.AND.U32.SHARED.RELAXED.CTA s0, [s0 + 0], s0`
 
@@ -21297,7 +21130,6 @@ Perform one AND U32 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 25)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.OR.U32.SHARED.{order}.{scope} s0, [s0 + 0], s0`
 
@@ -21339,8 +21171,8 @@ Perform one OR U32 atomic event in shared space using runtime-selected legal ord
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.OR.U32.SHARED.RELAXED.CTA s0, [s0 + 0], s0`
 
@@ -21373,7 +21205,6 @@ Perform one OR U32 atomic event in shared space using runtime-selected legal ord
 - `(class, format, opcode)`：`(MEMORY, 4, 26)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.XOR.U32.SHARED.{order}.{scope} s0, [s0 + 0], s0`
 
@@ -21415,8 +21246,8 @@ Perform one XOR U32 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.XOR.U32.SHARED.RELAXED.CTA s0, [s0 + 0], s0`
 
@@ -21449,7 +21280,6 @@ Perform one XOR U32 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 27)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.MIN.U32.SHARED.{order}.{scope} s0, [s0 + 0], s0`
 
@@ -21491,8 +21321,8 @@ Perform one MIN U32 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.MIN.U32.SHARED.RELAXED.CTA s0, [s0 + 0], s0`
 
@@ -21525,7 +21355,6 @@ Perform one MIN U32 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 28)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.MAX.U32.SHARED.{order}.{scope} s0, [s0 + 0], s0`
 
@@ -21567,8 +21396,8 @@ Perform one MAX U32 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.MAX.U32.SHARED.RELAXED.CTA s0, [s0 + 0], s0`
 
@@ -21601,7 +21430,6 @@ Perform one MAX U32 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 29)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.CAS.U32.SHARED.{order}.{scope} s0, [s0 + 0], s0, s0`
 
@@ -21644,8 +21472,8 @@ Perform one CAS U32 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.CAS.U32.SHARED.RELAXED.CTA s0, [s0 + 0], s0, s0`
 
@@ -21678,7 +21506,6 @@ Perform one CAS U32 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 30)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.LOAD.U64.SHARED.{order}.{scope} s0:s1, [s0 + 0]`
 
@@ -21719,8 +21546,8 @@ Perform one LOAD U64 atomic event in shared space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.LOAD.U64.SHARED.RELAXED.CTA s0:s1, [s0 + 0]`
 
@@ -21753,7 +21580,6 @@ Perform one LOAD U64 atomic event in shared space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 4, 31)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.STORE.U64.SHARED.{order}.{scope} [s0 + 0], s0:s1`
 
@@ -21794,8 +21620,8 @@ Perform one STORE U64 atomic event in shared space using runtime-selected legal 
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.STORE.U64.SHARED.RELAXED.CTA [s0 + 0], s0:s1`
 
@@ -21828,7 +21654,6 @@ Perform one STORE U64 atomic event in shared space using runtime-selected legal 
 - `(class, format, opcode)`：`(MEMORY, 4, 32)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.ADD.U64.SHARED.{order}.{scope} s0:s1, [s0 + 0], s0:s1`
 
@@ -21870,8 +21695,8 @@ Perform one ADD U64 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.ADD.U64.SHARED.RELAXED.CTA s0:s1, [s0 + 0], s0:s1`
 
@@ -21904,7 +21729,6 @@ Perform one ADD U64 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 33)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.XCHG.U64.SHARED.{order}.{scope} s0:s1, [s0 + 0], s0:s1`
 
@@ -21946,8 +21770,8 @@ Perform one XCHG U64 atomic event in shared space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.XCHG.U64.SHARED.RELAXED.CTA s0:s1, [s0 + 0], s0:s1`
 
@@ -21980,7 +21804,6 @@ Perform one XCHG U64 atomic event in shared space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 4, 34)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.AND.U64.SHARED.{order}.{scope} s0:s1, [s0 + 0], s0:s1`
 
@@ -22022,8 +21845,8 @@ Perform one AND U64 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.AND.U64.SHARED.RELAXED.CTA s0:s1, [s0 + 0], s0:s1`
 
@@ -22056,7 +21879,6 @@ Perform one AND U64 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 35)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.OR.U64.SHARED.{order}.{scope} s0:s1, [s0 + 0], s0:s1`
 
@@ -22098,8 +21920,8 @@ Perform one OR U64 atomic event in shared space using runtime-selected legal ord
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.OR.U64.SHARED.RELAXED.CTA s0:s1, [s0 + 0], s0:s1`
 
@@ -22132,7 +21954,6 @@ Perform one OR U64 atomic event in shared space using runtime-selected legal ord
 - `(class, format, opcode)`：`(MEMORY, 4, 36)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.XOR.U64.SHARED.{order}.{scope} s0:s1, [s0 + 0], s0:s1`
 
@@ -22174,8 +21995,8 @@ Perform one XOR U64 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.XOR.U64.SHARED.RELAXED.CTA s0:s1, [s0 + 0], s0:s1`
 
@@ -22208,7 +22029,6 @@ Perform one XOR U64 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 37)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.MIN.U64.SHARED.{order}.{scope} s0:s1, [s0 + 0], s0:s1`
 
@@ -22250,8 +22070,8 @@ Perform one MIN U64 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.MIN.U64.SHARED.RELAXED.CTA s0:s1, [s0 + 0], s0:s1`
 
@@ -22284,7 +22104,6 @@ Perform one MIN U64 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 38)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.MAX.U64.SHARED.{order}.{scope} s0:s1, [s0 + 0], s0:s1`
 
@@ -22326,8 +22145,8 @@ Perform one MAX U64 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.MAX.U64.SHARED.RELAXED.CTA s0:s1, [s0 + 0], s0:s1`
 
@@ -22360,7 +22179,6 @@ Perform one MAX U64 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 4, 39)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_ATOM.CAS.U64.SHARED.{order}.{scope} s0:s1, [s0 + 0], s0:s1, s0:s1`
 
@@ -22403,8 +22221,8 @@ Perform one CAS U64 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
-- SCALAR_STATE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
+- DIVERGENCE_FAULT before reading address, order, scope, or data when the warp is not scalar-ready.
 
 **示例：** `S_ATOM.CAS.U64.SHARED.RELAXED.CTA s0:s1, [s0 + 0], s0:s1, s0:s1`
 
@@ -22431,7 +22249,7 @@ Perform one CAS U64 atomic event in shared space using runtime-selected legal or
 
 ## V_ATOM
 
-- Family ID：`F051`
+- Family ID：`v-atom`
 - 语义组：`atomic`
 
 Vector atomic operations including mixed addressing.
@@ -22444,7 +22262,6 @@ Vector atomic operations including mixed addressing.
 - `(class, format, opcode)`：`(MEMORY, 5, 0)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.LOAD.U32.GLOBAL.{order}.{scope} v0, [v0:v1 + 0]`
 
@@ -22485,7 +22302,7 @@ Perform one LOAD U32 atomic event in global space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.LOAD.U32.GLOBAL.RELAXED.DEVICE v0, [v0:v1 + 0]`
 
@@ -22518,7 +22335,6 @@ Perform one LOAD U32 atomic event in global space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 5, 1)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ATOM.STORE.U32.GLOBAL.{order}.{scope} [v0:v1 + 0], v0`
 
@@ -22559,7 +22375,7 @@ Perform one STORE U32 atomic event in global space using runtime-selected legal 
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.STORE.U32.GLOBAL.RELAXED.DEVICE [v0:v1 + 0], v0`
 
@@ -22592,7 +22408,6 @@ Perform one STORE U32 atomic event in global space using runtime-selected legal 
 - `(class, format, opcode)`：`(MEMORY, 5, 2)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.ADD.U32.GLOBAL.{order}.{scope} v0, [v0:v1 + 0], v0`
 
@@ -22634,7 +22449,7 @@ Perform one ADD U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.ADD.U32.GLOBAL.RELAXED.DEVICE v0, [v0:v1 + 0], v0`
 
@@ -22667,7 +22482,6 @@ Perform one ADD U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 3)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.XCHG.U32.GLOBAL.{order}.{scope} v0, [v0:v1 + 0], v0`
 
@@ -22709,7 +22523,7 @@ Perform one XCHG U32 atomic event in global space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.XCHG.U32.GLOBAL.RELAXED.DEVICE v0, [v0:v1 + 0], v0`
 
@@ -22742,7 +22556,6 @@ Perform one XCHG U32 atomic event in global space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 5, 4)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.AND.U32.GLOBAL.{order}.{scope} v0, [v0:v1 + 0], v0`
 
@@ -22784,7 +22597,7 @@ Perform one AND U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.AND.U32.GLOBAL.RELAXED.DEVICE v0, [v0:v1 + 0], v0`
 
@@ -22817,7 +22630,6 @@ Perform one AND U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 5)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.OR.U32.GLOBAL.{order}.{scope} v0, [v0:v1 + 0], v0`
 
@@ -22859,7 +22671,7 @@ Perform one OR U32 atomic event in global space using runtime-selected legal ord
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.OR.U32.GLOBAL.RELAXED.DEVICE v0, [v0:v1 + 0], v0`
 
@@ -22892,7 +22704,6 @@ Perform one OR U32 atomic event in global space using runtime-selected legal ord
 - `(class, format, opcode)`：`(MEMORY, 5, 6)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.XOR.U32.GLOBAL.{order}.{scope} v0, [v0:v1 + 0], v0`
 
@@ -22934,7 +22745,7 @@ Perform one XOR U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.XOR.U32.GLOBAL.RELAXED.DEVICE v0, [v0:v1 + 0], v0`
 
@@ -22967,7 +22778,6 @@ Perform one XOR U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 7)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.MIN.U32.GLOBAL.{order}.{scope} v0, [v0:v1 + 0], v0`
 
@@ -23009,7 +22819,7 @@ Perform one MIN U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.MIN.U32.GLOBAL.RELAXED.DEVICE v0, [v0:v1 + 0], v0`
 
@@ -23042,7 +22852,6 @@ Perform one MIN U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 8)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.MAX.U32.GLOBAL.{order}.{scope} v0, [v0:v1 + 0], v0`
 
@@ -23084,7 +22893,7 @@ Perform one MAX U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.MAX.U32.GLOBAL.RELAXED.DEVICE v0, [v0:v1 + 0], v0`
 
@@ -23117,7 +22926,6 @@ Perform one MAX U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 9)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.CAS.U32.GLOBAL.{order}.{scope} v0, [v0:v1 + 0], v0, v0`
 
@@ -23160,7 +22968,7 @@ Perform one CAS U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.CAS.U32.GLOBAL.RELAXED.DEVICE v0, [v0:v1 + 0], v0, v0`
 
@@ -23193,7 +23001,6 @@ Perform one CAS U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 10)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.LOAD.U64.GLOBAL.{order}.{scope} v0:v1, [v0:v1 + 0]`
 
@@ -23234,7 +23041,7 @@ Perform one LOAD U64 atomic event in global space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.LOAD.U64.GLOBAL.RELAXED.DEVICE v0:v1, [v0:v1 + 0]`
 
@@ -23267,7 +23074,6 @@ Perform one LOAD U64 atomic event in global space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 5, 11)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ATOM.STORE.U64.GLOBAL.{order}.{scope} [v0:v1 + 0], v0:v1`
 
@@ -23308,7 +23114,7 @@ Perform one STORE U64 atomic event in global space using runtime-selected legal 
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.STORE.U64.GLOBAL.RELAXED.DEVICE [v0:v1 + 0], v0:v1`
 
@@ -23341,7 +23147,6 @@ Perform one STORE U64 atomic event in global space using runtime-selected legal 
 - `(class, format, opcode)`：`(MEMORY, 5, 12)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.ADD.U64.GLOBAL.{order}.{scope} v0:v1, [v0:v1 + 0], v0:v1`
 
@@ -23383,7 +23188,7 @@ Perform one ADD U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.ADD.U64.GLOBAL.RELAXED.DEVICE v0:v1, [v0:v1 + 0], v0:v1`
 
@@ -23416,7 +23221,6 @@ Perform one ADD U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 13)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.XCHG.U64.GLOBAL.{order}.{scope} v0:v1, [v0:v1 + 0], v0:v1`
 
@@ -23458,7 +23262,7 @@ Perform one XCHG U64 atomic event in global space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.XCHG.U64.GLOBAL.RELAXED.DEVICE v0:v1, [v0:v1 + 0], v0:v1`
 
@@ -23491,7 +23295,6 @@ Perform one XCHG U64 atomic event in global space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 5, 14)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.AND.U64.GLOBAL.{order}.{scope} v0:v1, [v0:v1 + 0], v0:v1`
 
@@ -23533,7 +23336,7 @@ Perform one AND U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.AND.U64.GLOBAL.RELAXED.DEVICE v0:v1, [v0:v1 + 0], v0:v1`
 
@@ -23566,7 +23369,6 @@ Perform one AND U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 15)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.OR.U64.GLOBAL.{order}.{scope} v0:v1, [v0:v1 + 0], v0:v1`
 
@@ -23608,7 +23410,7 @@ Perform one OR U64 atomic event in global space using runtime-selected legal ord
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.OR.U64.GLOBAL.RELAXED.DEVICE v0:v1, [v0:v1 + 0], v0:v1`
 
@@ -23641,7 +23443,6 @@ Perform one OR U64 atomic event in global space using runtime-selected legal ord
 - `(class, format, opcode)`：`(MEMORY, 5, 16)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.XOR.U64.GLOBAL.{order}.{scope} v0:v1, [v0:v1 + 0], v0:v1`
 
@@ -23683,7 +23484,7 @@ Perform one XOR U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.XOR.U64.GLOBAL.RELAXED.DEVICE v0:v1, [v0:v1 + 0], v0:v1`
 
@@ -23716,7 +23517,6 @@ Perform one XOR U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 17)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.MIN.U64.GLOBAL.{order}.{scope} v0:v1, [v0:v1 + 0], v0:v1`
 
@@ -23758,7 +23558,7 @@ Perform one MIN U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.MIN.U64.GLOBAL.RELAXED.DEVICE v0:v1, [v0:v1 + 0], v0:v1`
 
@@ -23791,7 +23591,6 @@ Perform one MIN U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 18)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.MAX.U64.GLOBAL.{order}.{scope} v0:v1, [v0:v1 + 0], v0:v1`
 
@@ -23833,7 +23632,7 @@ Perform one MAX U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.MAX.U64.GLOBAL.RELAXED.DEVICE v0:v1, [v0:v1 + 0], v0:v1`
 
@@ -23866,7 +23665,6 @@ Perform one MAX U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 19)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.CAS.U64.GLOBAL.{order}.{scope} v0:v1, [v0:v1 + 0], v0:v1, v0:v1`
 
@@ -23909,7 +23707,7 @@ Perform one CAS U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.CAS.U64.GLOBAL.RELAXED.DEVICE v0:v1, [v0:v1 + 0], v0:v1, v0:v1`
 
@@ -23942,7 +23740,6 @@ Perform one CAS U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 20)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.LOAD.U32.SHARED.{order}.{scope} v0, [v0 + 0]`
 
@@ -23983,7 +23780,7 @@ Perform one LOAD U32 atomic event in shared space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.LOAD.U32.SHARED.RELAXED.CTA v0, [v0 + 0]`
 
@@ -24016,7 +23813,6 @@ Perform one LOAD U32 atomic event in shared space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 5, 21)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ATOM.STORE.U32.SHARED.{order}.{scope} [v0 + 0], v0`
 
@@ -24057,7 +23853,7 @@ Perform one STORE U32 atomic event in shared space using runtime-selected legal 
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.STORE.U32.SHARED.RELAXED.CTA [v0 + 0], v0`
 
@@ -24090,7 +23886,6 @@ Perform one STORE U32 atomic event in shared space using runtime-selected legal 
 - `(class, format, opcode)`：`(MEMORY, 5, 22)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.ADD.U32.SHARED.{order}.{scope} v0, [v0 + 0], v0`
 
@@ -24132,7 +23927,7 @@ Perform one ADD U32 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.ADD.U32.SHARED.RELAXED.CTA v0, [v0 + 0], v0`
 
@@ -24165,7 +23960,6 @@ Perform one ADD U32 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 23)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.XCHG.U32.SHARED.{order}.{scope} v0, [v0 + 0], v0`
 
@@ -24207,7 +24001,7 @@ Perform one XCHG U32 atomic event in shared space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.XCHG.U32.SHARED.RELAXED.CTA v0, [v0 + 0], v0`
 
@@ -24240,7 +24034,6 @@ Perform one XCHG U32 atomic event in shared space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 5, 24)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.AND.U32.SHARED.{order}.{scope} v0, [v0 + 0], v0`
 
@@ -24282,7 +24075,7 @@ Perform one AND U32 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.AND.U32.SHARED.RELAXED.CTA v0, [v0 + 0], v0`
 
@@ -24315,7 +24108,6 @@ Perform one AND U32 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 25)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.OR.U32.SHARED.{order}.{scope} v0, [v0 + 0], v0`
 
@@ -24357,7 +24149,7 @@ Perform one OR U32 atomic event in shared space using runtime-selected legal ord
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.OR.U32.SHARED.RELAXED.CTA v0, [v0 + 0], v0`
 
@@ -24390,7 +24182,6 @@ Perform one OR U32 atomic event in shared space using runtime-selected legal ord
 - `(class, format, opcode)`：`(MEMORY, 5, 26)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.XOR.U32.SHARED.{order}.{scope} v0, [v0 + 0], v0`
 
@@ -24432,7 +24223,7 @@ Perform one XOR U32 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.XOR.U32.SHARED.RELAXED.CTA v0, [v0 + 0], v0`
 
@@ -24465,7 +24256,6 @@ Perform one XOR U32 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 27)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.MIN.U32.SHARED.{order}.{scope} v0, [v0 + 0], v0`
 
@@ -24507,7 +24297,7 @@ Perform one MIN U32 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.MIN.U32.SHARED.RELAXED.CTA v0, [v0 + 0], v0`
 
@@ -24540,7 +24330,6 @@ Perform one MIN U32 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 28)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.MAX.U32.SHARED.{order}.{scope} v0, [v0 + 0], v0`
 
@@ -24582,7 +24371,7 @@ Perform one MAX U32 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.MAX.U32.SHARED.RELAXED.CTA v0, [v0 + 0], v0`
 
@@ -24615,7 +24404,6 @@ Perform one MAX U32 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 29)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.CAS.U32.SHARED.{order}.{scope} v0, [v0 + 0], v0, v0`
 
@@ -24658,7 +24446,7 @@ Perform one CAS U32 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.CAS.U32.SHARED.RELAXED.CTA v0, [v0 + 0], v0, v0`
 
@@ -24691,7 +24479,6 @@ Perform one CAS U32 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 30)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.LOAD.U64.SHARED.{order}.{scope} v0:v1, [v0 + 0]`
 
@@ -24732,7 +24519,7 @@ Perform one LOAD U64 atomic event in shared space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.LOAD.U64.SHARED.RELAXED.CTA v0:v1, [v0 + 0]`
 
@@ -24765,7 +24552,6 @@ Perform one LOAD U64 atomic event in shared space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 5, 31)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ATOM.STORE.U64.SHARED.{order}.{scope} [v0 + 0], v0:v1`
 
@@ -24806,7 +24592,7 @@ Perform one STORE U64 atomic event in shared space using runtime-selected legal 
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.STORE.U64.SHARED.RELAXED.CTA [v0 + 0], v0:v1`
 
@@ -24839,7 +24625,6 @@ Perform one STORE U64 atomic event in shared space using runtime-selected legal 
 - `(class, format, opcode)`：`(MEMORY, 5, 32)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.ADD.U64.SHARED.{order}.{scope} v0:v1, [v0 + 0], v0:v1`
 
@@ -24881,7 +24666,7 @@ Perform one ADD U64 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.ADD.U64.SHARED.RELAXED.CTA v0:v1, [v0 + 0], v0:v1`
 
@@ -24914,7 +24699,6 @@ Perform one ADD U64 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 33)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.XCHG.U64.SHARED.{order}.{scope} v0:v1, [v0 + 0], v0:v1`
 
@@ -24956,7 +24740,7 @@ Perform one XCHG U64 atomic event in shared space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.XCHG.U64.SHARED.RELAXED.CTA v0:v1, [v0 + 0], v0:v1`
 
@@ -24989,7 +24773,6 @@ Perform one XCHG U64 atomic event in shared space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 5, 34)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.AND.U64.SHARED.{order}.{scope} v0:v1, [v0 + 0], v0:v1`
 
@@ -25031,7 +24814,7 @@ Perform one AND U64 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.AND.U64.SHARED.RELAXED.CTA v0:v1, [v0 + 0], v0:v1`
 
@@ -25064,7 +24847,6 @@ Perform one AND U64 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 35)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.OR.U64.SHARED.{order}.{scope} v0:v1, [v0 + 0], v0:v1`
 
@@ -25106,7 +24888,7 @@ Perform one OR U64 atomic event in shared space using runtime-selected legal ord
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.OR.U64.SHARED.RELAXED.CTA v0:v1, [v0 + 0], v0:v1`
 
@@ -25139,7 +24921,6 @@ Perform one OR U64 atomic event in shared space using runtime-selected legal ord
 - `(class, format, opcode)`：`(MEMORY, 5, 36)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.XOR.U64.SHARED.{order}.{scope} v0:v1, [v0 + 0], v0:v1`
 
@@ -25181,7 +24962,7 @@ Perform one XOR U64 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.XOR.U64.SHARED.RELAXED.CTA v0:v1, [v0 + 0], v0:v1`
 
@@ -25214,7 +24995,6 @@ Perform one XOR U64 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 37)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.MIN.U64.SHARED.{order}.{scope} v0:v1, [v0 + 0], v0:v1`
 
@@ -25256,7 +25036,7 @@ Perform one MIN U64 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.MIN.U64.SHARED.RELAXED.CTA v0:v1, [v0 + 0], v0:v1`
 
@@ -25289,7 +25069,6 @@ Perform one MIN U64 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 38)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.MAX.U64.SHARED.{order}.{scope} v0:v1, [v0 + 0], v0:v1`
 
@@ -25331,7 +25110,7 @@ Perform one MAX U64 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.MAX.U64.SHARED.RELAXED.CTA v0:v1, [v0 + 0], v0:v1`
 
@@ -25364,7 +25143,6 @@ Perform one MAX U64 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 5, 39)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.CAS.U64.SHARED.{order}.{scope} v0:v1, [v0 + 0], v0:v1, v0:v1`
 
@@ -25407,7 +25185,7 @@ Perform one CAS U64 atomic event in shared space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.CAS.U64.SHARED.RELAXED.CTA v0:v1, [v0 + 0], v0:v1, v0:v1`
 
@@ -25440,7 +25218,6 @@ Perform one CAS U64 atomic event in shared space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 7, 0)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.LOAD.U32.GLOBAL.{order}.{scope} v0, [s0:s1 + v0]`
 
@@ -25481,7 +25258,7 @@ Perform one LOAD U32 atomic event in global space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.LOAD.U32.GLOBAL.RELAXED.DEVICE v0, [s0:s1 + v0]`
 
@@ -25514,7 +25291,6 @@ Perform one LOAD U32 atomic event in global space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 7, 1)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ATOM.STORE.U32.GLOBAL.{order}.{scope} [s0:s1 + v0], v0`
 
@@ -25555,7 +25331,7 @@ Perform one STORE U32 atomic event in global space using runtime-selected legal 
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.STORE.U32.GLOBAL.RELAXED.DEVICE [s0:s1 + v0], v0`
 
@@ -25588,7 +25364,6 @@ Perform one STORE U32 atomic event in global space using runtime-selected legal 
 - `(class, format, opcode)`：`(MEMORY, 7, 2)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.ADD.U32.GLOBAL.{order}.{scope} v0, [s0:s1 + v0], v0`
 
@@ -25630,7 +25405,7 @@ Perform one ADD U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.ADD.U32.GLOBAL.RELAXED.DEVICE v0, [s0:s1 + v0], v0`
 
@@ -25663,7 +25438,6 @@ Perform one ADD U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 7, 3)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.XCHG.U32.GLOBAL.{order}.{scope} v0, [s0:s1 + v0], v0`
 
@@ -25705,7 +25479,7 @@ Perform one XCHG U32 atomic event in global space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.XCHG.U32.GLOBAL.RELAXED.DEVICE v0, [s0:s1 + v0], v0`
 
@@ -25738,7 +25512,6 @@ Perform one XCHG U32 atomic event in global space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 7, 4)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.AND.U32.GLOBAL.{order}.{scope} v0, [s0:s1 + v0], v0`
 
@@ -25780,7 +25553,7 @@ Perform one AND U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.AND.U32.GLOBAL.RELAXED.DEVICE v0, [s0:s1 + v0], v0`
 
@@ -25813,7 +25586,6 @@ Perform one AND U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 7, 5)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.OR.U32.GLOBAL.{order}.{scope} v0, [s0:s1 + v0], v0`
 
@@ -25855,7 +25627,7 @@ Perform one OR U32 atomic event in global space using runtime-selected legal ord
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.OR.U32.GLOBAL.RELAXED.DEVICE v0, [s0:s1 + v0], v0`
 
@@ -25888,7 +25660,6 @@ Perform one OR U32 atomic event in global space using runtime-selected legal ord
 - `(class, format, opcode)`：`(MEMORY, 7, 6)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.XOR.U32.GLOBAL.{order}.{scope} v0, [s0:s1 + v0], v0`
 
@@ -25930,7 +25701,7 @@ Perform one XOR U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.XOR.U32.GLOBAL.RELAXED.DEVICE v0, [s0:s1 + v0], v0`
 
@@ -25963,7 +25734,6 @@ Perform one XOR U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 7, 7)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.MIN.U32.GLOBAL.{order}.{scope} v0, [s0:s1 + v0], v0`
 
@@ -26005,7 +25775,7 @@ Perform one MIN U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.MIN.U32.GLOBAL.RELAXED.DEVICE v0, [s0:s1 + v0], v0`
 
@@ -26038,7 +25808,6 @@ Perform one MIN U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 7, 8)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.MAX.U32.GLOBAL.{order}.{scope} v0, [s0:s1 + v0], v0`
 
@@ -26080,7 +25849,7 @@ Perform one MAX U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.MAX.U32.GLOBAL.RELAXED.DEVICE v0, [s0:s1 + v0], v0`
 
@@ -26113,7 +25882,6 @@ Perform one MAX U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 7, 9)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.CAS.U32.GLOBAL.{order}.{scope} v0, [s0:s1 + v0], v0, v0`
 
@@ -26156,7 +25924,7 @@ Perform one CAS U32 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.CAS.U32.GLOBAL.RELAXED.DEVICE v0, [s0:s1 + v0], v0, v0`
 
@@ -26189,7 +25957,6 @@ Perform one CAS U32 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 7, 10)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.LOAD.U64.GLOBAL.{order}.{scope} v0:v1, [s0:s1 + v0]`
 
@@ -26230,7 +25997,7 @@ Perform one LOAD U64 atomic event in global space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.LOAD.U64.GLOBAL.RELAXED.DEVICE v0:v1, [s0:s1 + v0]`
 
@@ -26263,7 +26030,6 @@ Perform one LOAD U64 atomic event in global space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 7, 11)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_ATOM.STORE.U64.GLOBAL.{order}.{scope} [s0:s1 + v0], v0:v1`
 
@@ -26304,7 +26070,7 @@ Perform one STORE U64 atomic event in global space using runtime-selected legal 
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.STORE.U64.GLOBAL.RELAXED.DEVICE [s0:s1 + v0], v0:v1`
 
@@ -26337,7 +26103,6 @@ Perform one STORE U64 atomic event in global space using runtime-selected legal 
 - `(class, format, opcode)`：`(MEMORY, 7, 12)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.ADD.U64.GLOBAL.{order}.{scope} v0:v1, [s0:s1 + v0], v0:v1`
 
@@ -26379,7 +26144,7 @@ Perform one ADD U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.ADD.U64.GLOBAL.RELAXED.DEVICE v0:v1, [s0:s1 + v0], v0:v1`
 
@@ -26412,7 +26177,6 @@ Perform one ADD U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 7, 13)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.XCHG.U64.GLOBAL.{order}.{scope} v0:v1, [s0:s1 + v0], v0:v1`
 
@@ -26454,7 +26218,7 @@ Perform one XCHG U64 atomic event in global space using runtime-selected legal o
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.XCHG.U64.GLOBAL.RELAXED.DEVICE v0:v1, [s0:s1 + v0], v0:v1`
 
@@ -26487,7 +26251,6 @@ Perform one XCHG U64 atomic event in global space using runtime-selected legal o
 - `(class, format, opcode)`：`(MEMORY, 7, 14)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.AND.U64.GLOBAL.{order}.{scope} v0:v1, [s0:s1 + v0], v0:v1`
 
@@ -26529,7 +26292,7 @@ Perform one AND U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.AND.U64.GLOBAL.RELAXED.DEVICE v0:v1, [s0:s1 + v0], v0:v1`
 
@@ -26562,7 +26325,6 @@ Perform one AND U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 7, 15)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.OR.U64.GLOBAL.{order}.{scope} v0:v1, [s0:s1 + v0], v0:v1`
 
@@ -26604,7 +26366,7 @@ Perform one OR U64 atomic event in global space using runtime-selected legal ord
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.OR.U64.GLOBAL.RELAXED.DEVICE v0:v1, [s0:s1 + v0], v0:v1`
 
@@ -26637,7 +26399,6 @@ Perform one OR U64 atomic event in global space using runtime-selected legal ord
 - `(class, format, opcode)`：`(MEMORY, 7, 16)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.XOR.U64.GLOBAL.{order}.{scope} v0:v1, [s0:s1 + v0], v0:v1`
 
@@ -26679,7 +26440,7 @@ Perform one XOR U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.XOR.U64.GLOBAL.RELAXED.DEVICE v0:v1, [s0:s1 + v0], v0:v1`
 
@@ -26712,7 +26473,6 @@ Perform one XOR U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 7, 17)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.MIN.U64.GLOBAL.{order}.{scope} v0:v1, [s0:s1 + v0], v0:v1`
 
@@ -26754,7 +26514,7 @@ Perform one MIN U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.MIN.U64.GLOBAL.RELAXED.DEVICE v0:v1, [s0:s1 + v0], v0:v1`
 
@@ -26787,7 +26547,6 @@ Perform one MIN U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 7, 18)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.MAX.U64.GLOBAL.{order}.{scope} v0:v1, [s0:s1 + v0], v0:v1`
 
@@ -26829,7 +26588,7 @@ Perform one MAX U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.MAX.U64.GLOBAL.RELAXED.DEVICE v0:v1, [s0:s1 + v0], v0:v1`
 
@@ -26862,7 +26621,6 @@ Perform one MAX U64 atomic event in global space using runtime-selected legal or
 - `(class, format, opcode)`：`(MEMORY, 7, 19)`
 - Guard policy：`optional`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_ATOM.CAS.U64.GLOBAL.{order}.{scope} v0:v1, [s0:s1 + v0], v0:v1, v0:v1`
 
@@ -26905,7 +26663,7 @@ Perform one CAS U64 atomic event in global space using runtime-selected legal or
 - ILLEGAL_INSTRUCTION when the encoded scope field is reserved value 3; reserved decoding precedes legal-matrix validation.
 - ILLEGAL_OPERAND when a defined, non-reserved order/scope value forms a combination outside legal_orders/legal_scopes, or when an address/data operand is invalid.
 - MISALIGNED_ACCESS on any participating address that violates natural alignment.
-- MEMORY_BOUNDS on overflow, provenance failure, or out-of-allocation range.
+- MEMORY_BOUNDS on overflow, or on an unmapped or permission-denied byte.
 
 **示例：** `V_ATOM.CAS.U64.GLOBAL.RELAXED.DEVICE v0:v1, [s0:s1 + v0], v0:v1, v0:v1`
 
@@ -26932,7 +26690,7 @@ Perform one CAS U64 atomic event in global space using runtime-selected legal or
 
 ## SSY
 
-- Family ID：`F052`
+- Family ID：`ssy`
 - 语义组：`structured_control`
 
 Push a structured reconvergence token.
@@ -26945,7 +26703,6 @@ Push a structured reconvergence token.
 - `(class, format, opcode)`：`(CONTROL, 0, 0)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `SSY 0`
 
@@ -26992,7 +26749,7 @@ Validate the JOIN target and stack capacity, then push a reconvergence frame who
 
 ## BRA
 
-- Family ID：`F053`
+- Family ID：`bra`
 - 语义组：`unstructured_control`
 
 Direct PC-relative branch.
@@ -27005,7 +26762,6 @@ Direct PC-relative branch.
 - `(class, format, opcode)`：`(CONTROL, 0, 1)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `BRA 0`
 
@@ -27048,7 +26804,7 @@ Jump to next_pc + (sign_extend_30(disp30) << 3) without scalar-ready or call-sta
 
 ## BRA.P
 
-- Family ID：`F054`
+- Family ID：`bra-p`
 - 语义组：`structured_control`
 
 Conditionally branch the guarded lane subset.
@@ -27061,7 +26817,6 @@ Conditionally branch the guarded lane subset.
 - `(class, format, opcode)`：`(CONTROL, 0, 2)`
 - Guard policy：`explicit_condition`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `BRA.P PT, 0`
 
@@ -27107,7 +26862,7 @@ Branch guarded lanes to target and retain the complement for structured reconver
 
 ## JOIN
 
-- Family ID：`F055`
+- Family ID：`join`
 - 语义组：`structured_control`
 
 Reconverge at the top SSY target.
@@ -27120,7 +26875,6 @@ Reconverge at the top SSY target.
 - `(class, format, opcode)`：`(CONTROL, 0, 3)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `JOIN`
 
@@ -27163,7 +26917,7 @@ Require PC == top.reconv_pc. ARMED: require active_mask==entry_mask, pop, advanc
 
 ## EXIT
 
-- Family ID：`F056`
+- Family ID：`exit`
 - 语义组：`structured_control`
 
 Permanently retire guarded lanes.
@@ -27176,7 +26930,6 @@ Permanently retire guarded lanes.
 - `(class, format, opcode)`：`(CONTROL, 0, 4)`
 - Guard policy：`explicit_condition`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `EXIT PT`
 
@@ -27189,7 +26942,7 @@ Permanently retire guarded lanes.
 
 **Semantics：**
 
-Remove guarded participating lanes from live and active masks; finish the warp when live_mask becomes zero.
+Retire every participating lane. Each retired lane is atomically removed from the CTA's live_owner_set, which can complete a barrier that the remaining owners are waiting on. EXIT itself performs no shared release.
 
 **Constraints：**
 
@@ -27220,7 +26973,7 @@ Remove guarded participating lanes from live and active masks; finish the warp w
 
 ## CALL
 
-- Family ID：`F057`
+- Family ID：`call`
 - 语义组：`call_return`
 
 Call a direct or indirect subroutine.
@@ -27233,7 +26986,6 @@ Call a direct or indirect subroutine.
 - `(class, format, opcode)`：`(CONTROL, 0, 5)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `CALL 0`
 
@@ -27255,7 +27007,7 @@ Require scalar_ready and call_stack.depth < descriptor.call_stack_depth <= archi
 
 **Faults：**
 
-- SCALAR_STATE_FAULT before reading target or stack state when not scalar-ready.
+- DIVERGENCE_FAULT before reading target or stack state when not scalar-ready.
 - RECONVERGENCE_FAULT when descriptor.call_stack_depth is exceeded; ILLEGAL_OPERAND on an invalid target.
 
 **示例：** `CALL 0`
@@ -27285,7 +27037,6 @@ Require scalar_ready and call_stack.depth < descriptor.call_stack_depth <= archi
 - `(class, format, opcode)`：`(CONTROL, 0, 6)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `CALL.IND s0:s1`
 
@@ -27307,7 +27058,7 @@ Require scalar_ready and call_stack.depth < descriptor.call_stack_depth <= archi
 
 **Faults：**
 
-- SCALAR_STATE_FAULT before reading target or stack state when not scalar-ready.
+- DIVERGENCE_FAULT before reading target or stack state when not scalar-ready.
 - RECONVERGENCE_FAULT when descriptor.call_stack_depth is exceeded; ILLEGAL_OPERAND on an invalid target.
 
 **示例：** `CALL.IND s0:s1`
@@ -27331,7 +27082,7 @@ Require scalar_ready and call_stack.depth < descriptor.call_stack_depth <= archi
 
 ## RET
 
-- Family ID：`F058`
+- Family ID：`ret`
 - 语义组：`call_return`
 
 Return from a subroutine.
@@ -27344,7 +27095,6 @@ Return from a subroutine.
 - `(class, format, opcode)`：`(CONTROL, 0, 7)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `RET`
 
@@ -27365,7 +27115,7 @@ Require scalar_ready and a nonempty call stack. Let depth=call_stack.depth. Reje
 
 **Faults：**
 
-- SCALAR_STATE_FAULT before reading stack state when not scalar-ready.
+- DIVERGENCE_FAULT before reading stack state when not scalar-ready.
 - RECONVERGENCE_FAULT on empty call stack or any unclosed callee frame whose owner_call_depth equals current call_stack.depth.
 
 **示例：** `RET`
@@ -27389,7 +27139,7 @@ Require scalar_ready and a nonempty call stack. Let depth=call_stack.depth. Reje
 
 ## JUMP.IND
 
-- Family ID：`F059`
+- Family ID：`jump-ind`
 - 语义组：`unstructured_control`
 
 Indirect scalar-ready jump.
@@ -27402,7 +27152,6 @@ Indirect scalar-ready jump.
 - `(class, format, opcode)`：`(CONTROL, 0, 8)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `JUMP.IND s0:s1`
 
@@ -27423,7 +27172,7 @@ After scalar-ready validation, jump to the aligned in-text SGPR target without c
 
 **Faults：**
 
-- SCALAR_STATE_FAULT before reading target; ILLEGAL_OPERAND on an invalid target.
+- DIVERGENCE_FAULT before reading target; ILLEGAL_OPERAND on an invalid target.
 
 **示例：** `JUMP.IND s0:s1`
 
@@ -27446,7 +27195,7 @@ After scalar-ready validation, jump to the aligned in-text SGPR target without c
 
 ## FENCE
 
-- Family ID：`F060`
+- Family ID：`fence`
 - 语义组：`memory_ordering`
 
 Order memory accesses at a selected scope.
@@ -27459,7 +27208,6 @@ Order memory accesses at a selected scope.
 - `(class, format, opcode)`：`(SYNC, 0, 0)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `FENCE.CTA`
 
@@ -27511,7 +27259,6 @@ Complete prior accesses and order later accesses at CTA scope.
 - `(class, format, opcode)`：`(SYNC, 0, 1)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `FENCE.DEVICE`
 
@@ -27563,7 +27310,6 @@ Complete prior accesses and order later accesses at DEVICE scope.
 - `(class, format, opcode)`：`(SYNC, 0, 2)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `FENCE.SYSTEM`
 
@@ -27609,10 +27355,10 @@ Complete prior accesses and order later accesses at SYSTEM scope.
 
 ## BAR.SYNC
 
-- Family ID：`F061`
+- Family ID：`bar-sync`
 - 语义组：`barrier`
 
-Atomically arrive active CTA owners at a named slot and wait for every fixed owner.
+Whole-CTA barrier with release/acquire ordering.
 
 ### BAR.SYNC.CTA — `cta`
 
@@ -27621,8 +27367,7 @@ Atomically arrive active CTA owners at a named slot and wait for every fixed own
 - 语义组：`barrier`
 - `(class, format, opcode)`：`(SYNC, 0, 3)`
 - Guard policy：`required_pt`
-- Required state：`none`
-- VGPR tag effect：`none`
+- Required state：`scalar_ready`
 
 **语法：** `BAR.SYNC.CTA 3`
 
@@ -27634,19 +27379,18 @@ Atomically arrive active CTA owners at a named slot and wait for every fixed own
 
 **Semantics：**
 
-Convert every entry-active lane to its CTA linear_tid, atomically validate and arrive that owner_snapshot in the slot's current generation, make each arrival a shared CTA release, and block the whole warp with one BarrierWaitRecord {warp_id, owner_snapshot, resume_pc=old_PC+8}. The first legal arrival selects SYNC mode. When all fixed linear_tid owners have arrived, all records take a shared CTA acquire and resume together by writing only PC=resume_pc and ready, then the slot immediately retires to the next empty generation.
+Convert every entry-active lane to its CTA linear_tid, atomically add those owners to the slot's arrived_set, make each arrival a shared CTA release, and block the whole warp with one BarrierWaitRecord {warp_id, owner_snapshot, resume_pc=old_PC+8}. The barrier completes as soon as arrived_set equals the CTA's live_owner_set; every waiter then takes a shared CTA acquire and resumes by writing only PC=resume_pc and ready, and the slot is atomically cleared to idle.
 
 **Constraints：**
 
-- slot3 is the explicit barrier id 0..7; each CTA has eight slots, each starts at generation 0 in EMPTY mode, and every barrier owner/set identity is CTA linear_tid = warp_id*32+lane_id.
-- Generation is a mathematical nonnegative integer N; retire sets it to exactly generation+1, it never wraps, and finite implementations must preserve as-if non-wrapping identity.
-- Only entry active linear_tid owners participate; absent tail lanes never participate, EXIT never shrinks the owner set, and there is no subset or expected-count operand.
-- A blocked warp preserves active_mask, live_mask, reconvergence stack, and call stack; suspended paths cannot enter, and each warp has at most one blocked record.
-- Mixing SYNC with SPLIT mode or repeating any owner arrival faults the whole dynamic instruction before any arrival, wait, register, or PC effect.
+- slot3 is the explicit barrier id 0..7; each CTA has eight slots, an idle slot has an empty arrived_set and no waiters, and every barrier owner identity is CTA linear_tid = warp_id*32+lane_id.
+- BAR.SYNC.CTA requires scalar_ready, so the warp must be fully reconverged; a divergent warp faults before any arrival is recorded.
+- EXIT removes the exiting linear_tid from live_owner_set and may therefore complete a pending barrier, but EXIT itself contributes no shared release.
+- All unused extension and reserved bits are zero.
 
 **Faults：**
 
-- BARRIER_FAULT on a duplicate owner arrival or current-generation mode mismatch; ILLEGAL_INSTRUCTION on reserved bits.
+- DIVERGENCE_FAULT when the warp is not scalar-ready; ILLEGAL_OPERAND on an invalid slot id; ILLEGAL_INSTRUCTION on reserved bits.
 
 **示例：** `BAR.SYNC.CTA 3`
 
@@ -27670,134 +27414,9 @@ Convert every entry-active lane to its CTA linear_tid, atomically validate and a
 | order2 | 57:56 | — | 是 | — | Memory order. |
 | x6 | 63:58 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
-## BAR.ARRIVE
-
-- Family ID：`F062`
-- 语义组：`barrier`
-
-Atomically arrive active CTA owners without waiting and return one token per lane.
-
-### BAR.ARRIVE.CTA — `cta`
-
-- 执行域：`cta_sync`
-- 编码格式：`SYNC`
-- 语义组：`barrier`
-- `(class, format, opcode)`：`(SYNC, 0, 4)`
-- Guard policy：`required_pt`
-- Required state：`none`
-- VGPR tag effect：`create_tag`
-
-**语法：** `BAR.ARRIVE.CTA v5, 3`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| token | barrier_token | write | a | — |
-| barrier | barrier_id | control | slot3 | — |
-
-**Semantics：**
-
-Convert every entry-active lane to CTA linear_tid, atomically validate and arrive those owners in the slot's current generation (the logical generation in N), make each arrival a shared CTA release, and write a tag {CTA identity, linear_tid, slot, logical generation} to that lane's destination VGPR32. This is the root tag-write policy's create_tag exception. The first legal arrival selects SPLIT mode. Nonparticipating lanes are unchanged; success does not block and advances PC by 8. All owners arriving marks the generation completed, but retirement waits until every linear_tid owner has successfully consumed its token with BAR.WAIT.CTA.
-
-**Constraints：**
-
-- Field a names a VGPR barrier_token destination and slot3 is the explicit barrier id 0..7; only entry active owners participate.
-- Each token has 32 visible bits plus a hidden valid tag exactly binding CTA identity, linear_tid, slot, and the current logical generation in N; visible bits alone cannot create or revive token identity.
-- Duplicate arrival, SYNC/SPLIT mode mixing, or any active-lane error faults the whole dynamic instruction with no arrival, VGPR write, or PC effect.
-
-**Faults：**
-
-- BARRIER_FAULT on a duplicate owner arrival or current-generation mode mismatch; ILLEGAL_OPERAND on an invalid VGPR; ILLEGAL_INSTRUCTION on reserved bits.
-
-**示例：** `BAR.ARRIVE.CTA v5, 3`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x0018000000280205`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 5 | 否 | — | Execution class. |
-| format | 6:4 | 0 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 4 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | 0 | 否 | — | Header lane guard; zero is PT. |
-| a | 26:19 | — | 否 | — | Opcode-defined register A. |
-| b | 34:27 | — | 是 | — | Opcode-defined register B. |
-| imm16 | 50:35 | — | 是 | — | Opcode-defined 16-bit immediate. |
-| slot3 | 53:51 | — | 否 | — | Barrier slot 0..7. |
-| scope2 | 55:54 | — | 是 | — | Memory scope. |
-| order2 | 57:56 | — | 是 | — | Memory order. |
-| x6 | 63:58 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
-
-## BAR.WAIT
-
-- Family ID：`F063`
-- 语义组：`barrier`
-
-Consume one matching per-lane split token and acquire the completed generation.
-
-### BAR.WAIT.CTA — `cta`
-
-- 执行域：`cta_sync`
-- 编码格式：`SYNC`
-- 语义组：`barrier`
-- `(class, format, opcode)`：`(SYNC, 0, 5)`
-- Guard policy：`required_pt`
-- Required state：`none`
-- VGPR tag effect：`none`
-
-**语法：** `BAR.WAIT.CTA 3, v5`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| barrier | barrier_id | control | slot3 | — |
-| token | barrier_token | read | a | — |
-
-**Semantics：**
-
-Convert each entry-active lane to CTA linear_tid and atomically validate and consume that owner's source token. The explicit id and hidden tag must match this CTA identity, linear_tid, slot, current generation, and an unconsumed SPLIT arrival. If the generation is incomplete, block the whole warp with one BarrierWaitRecord {warp_id, owner_snapshot, resume_pc=old_PC+8}; once complete, each owner_snapshot takes a shared CTA acquire and the warp resumes by changing only PC=resume_pc and ready. A wait issued after completion acquires immediately. The slot retires only after every fixed linear_tid owner has consumed its token.
-
-**Constraints：**
-
-- Field a names a VGPR barrier_token source and slot3 is the explicit barrier id 0..7; only entry active linear_tid owners read and consume their own lane token.
-- Token consumption succeeds exactly once. Stale, foreign-CTA, wrong-slot, wrong-owner, malformed, untagged, duplicate, or physically wrapped-counter tokens fault; no old identity may revive in a later logical generation.
-- A blocked warp preserves active_mask, live_mask, reconvergence stack, and call stack; suspended paths cannot enter, and each warp has at most one blocked record.
-- Any active-lane error leaves every consume bit, blocked record, register, and PC unchanged.
-
-**Faults：**
-
-- BARRIER_FAULT on any token/tag/id/generation/owner/consumption mismatch; ILLEGAL_OPERAND on an invalid VGPR; ILLEGAL_INSTRUCTION on reserved bits.
-
-**示例：** `BAR.WAIT.CTA 3, v5`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x0018000000280285`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 5 | 否 | — | Execution class. |
-| format | 6:4 | 0 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 5 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | 0 | 否 | — | Header lane guard; zero is PT. |
-| a | 26:19 | — | 否 | — | Opcode-defined register A. |
-| b | 34:27 | — | 是 | — | Opcode-defined register B. |
-| imm16 | 50:35 | — | 是 | — | Opcode-defined 16-bit immediate. |
-| slot3 | 53:51 | — | 否 | — | Barrier slot 0..7. |
-| scope2 | 55:54 | — | 是 | — | Memory scope. |
-| order2 | 57:56 | — | 是 | — | Memory order. |
-| x6 | 63:58 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
-
 ## X_BROADCAST
 
-- Family ID：`F064`
+- Family ID：`x-broadcast`
 - 语义组：`crosslane`
 
 Broadcast a selected active lane value.
@@ -27810,7 +27429,6 @@ Broadcast a selected active lane value.
 - `(class, format, opcode)`：`(CROSSLANE, 0, 0)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `X_BROADCAST.B32 v0, v0, s0`
 
@@ -27863,7 +27481,6 @@ Copy src from the selected lane to dst in every active lane.
 - `(class, format, opcode)`：`(CROSSLANE, 0, 1)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `X_BROADCAST.B32 v0, v0, 0`
 
@@ -27908,121 +27525,9 @@ Broadcast src from lane imm8[4:0] to every active lane; imm8[7:5] is zero.
 | imm8 | 58:51 | — | 否 | — | Opcode-defined collective immediate. |
 | x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
 
-## V_BCAST
-
-- Family ID：`F065`
-- 语义组：`move`
-
-True SGPR-to-VGPR broadcast.
-
-### V_BCAST.B32 — `b32`
-
-- 执行域：`vector`
-- 编码格式：`COLL`
-- 语义组：`move`
-- `(class, format, opcode)`：`(CROSSLANE, 0, 2)`
-- Guard policy：`optional`
-- Required state：`none`
-- VGPR tag effect：`clear`
-
-**语法：** `V_BCAST.B32 v0, s0`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| dst | vgpr32 | write | vd | — |
-| src | sgpr32 | read | smask | — |
-
-**Semantics：**
-
-Copy the frozen SGPR value to each participating destination lane; other lanes are unchanged.
-
-**Constraints：**
-
-- All unused extension and reserved bits are zero.
-
-**Faults：**
-
-- ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-
-**示例：** `V_BCAST.B32 v0, s0`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x0000000000000106`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 6 | 否 | — | Execution class. |
-| format | 6:4 | 0 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 2 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
-| vd | 26:19 | — | 否 | — | Vector destination. |
-| va | 34:27 | — | 是 | — | Vector source A or predicate encoding. |
-| vb | 42:35 | — | 是 | — | Vector source B or lane selector. |
-| smask | 50:43 | — | 否 | — | SGPR lane-mask source or scalar destination. |
-| imm8 | 58:51 | — | 是 | — | Opcode-defined collective immediate. |
-| x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
-
-### V_BCAST.B64 — `b64`
-
-- 执行域：`vector`
-- 编码格式：`COLL`
-- 语义组：`move`
-- `(class, format, opcode)`：`(CROSSLANE, 0, 3)`
-- Guard policy：`optional`
-- Required state：`none`
-- VGPR tag effect：`clear`
-
-**语法：** `V_BCAST.B64 v0:v1, s0:s1`
-
-#### Operands
-
-| 名称 | 类型 | 访问 | 字段 | 说明 |
-|---|---|---|---|---|
-| dst | vgpr64 | write | vd | — |
-| src | sgpr64 | read | smask | — |
-
-**Semantics：**
-
-Freeze the complete SGPR pair once, including any U64 provenance tag, and copy the low/high words and tag to each participating VGPR pair; nonparticipating lanes are unchanged.
-
-**Constraints：**
-
-- V_BCAST is an explicit vector-domain exception that may read one uniform SGPR pair and retains optional lane guard semantics.
-- Both encoded pair bases are even and the complete low/high register pair is in range.
-
-**Faults：**
-
-- ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid operand.
-
-**示例：** `V_BCAST.B64 v0:v1, s0:s1`
-
-**示例字段值：** —
-
-**64 位机器字：** `0x0000000000000186`
-
-#### 编码字段
-
-| 字段 | 位段 | 固定值 | 必须为零 | 保留值 | 说明 |
-|---|---:|---:|:---:|---|---|
-| class | 3:0 | 6 | 否 | — | Execution class. |
-| format | 6:4 | 0 | 否 | — | Class-local payload format. |
-| opcode | 12:7 | 3 | 否 | — | Opcode local to class and format. |
-| guard | 18:13 | — | 否 | — | Header lane guard; zero is PT. |
-| vd | 26:19 | — | 否 | — | Vector destination. |
-| va | 34:27 | — | 是 | — | Vector source A or predicate encoding. |
-| vb | 42:35 | — | 是 | — | Vector source B or lane selector. |
-| smask | 50:43 | — | 否 | — | SGPR lane-mask source or scalar destination. |
-| imm8 | 58:51 | — | 是 | — | Opcode-defined collective immediate. |
-| x5 | 63:59 | — | 是 | — | Opcode-defined extension; unused bits are zero. |
-
 ## S_READFIRST
 
-- Family ID：`F066`
+- Family ID：`s-readfirst`
 - 语义组：`crosslane`
 
 Read a VGPR value from the first active lane into an SGPR.
@@ -28035,7 +27540,6 @@ Read a VGPR value from the first active lane into an SGPR.
 - `(class, format, opcode)`：`(CROSSLANE, 0, 4)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_READFIRST.B32 s0, v0`
 
@@ -28058,7 +27562,7 @@ Find the least-numbered active lane and copy its src value to scalar dst.
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register pair or statically invalid operand.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_READFIRST.B32 s0, v0`
 
@@ -28089,7 +27593,6 @@ Find the least-numbered active lane and copy its src value to scalar dst.
 - `(class, format, opcode)`：`(CROSSLANE, 0, 5)`
 - Guard policy：`required_pt`
 - Required state：`scalar_ready`
-- VGPR tag effect：`none`
 
 **语法：** `S_READFIRST.B64 s0:s1, v0:v1`
 
@@ -28102,7 +27605,7 @@ Find the least-numbered active lane and copy its src value to scalar dst.
 
 **Semantics：**
 
-After scalar-ready succeeds, select the least-numbered live lane and copy its complete VGPR pair and any U64 provenance tag to the SGPR pair.
+After scalar-ready succeeds, select the least-numbered live lane and copy its complete VGPR pair to the SGPR pair.
 
 **Constraints：**
 
@@ -28112,7 +27615,7 @@ After scalar-ready succeeds, select the least-numbered live lane and copy its co
 **Faults：**
 
 - ILLEGAL_INSTRUCTION on a reserved encoding; ILLEGAL_OPERAND on an invalid register pair or statically invalid operand.
-- SCALAR_STATE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
+- DIVERGENCE_FAULT if the warp is not scalar-ready; the instruction commits no architectural effect.
 
 **示例：** `S_READFIRST.B64 s0:s1, v0:v1`
 
@@ -28137,7 +27640,7 @@ After scalar-ready succeeds, select the least-numbered live lane and copy its co
 
 ## V_VOTE
 
-- Family ID：`F067`
+- Family ID：`v-vote`
 - 语义组：`vote`
 
 Reduce a vector predicate across active lanes.
@@ -28150,7 +27653,6 @@ Reduce a vector predicate across active lanes.
 - `(class, format, opcode)`：`(CROSSLANE, 0, 6)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_VOTE.ANY vp0`
 
@@ -28202,7 +27704,6 @@ Reduce participating predicate bits with ANY and write SCC implicitly.
 - `(class, format, opcode)`：`(CROSSLANE, 0, 7)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_VOTE.ALL vp0`
 
@@ -28254,7 +27755,6 @@ Reduce participating predicate bits with ALL and write SCC implicitly.
 - `(class, format, opcode)`：`(CROSSLANE, 0, 8)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`none`
 
 **语法：** `V_VOTE.BALLOT s0, vp0`
 
@@ -28300,7 +27800,7 @@ BALLOT the predicate bits over active lanes and write the scalar result.
 
 ## V_SHUFFLE
 
-- Family ID：`F068`
+- Family ID：`v-shuffle`
 - 语义组：`shuffle`
 
 Exchange values between active lanes.
@@ -28313,7 +27813,6 @@ Exchange values between active lanes.
 - `(class, format, opcode)`：`(CROSSLANE, 0, 9)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_SHUFFLE.IDX.B32 v0, v0, v0, 0`
 
@@ -28367,7 +27866,6 @@ Each active lane reads src from the lane selected by IDX within the encoded powe
 - `(class, format, opcode)`：`(CROSSLANE, 0, 10)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_SHUFFLE.UP.B32 v0, v0, v0, 0`
 
@@ -28421,7 +27919,6 @@ Each active lane reads src from the lane selected by UP within the encoded power
 - `(class, format, opcode)`：`(CROSSLANE, 0, 11)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_SHUFFLE.DOWN.B32 v0, v0, v0, 0`
 
@@ -28475,7 +27972,6 @@ Each active lane reads src from the lane selected by DOWN within the encoded pow
 - `(class, format, opcode)`：`(CROSSLANE, 0, 13)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_SHUFFLE.DOWN.B32 v0, v0, 0, 32`
 
@@ -28529,7 +28025,6 @@ Each active lane reads src from lane_id plus the encoded immediate delta within 
 - `(class, format, opcode)`：`(CROSSLANE, 0, 12)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `V_SHUFFLE.XOR.B32 v0, v0, v0, 0`
 
@@ -28577,7 +28072,7 @@ Each active lane reads src from the lane selected by XOR within the encoded powe
 
 ## MMA
 
-- Family ID：`F069`
+- Family ID：`mma`
 - 语义组：`matrix_multiply`
 
 Warp-cooperative matrix multiply-accumulate.
@@ -28590,7 +28085,6 @@ Warp-cooperative matrix multiply-accumulate.
 - `(class, format, opcode)`：`(MATRIX, 0, 0)`
 - Guard policy：`required_pt`
 - Required state：`none`
-- VGPR tag effect：`clear`
 
 **语法：** `MMA.M16N8K16.F16.F16.F32 v0, v0, v0, v0`
 

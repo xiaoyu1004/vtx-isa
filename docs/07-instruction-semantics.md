@@ -52,17 +52,17 @@ X     跨 lane/跨域，对应 CROSSLANE
 MMA   矩阵，对应 MATRIX
 ```
 
-`SYS` class 中纯系统 form 仍直接称为 SYS。`V_BCAST`、`X_BROADCAST`、`S_READFIRST` 的名字说明数据方向或集合行为，但机器 class 仍由 YAML 决定。所以“这一节从 V 方向解释它”和“它编码在 CROSSLANE class”并不冲突；机器 class 永远以 8 类之一为准。
+`SYS` class 中纯系统 form 仍直接称为 SYS。`X_BROADCAST`、`S_READFIRST` 的名字说明数据方向或集合行为，但机器 class 仍由 YAML 决定。所以“这一节从 V 方向解释它”和“它编码在 CROSSLANE class”并不冲突；机器 class 永远以 8 类之一为准。
 
 命名规则如下：
 
 - 标量数据指令使用 `S_` 前缀，例如 `S_ADD`、`S_LD`、`S_ATOM.ADD.U32.GLOBAL.RELAXED.DEVICE`。
 - 向量数据指令使用 `V_` 前缀，例如 `V_ADD`、`V_LD`、`V_ATOM.ADD.U32.GLOBAL.RELAXED.DEVICE`。
-- 跨寄存器域和跨 lane 的规范名称固定为 `V_BCAST`、`X_BROADCAST`、`S_READFIRST`、`S_GETREG`、`V_GETREG`。
+- 跨寄存器域和跨 lane 的规范名称固定为 `X_BROADCAST`、`S_READFIRST`、`S_GETREG`、`V_GETREG`。
 - 控制流清单固定为 `BRA`、`BRA.P`、`SSY`、`JOIN`、`EXIT`、`CALL`、`CALL.IND`、`JUMP.IND`、`RET`。
 - SYNC、X 和 MMA 的完整规范名称由 YAML 给出；文本别名不能产生第二个机器编码。
 
-`S_BROADCAST` 不是规范名称。把一个标量值送到各 lane 的指令只能写作 `V_BCAST`，因为目标属于 V 域。
+`S_BROADCAST` 和 `V_BCAST` 都不是规范名称，也不是任何指令的别名。把一个标量值送到各 lane 不需要专门的指令：任何 `V1/V2/V3/VCMP` 向量 form 都可以用 scalar-source selector 直接读一个 SGPR 源，需要独立副本时写 `V_MOV.B32 vd, sN`。
 
 ## 7.2 双寄存器执行模型
 
@@ -107,7 +107,7 @@ reconv_stack 中不存在 phase 为 FIRST 或 SECOND 的帧
 
 ```text
 fault(
-    code = SCALAR_STATE_FAULT,
+    code = DIVERGENCE_FAULT,
     lane_mask = active_mask,
     aux = 0)
 ```
@@ -128,11 +128,11 @@ fault(
 7. commit     无故障才一次提交全部效果
 ```
 
-静态译码不受 active mask 或 guard 抑制。具体先后只引用 `docs/02-programming-model.md` 的权威表；按该表，`ILLEGAL_INSTRUCTION` 和静态 `ILLEGAL_OPERAND` 位于 `SCALAR_STATE_FAULT` 之前。对静态合法的 S form，非 scalar-ready 的结果固定是 `SCALAR_STATE_FAULT`。任一参与 lane 失败，整条指令都不提交；不能出现“低 lane 已写、高 lane 才报错”。
+静态译码不受 active mask 或 guard 抑制。具体先后只引用 `docs/02-programming-model.md` 的权威表；按该表，`ILLEGAL_INSTRUCTION` 和静态 `ILLEGAL_OPERAND` 位于 `DIVERGENCE_FAULT` 之前。对静态合法的 S form，非 scalar-ready 的结果固定是 `DIVERGENCE_FAULT`。任一参与 lane 失败，整条指令都不提交；不能出现“低 lane 已写、高 lane 才报错”。
 
 所有源逻辑上先读后写，所以目标可以与源完全重合。多槽寄存器组只能完全重合或完全不相交，除非对应 form 明确允许其他关系。
 
-普通非控制指令成功后 `PC = PC + 8`。合法且 `P` 为空的 V 指令不产生数据效果，只推进 PC。S 指令若 `live_mask==0`，应在更早的 scalar-ready 检查中报告 `SCALAR_STATE_FAULT`，不能走空参与集合捷径。
+普通非控制指令成功后 `PC = PC + 8`。合法且 `P` 为空的 V 指令不产生数据效果，只推进 PC。S 指令若 `live_mask==0`，应在更早的 scalar-ready 检查中报告 `DIVERGENCE_FAULT`，不能走空参与集合捷径。
 
 ## 7.3 S-only、V-only 和 S/V 双版本
 
@@ -171,7 +171,7 @@ YAML 可以声明更多 S-only form，但必须写出不能存在 V 版本的理
 
 下列能力只属于 V 域：
 
-- `V_BCAST`：S 到 V 的广播。
+- 用 scalar-source selector 把一个 SGPR 当统一源读入逐 lane 运算。
 - 读取 lane id、lane-local 状态等逐 lane 特殊寄存器的 `V_GETREG` form。
 - 以 V 地址项形成每 lane 不同地址的访存。
 - 产生 `vpN` lane 掩码，并可作为 `BRA.P` 的逐 lane 条件。
@@ -180,12 +180,14 @@ X 和 MMA 也会读写 V 寄存器，但它们是独立顶层类别，不归入 
 
 ### 7.3.4 不允许偷偷跨域
 
-除 `V_BCAST`、`S_READFIRST` 和 form 明写的混合地址外：
+除 `vsrc*` 混合源、`S_READFIRST` 和 form 明写的混合地址外：
 
 - S 指令不能读 V 寄存器；
 - V 指令不能把 V 结果直接写进 S 寄存器；
-- 汇编器不能靠同号寄存器名自动插入广播或 read-first；
+- 汇编器不能靠同号寄存器名自动插入搬运或 read-first；
 - 实现不能因为“所有 lane 的值碰巧相同”把 V 源当成 S 源。
+
+混合源也不是无限制的跨域：一条 V 指令最多一个 SGPR 源，且必须由 selector 显式编码。写出两个 `sN` 源的汇编是错误，汇编器必须报错而不是自行插入一条搬运指令。
 
 ## 7.4 move 与跨域操作
 
@@ -193,26 +195,30 @@ X 和 MMA 也会读写 V 寄存器，但它们是独立顶层类别，不归入 
 
 `S_MOV` 和 `V_MOV` 按 form 宽度逐位复制，不做数值转换，不改变 NaN payload，不做符号扩展。窄值扩展只能由明确的 load 或 cvt form 完成。
 
-`V_MOV.B32 vd,vs` 的寄存器 form 是全 ISA 标签写回闭包的复制例外：对每个参与 lane，它把 barrier token 的隐藏有效标签与 32 位数值一起完整复制。非参与 lane 仍保持原样。除此以外，任何 VGPR32 槽写入都默认清除旧 barrier-token 标签，只有 `BAR.ARRIVE.CTA` 可以创建新标签。
+`V_MOV` 只搬位。寄存器上没有隐藏影子状态，因此 move 不需要额外说明标签如何创建、复制或清除。
 
-因此 `V_MOV.B32 vd,imm`、`V_MOV.B64`、`V_BCAST`、`X_BROADCAST`、`V_GETREG`、普通/原子 load 返回、ALU/CVT/FP 写回和 MMA 输出都逐个清除其写入槽的 barrier-token 标签。复制出来的多个标签副本仍指向同一个 `{CTA identity,linear_tid,slot,logical generation}` 单次消费身份，不会变成多张 token。这个默认清除只针对 barrier-token 标签，pointer provenance 仍按第 4 章处理。
-
-### 7.4.2 V_BCAST
+### 7.4.2 混合源 V_MOV：SGPR 到各 lane
 
 ```text
-V_BCAST.B32 vd, ss
-V_BCAST.B64 v0:v1, s0:s1
+V_MOV.B32 vd, vs            # ssrc=0
+V_MOV.B32 vd, ss            # ssrc=1
+V_MOV.B64 v0:v1, v2:v3      # ssrc=0
+V_MOV.B64 v0:v1, s0:s1      # ssrc=1
 ```
 
-`V_BCAST` 虽编码在 `CROSSLANE` class，执行域却是 `vector`，并且是该 class 中明确允许 `guard_policy: optional` 的例外。它按普通 vector 规则令 `P = E & guard`，不要求 scalar-ready。在入口冻结一次 S 源；对每个 `lane ∈ P`：
+`V_MOV` 是 `V1` 格式的 form，源操作数类型是 `vsrc32` 或 `vsrc64`。`ssrc=1` 时那 8 位寄存器号在 SGPR 文件中解释，这就是把标量值送进各 lane 的规范做法。它的执行域是 `vector`、`guard_policy: optional`，按普通 vector 规则令 `P = E & guard`，不要求 scalar-ready。
+
+在入口冻结一次源；对每个 `lane ∈ P`：
 
 ```text
-vd[lane] = frozen(ss)
+vd[lane] = frozen(src)
 ```
 
-guard 为假的 lane 不读取源、不写目标；非参与 lane 的 `vd` 保持不变。这里的方向固定是 **SGPR 到各 lane 的 VGPR**，不是从某个 lane 取值。
+guard 为假的 lane 不读取源、不写目标；非参与 lane 的 `vd` 保持不变。
 
-`.B64` 使用完整偶数连续寄存器对，一次复制 64 位。若 S 源携带 global/param/const pointer provenance，则每个参与 lane 的 V 目标同时得到同一份完整 `{space, allocation-id, offset}`；非参与 lane 的旧数值和旧 provenance 都不变。`.B32` 只复制 32 位，不凭空产生 provenance。
+`.B64` 使用完整偶数连续寄存器对，一次复制 64 位，两个 32 位半部来自同一次冻结的快照。
+
+很多情况下连这条 move 都不需要：既然 `V_ADD.U32`、`V_CMP.LT.U32`、`V_FFMA.F32` 这类 form 本身就能读一个 SGPR 源，直接写 `V_ADD.U32 v1, v0, s6` 比先搬后算更短。只有一条指令需要两个 uniform 值，或者要把 uniform 值多次复用而寄存器压力允许时，才值得先物化成 VGPR。
 
 ### 7.4.3 X_BROADCAST
 
@@ -222,7 +228,7 @@ X_BROADCAST vd, vs, lane
 
 `X_BROADCAST` 才是 lane 到 lane 的广播。它先冻结选中 lane 的 `vs`，再把这一份值写到所有规定的接收 lane。`lane` 是立即数还是统一 SGPR、源 lane 必须属于哪个集合、接收集合是什么，都由对应 YAML form 的结构化操作数和约束给出；实现不能自行改成“当前第一个 lane”。
 
-这是 `execution_domain: warp_collective` 的集合操作。所有规定参与者必须在同一动态实例上取得一致的 lane 选择，源 lane 必须可用，否则产生 `COLLECTIVE_FAULT`，并且所有目标保持不变。`V_BCAST` 和 `X_BROADCAST` 方向不同，汇编器不得把它们当别名。
+这是 `execution_domain: warp_collective` 的集合操作。所有规定参与者必须在同一动态实例上取得一致的 lane 选择，源 lane 必须可用，否则产生 `COLLECTIVE_FAULT`，并且所有目标保持不变。它与混合源读 SGPR 是两件不同的事：`X_BROADCAST` 是 lane 到 lane，混合源是 SGPR 文件到各 lane。
 
 ### 7.4.4 S_READFIRST
 
@@ -238,7 +244,7 @@ first = 编号最小的 live lane
 sd = frozen(vs[first])
 ```
 
-`.B64` 从同一个 first lane 一次读取完整 VGPR 对。若该 lane 的 V 源携带 pointer provenance，S 目标同时得到完全相同的 provenance；不能从一个 lane 取数值、从另一个 lane 取 tag。`.B32` 不产生 provenance。
+`.B64` 从同一个 first lane 一次读取完整 VGPR 对；两个 32 位半部必须来自同一个 lane 的同一次快照，不能分别选择 lane。
 
 若 `live_mask` 为空，warp 已完成，不会取到该指令。`S_READFIRST` 不做 vote，也不检查其他 lane 是否同值；需要验证同值时必须先用 X 类指令。
 
@@ -400,7 +406,7 @@ x5      form 未定义的位必须为零
 
 SV-mix 的 VGPR32 index **固定零扩展**；最高位为 1 也仍是大正数，绝不能按有符号数解释。`scale` 只能取具体 form 明写的值；未声明缩放时固定为 1。global、param、const 可以使用 lane-address 或 SV-mix；shared 使用 32 位 lane-address，也可使用 form 明确给出的 SV-mix。**local 只能使用 lane-address**，只能由 vector memory 访问，每个 lane 的数值偏移落在自己的 local allocation；local 禁止 scalar、uniform-base 和 SV-mix。
 
-`SMEMX`/VMEM/VATOMX 只能使用各自 form 结构化列出的地址项。错误空间或 provenance 为 `ILLEGAL_OPERAND`，保留 scale/modifier 或非零 must-zero 位为 `ILLEGAL_INSTRUCTION`，数学地址越界为 `MEMORY_BOUNDS`，自然对齐失败为 `MISALIGNED_ACCESS`；多故障仍按第 2 章优先级。vector mixed address 中任一参与 lane 失败，整条指令零事件回滚。
+`SMEMX`/VMEM/VATOMX 只能使用各自 form 结构化列出的地址项。地址空间由 opcode 决定，寄存器里的地址值不带空间身份。错误寄存器类别或非法操作数组合为 `ILLEGAL_OPERAND`，保留 scale/modifier 或非零 must-zero 位为 `ILLEGAL_INSTRUCTION`，数学地址越界为 `MEMORY_BOUNDS`，自然对齐失败为 `MISALIGNED_ACCESS`；多故障仍按第 2 章优先级。vector mixed address 中任一参与 lane 失败，整条指令零事件回滚。
 
 S_MEM 先检查 scalar-ready。一次**成功**的 S load、S store 或其他非原子 scalar memory form 必须恰好产生一个内存事件，不能是零个，也不能按 lane 复制。V_MEM 对 P 中每个 lane 产生一个事件；即使多个 lane 得到同一 EA，也仍是不同的 lane 事件。
 
@@ -469,13 +475,13 @@ EA[lane] = unsigned(SGPR64_base)
            + zero_extend(VGPR32_index[lane])
 ```
 
-`VATOMX` 的 scale 固定为 1，不存在额外缩放变体，`x` 必须为零。额外 scale、错误空间/provenance、越界、未对齐和任一 lane 失败分别按 7.8.1 与第 2 章处理，并整条零事件回滚。
+`VATOMX` 的 scale 固定为 1，不存在额外缩放变体，`x` 必须为零。额外 scale、非法操作数、越界、未对齐和任一 lane 失败分别按 7.8.1 与第 2 章处理，并整条零事件回滚。
 
 ## 7.10 W 控制流与隐藏重汇聚
 
 ### 7.10.1 一个 PC，隐藏状态
 
-一个 warp 只有一个架构 PC。实现保存路径集合、待执行路径、调用返回点和重汇聚信息，但这些都是隐藏状态：程序不能读栈深、伪造 token、修改 pending mask，或依赖实现内部先存哪一项。
+一个 warp 只有一个架构 PC。实现保存路径集合、待执行路径、调用返回点和重汇聚信息，但这些都是隐藏状态：程序不能读栈深、修改 pending mask，或依赖实现内部先存哪一项。
 
 隐藏不等于随意。相同入口状态、SCC 和 `vpN` 必须得到相同的 PC、active mask 和可见提交顺序。
 
@@ -510,7 +516,7 @@ RET                恢复最近一次 CALL 保存的 return_pc
 
 直接和间接目标都必须 8 字节对齐、完整落在当前文本内并指向合法指令。间接目标只能来自 S 域，不能逐 lane 不同。
 
-`CALL`、`CALL.IND`、`JUMP.IND` 和 `RET` 的机器 class 都是 `CONTROL`，用户可读分类都是 W，不得改标成 SALU。它们的 `required_state` 都是 `scalar_ready`，并且必须在读取间接目标 SGPR 或调用栈之前检查；不满足时产生 `SCALAR_STATE_FAULT`。
+`CALL`、`CALL.IND`、`JUMP.IND` 和 `RET` 的机器 class 都是 `CONTROL`，用户可读分类都是 W，不得改标成 SALU。它们的 `required_state` 都是 `scalar_ready`，并且必须在读取间接目标 SGPR 或调用栈之前检查；不满足时产生 `DIVERGENCE_FAULT`。
 
 调用栈是每 warp 一份、程序不可见的 LIFO 状态，不占普通 S/V 寄存器。每个调用帧**只保存一个** `return_pc=PC+8`，不保存 active mask、重汇聚深度或其他控制上下文。最大深度只取 descriptor 的 `call_stack_depth`：
 
@@ -528,29 +534,28 @@ RET                恢复最近一次 CALL 保存的 return_pc
 
 ## 7.11 SYNC
 
-SYNC 类包括内存栅栏和三条命名 CTA 屏障。内存栅栏只建立第 4 章定义的顺序，不是 lane 会合。屏障的规范指令名和操作数次序固定为：
+SYNC 类包括内存栅栏和唯一一条 CTA 屏障。内存栅栏只建立第 4 章定义的顺序，不是 lane 会合。屏障的规范指令名和操作数次序固定为：
 
 ```text
-BAR.SYNC.CTA   id
-BAR.ARRIVE.CTA vd, id
-BAR.WAIT.CTA   id, vs
+BAR.SYNC.CTA id
 ```
 
-每 CTA 有 8 个槽 `0..7`，每槽只有一个当前 generation。generation 是数学非负整数 `N`：从 0 开始，每次退休严格加 1，单调且永不回绕。owner 唯一身份为 CTA 内 `linear_tid=warp_id*32+lane_id`；所有 owner/arrived/consumed 集合、token tag 和 wrong-owner 检查都使用 `linear_tid`。启动为 generation 0、`EMPTY`、集合和 waiter 为空。owner 集永远是 CTA 启动时全部真实线程的 `linear_tid`：尾部不存在 lane不算 owner，`EXIT` 不删 owner。每代第一批合法 arrival 选择 `SYNC` 或 `SPLIT`，混用或同 owner 重复 arrival 都是 `BARRIER_FAULT`。
+架构没有 split 屏障、屏障 token 和 generation 计数。每 CTA 有 8 个槽 `0..7`，每槽只保存 `arrived_set` 和 waiter 映射；另有一个 8 槽共用的 CTA 级 `live_owner_set`。owner 唯一身份为 CTA 内 `linear_tid=warp_id*32+lane_id`。启动时全部槽为 idle（两者都空），`live_owner_set` 是 CTA 启动时全部真实线程的 `linear_tid`：尾部不存在 lane 从不计入，`EXIT` 把退出线程移除。
 
-- `BAR.SYNC.CTA` 把入口 active lane 转成 `owner_snapshot: set<linear_tid>`，做一次原子 arrival commit和 shared CTA release，然后用 `BarrierWaitRecord {warp_id,owner_snapshot,resume_pc=old_PC+8}` 阻塞整个 warp。全体 owner 到齐时，全部记录一起 acquire，并只写各自 `PC=resume_pc`、清 blocked record、置 ready，槽随即退休。
-- `BAR.ARRIVE.CTA` 对入口 `linear_tid` 原子登记并逐 lane 写 `vd[lane]`。每份 token 标签恰好绑定 `{CTA identity,linear_tid,id,current logical generation}`；非参与 lane 不写。arrival 是 shared CTA release，成功不阻塞并 `PC+=8`。到齐只标记 completed，不能提前退休 SPLIT 代。
-- `BAR.WAIT.CTA` 同时检查显式 id 和每个 active owner 的 `vs[lane]` 标签。只有本 CTA identity、本 `linear_tid`、本槽、当前 generation、尚未消费的 token 合法。合法时先原子登记 consume；未 completed 就用同样的 wait record 阻塞整个 warp，completed 后 acquire 并 `PC+=8`。completed 后才来的 WAIT 立即 acquire。全体 owner 的 token 都消费后才退休并进入下一代。
+`BAR.SYNC.CTA` 的 `required_state` 是 `scalar_ready`，`guard_policy` 是 `required_pt`，执行域是 `cta_sync`：
 
-每 warp 同时至多一条 blocked record。阻塞期间 PC 留在 BAR，active/live 掩码、重汇聚栈和调用栈保持不变，挂起路径不能切入；恢复也不改这些状态。
+- 先检查 scalar-ready；不满足时报告 `DIVERGENCE_FAULT`，不登记任何 arrival，也不改 PC。因为通过检查后 `active_mask == live_mask`，一个 warp 只能整体到达，不存在部分到达、重复到达或 wrong-owner 的情形。
+- 把入口 active lane 转成 `owner_snapshot: set<linear_tid>`，做一次原子 arrival commit 和 shared CTA release，然后用 `BarrierWaitRecord {warp_id,owner_snapshot,resume_pc=old_PC+8}` 阻塞整个 warp。
+- `arrived_set` 等于当前 `live_owner_set` 时，全部记录一起 acquire，并只写各自 `PC=resume_pc`、清 blocked record、置 ready，槽随即清空回 idle。
+- `EXIT` 缩小 `live_owner_set` 后必须重新检查每个非 idle 槽，因为完成条件可能刚刚被满足。`EXIT` 自身不是 shared release。
 
-token 恰好消费一次。stale、foreign、wrong-slot、wrong-owner、wrong-generation、malformed、untagged 和 duplicate token 都报 `BARRIER_FAULT`。一条 warp 动态指令只要任一 active lane 错误，就不提交任何 lane 的 arrival、consume、VGPR 写、blocked record 或 PC。`EXIT` 的未消费义务只看槽：任一退出 `linear_tid` 若位于任一 SPLIT 槽的 `arrived_set-consumed_set` 就故障，与 VGPR 是否还留有 tag 无关。
+每 warp 同时至多一条 blocked record。阻塞期间 PC 留在屏障指令上，active/live 掩码、重汇聚栈和调用栈保持不变，挂起路径不能切入；恢复也不改这些状态。
 
-有限实现可以压缩 generation 的内部表示，但必须表现得像 `N` 永不回绕。物理计数器回到相同低位、内部对象编号回收或长时间运行，都不能让旧、已消费 token 或 `V_MOV.B32` 留下的副本重新匹配；这样的 token 永远是 stale/duplicate。
+因为槽在完成时被清空，同一个槽的两次屏障之间不留任何状态，也就没有需要区分的“代”，实现不需要防止计数器回绕。
 
-BAR 只处理当前 active lane。若当前分歧路径阻塞，使同 warp 的挂起路径无法到达或 WAIT，程序可以按既有规则死锁。没有子集 barrier，也没有 `expected` 操作数。BAR 的 release/acquire 只排序 shared；global、local、param、const 和 host 不因此有序，global 通信仍需原子和需要的 `MEMBAR`。完整状态转移伪代码见第 3 章第 10 节。
+如果 CTA 内一部分 warp 到达某个槽，另一部分既不到达也不退出，`arrived_set` 永远追不上 `live_owner_set`，程序按第 3 章第 12 节报告 `DEADLOCK`。屏障的 release/acquire 只排序 shared；global、local、param、const 和 host 不因此有序，global 通信仍需原子和需要的 `MEMBAR`。完整状态转移伪代码见第 3 章第 10 节。
 
-CTA 只有在全部 warp 完成且 8 个槽都 IDLE 时完成。IDLE 固定表示 `mode=EMPTY`、arrived/consumed/waiters 为空、`completed=false`；generation 可为任意 `N` 中的退休计数值，但不能是有限计数器回绕后的旧逻辑值。
+CTA 只有在全部 warp 完成且 8 个槽都 idle 时完成。idle 固定表示 `arrived_set` 和 `waiters` 都为空。
 
 ## 7.12 X 跨 lane
 

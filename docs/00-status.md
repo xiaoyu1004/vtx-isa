@@ -52,15 +52,13 @@ VTX-1 ISA 1.0 Draft 固定以下基本决定：
 5. 机器码中的 8 个 class 只是编码分类：`SYS`、`SALU`、`VALU`、`MEMORY`、`CONTROL`、`SYNC`、`CROSSLANE`、`MATRIX`。class 不直接决定怎样执行；例如 `MEMORY` class 里面既有 `scalar` form，也有 `vector` form。
 6. 所有 `execution_domain=scalar` 的指令每个 warp 只执行一次，而且必须先满足 scalar-ready（标量就绪）。scalar-ready 要求 `active_mask == live_mask`、`live_mask` 非空，并且没有处于 `FIRST` 或 `SECOND` 的未完成分歧帧。`active_mask` 是当前执行路径的 lane，`live_mask` 是尚未退出的 lane。
 7. `S_ALU`（普通标量整数和逻辑运算）、`S_FP`（标量浮点）、`S_GETREG`（读取统一特殊寄存器）、`SMEM`（标量访存）、`SATOM`（标量原子操作）、`S_READFIRST`（读取最低编号 active lane）都属于 `execution_domain=scalar`，没有例外。
-8. `execution_domain=vector` 的指令只对当前 active lane 执行，并可读取 SGPR，把同一个 SGPR 值广播给所有参与 lane。vector 指令不要求 scalar-ready。
+8. `execution_domain=vector` 的指令只对当前 active lane 执行，不要求 scalar-ready。`V1`、`V2`、`V3`、`VCMP` 这四种向量编码格式各带一个 scalar-source selector 字段：`V1` 是 1 bit 的 `ssrc`，其余三个是 2 bit 的 `ssrc_sel`。selector 为 0 时所有源寄存器号都在 VGPR 文件中解释；selector 非 0 时恰好一个源寄存器号改为在 SGPR 文件中解释，同一个标量值对所有参与 lane 相同。一条 vector 指令最多只能有一个 SGPR 源，架构中没有独立的广播指令。
 9. `CALL`（直接调用）、`CALL.IND`（从 SGPR 取目标的间接调用）、`JUMP.IND`（从 SGPR 取目标的间接跳转）、`RET`（返回）都是 `execution_domain=warp_control`，但因为它们使用每 warp 一套的统一调用栈或统一间接目标，所以必须额外满足 scalar-ready。直接 `BRA` 和 `BRA.P` 不要求 scalar-ready。
 10. 软件不能写 `EXEC`。分歧、重汇聚和退出只能由 `SSY`、`BRA.P`、`JOIN`、`EXIT` 及其隐藏状态机处理。
 11. 一个 CTA（线程块）必须整体驻留在同一个 SM/CU 上；CTA 内各 warp 可以独立调度。
-12. 每个 CTA 固定有 8 个命名屏障槽 `0..7`。owner 的唯一身份是 CTA 内 `linear_tid = warp_id*32 + lane_id`；owner 集固定为启动时全部真实线程，不含尾部不存在 lane，且不因 `EXIT` 缩小。每槽 generation 是数学上的非负整数 `N`，从 0 开始，每次退休严格加 1，单调且永不回绕。
-13. 三条规范屏障指令只叫 `BAR.SYNC.CTA id`、`BAR.ARRIVE.CTA vd,id`、`BAR.WAIT.CTA id,vs`。split token 是每 lane 的 VGPR32 值并带隐藏有效标签；标签恰好绑定 `{CTA identity, linear_tid, slot, logical generation}`，不能靠伪造 32 位数值冒充，也不能在后续代复活。
-14. 同一 generation 只能选择 `SYNC` 或 `SPLIT` 一种模式。任一 active lane 的屏障协议错误都使整条 warp 动态指令零效果回滚；没有子集屏障，也没有 `expected` 字段。
-15. BAR 阻塞整个 warp 的当前动态路径；一个 waiter 固定保存 `{warp_id, owner_snapshot, resume_pc}`。阻塞和恢复都不改 active/live 掩码、重汇聚栈或调用栈，挂起路径不能趁机切入，每 warp 同时至多一条 blocked record。
-16. 任意参与 lane 的任意 VGPR32 槽写入默认清除旧 barrier-token 标签。唯二例外是 `BAR.ARRIVE.CTA` 创建新标签，以及寄存器型 `V_MOV.B32` 复制源标签。
+12. 每个 CTA 固定有 8 个屏障槽 `0..7`。owner 的唯一身份是 CTA 内 `linear_tid = warp_id*32 + lane_id`。`live_owner_set` 启动时是 CTA 内全部真实线程，不含尾部不存在的 lane，并且只在 `EXIT` 时收缩。
+13. 唯一的规范屏障指令是 `BAR.SYNC.CTA id`。架构不提供 split（arrive/wait 分离）屏障、屏障 token 或 generation 计数。屏障在槽的 `arrived_set` 等于 CTA 的 `live_owner_set` 时立即完成，槽随即原子清回 idle；idle 的定义就是 `arrived_set` 为空且没有 waiter。
+14. `BAR.SYNC.CTA` 阻塞整个 warp 的当前动态路径；一个 waiter 固定保存 `{warp_id, owner_snapshot, resume_pc}`，每 warp 同时至多一条 blocked record。阻塞和恢复都不改 active/live 掩码、重汇聚栈或调用栈，挂起路径不能趁机切入。它要求 scalar-ready，因此分歧 warp 在记录任何 arrival 之前就报故障。
 
 这些固定点的完整定义分别见 `02-programming-model.md` 和 `03-execution-model.md`。
 
@@ -70,15 +68,14 @@ VTX-1 ISA 1.0 Draft 固定以下基本决定：
 
 - 在 CTA 开始执行前完成描述符、文本、参数和资源校验；
 - 保持 `s`、`v`、`vp`、`SCC`、`EXEC`、`LIVE` 的可观察行为与本草案一致；
-- 对任何不满足 scalar-ready 的 `execution_domain: scalar` form 准确报告 `SCALAR_STATE_FAULT`；
-- `CALL`、`CALL.IND`、`JUMP.IND`、`RET` 的 `required_state: scalar_ready` 不满足时，同样报告 `SCALAR_STATE_FAULT`，同时保持它们的 `warp_control` 分类；
+- 对任何不满足 scalar-ready 的 `execution_domain: scalar` form 准确报告 `DIVERGENCE_FAULT`；
+- `CALL`、`CALL.IND`、`JUMP.IND`、`RET`、`BAR.SYNC.CTA` 的 `required_state: scalar_ready` 不满足时，同样报告 `DIVERGENCE_FAULT`，同时保持它们各自的执行域分类；
 - 只通过规定的 warp-control 状态机改变 active lane 集和 live lane 集；
 - 在一条指令故障时，不提交该指令的任何部分效果；
-- 对命名屏障执行固定 owner、单 generation、模式隔离、逐 lane token 和恰好一次消费规则；`EXIT` 不得丢弃尚未消费的 split token；
-- 用槽内 `arrived_set-consumed_set` 判断 EXIT 的 SPLIT 消费义务，不能靠扫描 VGPR 标签猜测；
-- 让有限内部计数器表现得像 generation 永不回绕；任何旧、已消费或复制 token 都禁止因物理计数值复用而重新匹配；
-- 只有全部 warp 完成且 8 个槽都处于 IDLE 状态时才完成 CTA；generation 计数值本身不妨碍完成；
-- 只把成功 BAR 的 release/acquire 用于 CTA shared memory；global、local、param、const 和 host 不因 BAR 自动得到顺序；
+- 对每条向量指令最多解码出一个 SGPR 源；selector 落在保留编码上时报告 `ILLEGAL_INSTRUCTION`；
+- 对屏障执行固定 owner 身份和 `arrived_set == live_owner_set` 的完成条件；`EXIT` 把退出线程从 `live_owner_set` 移除，但本身不产生 shared release；
+- 只有全部 warp 完成且 8 个槽都处于 idle 状态时才完成 CTA；
+- 只把成功 `BAR.SYNC.CTA` 的 release/acquire 用于 CTA shared memory；global、local、param、const 和 host 不因屏障自动得到顺序；
 - 不把调度顺序、物理寄存器编号、缓存行为或实际执行周期暴露成未定义的架构承诺。
 
 实现可以采用不同的流水线、寄存器文件组织和调度算法，只要软件看到的结果与本草案完全一致。

@@ -8,13 +8,16 @@
 ;   s4:s5 = c      GLOBAL_PTR, byte offset 16
 ;   s6     = n      U32,        byte offset 24
 ;
-; Descriptor resources: sgpr_count=16, vgpr_count=16, vp_count=2,
+; Descriptor resources: sgpr_count=16, vgpr_count=13, vp_count=2,
 ; reconv_stack_depth=1, static_shared_size=0.
 ;
 ; Register map:
 ;   v0=lane, v1=warp, v2=cta, v3=ntid, v4=ncta
-;   v5=warp_base, v6=grid_stride, v7=n, v8=i, v9=byte_offset
+;   v5=warp_base, v6=grid_stride, v8=i, v9=byte_offset
 ;   v10=a[i], v11=b[i], v12=c[i]
+;
+; `n` stays in s6. Every vector compare reads it directly through the V2/VCMP
+; scalar-source selector, so no VGPR copy of a uniform value is needed.
 
 vecadd:
     V_GETREG.LANE.U32 v0, LSR_LANE_ID
@@ -22,7 +25,6 @@ vecadd:
     V_GETREG.UNIFORM.U32 v2, USR_CTA_ID_X
     V_GETREG.UNIFORM.U32 v3, USR_NTID_X
     V_GETREG.UNIFORM.U32 v4, USR_NCTA_X
-    V_BCAST.B32 v7, s6
 
     ; warp_base = cta_id * ntid_x + warp_id * 32
     V_MUL.U32 v5, v2, v3
@@ -34,11 +36,11 @@ vecadd:
     ; divides a warp; vp1 only masks a possible final partial warp.
     SSY vecadd_done
 vecadd_loop:
-    V_CMP.LT.U32 vp0, v5, v7
+    V_CMP.LT.U32 vp0, v5, s6
     BRA.P !vp0, vecadd_done
 
     V_ADD.U32 v8, v5, v0
-    V_CMP.LT.U32 vp1, v8, v7
+    V_CMP.LT.U32 vp1, v8, s6
     V_SHL.B32 v9, v8, 2
     @vp1 V_LD.GLOBAL.U32 v10, [s0:s1 + v9 + 0]
     @vp1 V_LD.GLOBAL.U32 v11, [s2:s3 + v9 + 0]
