@@ -1216,7 +1216,7 @@ receivers = E
 BAR.SYNC.CTA id
 ```
 
-架构不提供把到达和等待分开的 split 屏障，也不提供屏障 token、generation 计数或子集屏障。需要“先到达、后等待”的软件必须自己用 shared memory 上的原子操作和 `MEMBAR` 构造，那些结构完全落在第 4 章的内存模型里，不需要额外的屏障状态。
+架构不提供把到达和等待分开的 split 屏障，也不提供屏障 token、generation 计数或子集屏障。需要“先到达、后等待”的软件必须自己用 shared memory 上的原子操作和 `FENCE` 构造，那些结构完全落在第 4 章的内存模型里，不需要额外的屏障状态。
 
 每个 CTA 固定有 8 个槽 `id=0..7`，另有一个 CTA 级的 `live_owner_set`：
 
@@ -1315,7 +1315,7 @@ after live_owner_set shrinks:
 
 ### 10.4 内存边
 
-每个成功 `BAR.SYNC.CTA` arrival 都是 shared、CTA scope 的 release，恢复是 shared、CTA scope 的 acquire。它们不自动排序 global、local、param、const 或 host；global 通信仍要使用合法原子和需要的 `MEMBAR`。
+每个成功 `BAR.SYNC.CTA` arrival 都是 shared、CTA scope 的 release，恢复是 shared、CTA scope 的 acquire。它们不自动排序 global、local、param、const 或 host；global 通信仍要使用合法原子和需要的 `FENCE`。
 
 ## 11. 调度、前进和 occupancy
 
@@ -1384,7 +1384,7 @@ kernel 尚未完成时，若同时满足：
 | `vector` | 每个参与 lane 做一次，可读 VGPR、`vpN`，并可由 selector 把其中一个源改成 SGPR | 不检查 |
 | `warp_control` | 改 PC、路径、重汇聚栈或调用栈 | 普通控制不检查；`CALL/CALL.IND/JUMP.IND/RET` 必须检查 |
 | `warp_collective` | 一个 warp 的多个 lane 合作投票或交换数据 | 不检查，但要满足集合会合合同 |
-| `cta_sync` | CTA 线程做屏障或内存同步 | `BAR.SYNC.CTA` 必须检查；`MEMBAR` 不检查 |
+| `cta_sync` | CTA 线程做屏障或内存同步 | `BAR.SYNC.CTA` 必须检查；`FENCE` 不检查 |
 | `warp_matrix` | 一个 warp 合作完成矩阵运算 | 不检查，但要满足矩阵参与合同 |
 
 机器 class 不出现在这张表里，因为它只决定编码。`MEMORY` class 内部仍要看 form 的执行域，不能把所有访存一概当成 vector 或 scalar。
@@ -1590,7 +1590,7 @@ space, allocation, byte-range, value, scope, order
 - `I`：allocation 或所有权纪元开始时的概念初始写；
 - `R`、`W`：普通读写；
 - `A_R`、`A_W`、`A_RMW`：原子读、写、读改写；
-- `F(scope)`：`MEMBAR`；
+- `F(scope)`：`FENCE`；
 - `B(slot,phase)`：`BAR.SYNC.CTA` 的到达和恢复；
 - `H`：allocation、启动、完成和所有权转移。
 
@@ -1629,7 +1629,7 @@ space, allocation, byte-range, value, scope, order
 1. 同一代理且字节区间重叠的 `po-loc`；
 2. SGPR 或 VGPR 的真数据依赖、地址依赖和控制依赖；
 3. 混合源 `V_MOV.B32/B64` 和 `S_READFIRST.B32/B64` 建立的寄存器值依赖；
-4. 任意事件到其后 `MEMBAR`，以及 `MEMBAR` 到其后任意事件；
+4. 任意事件到其后 `FENCE`，以及 `FENCE` 到其后任意事件；
 5. 任意事件到其后 RELEASE/ACQ_REL 原子，以及 ACQUIRE/ACQ_REL 原子到其后任意事件；
 6. `BAR.SYNC.CTA` 到达前的 shared 事件到该 owner 的 release 到达事件，以及屏障恢复的 acquire 到之后的 shared 事件；
 7. 同一 RMW 的读部到写部；
@@ -1803,9 +1803,9 @@ param、const 和 local 不支持原子。没有 SC order，也没有跨所有�
 
 原子操作只搬运和计算位模式。U32 和 U64 原子都不携带任何影子状态，也不需要区分“保留 tag”和“清除 tag”的情况；一次 U64 原子读写的就是那 8 个字节。
 
-## 8. MEMBAR 和 CTA 屏障
+## 8. FENCE 和 CTA 屏障
 
-`MEMBAR.CTA/DEVICE/SYSTEM` 是执行代理的 acquire-release fence。它对 warp 的 scalar 事件和相关 vector 事件建立第 6 节规定的 `ppo`；它不是会合点，也不等待其他 warp。只有配合同址原子通信并满足 scope 相容时，它才建立跨代理 `sw`。
+`FENCE.CTA/DEVICE/SYSTEM` 对执行代理做 acquire-release 排序。它对 warp 的 scalar 事件和相关 vector 事件建立第 6 节规定的 `ppo`；它不是会合点，也不等待其他 warp。只有配合同址原子通信并满足 scope 相容时，它才建立跨代理 `sw`。
 
 `BAR.SYNC.CTA id` 是唯一的屏障指令，只有全 CTA 语义。每 CTA 有 8 个槽 `0..7`；owner 唯一身份为 CTA 内 `linear_tid=warp_id*32+lane_id`。完成条件是槽的 `arrived_set` 等于 CTA 当前的 `live_owner_set`；不存在的尾 lane 从不计入，`EXIT` 会把退出线程移出 `live_owner_set`，也没有 `expected` 或子集参数。
 
@@ -1815,9 +1815,9 @@ param、const 和 local 不支持原子。没有 SC order，也没有跨所有�
 
 屏障阻塞记录保存 `{warp_id, owner_snapshot, resume_pc}`。恢复只把该 warp 的 PC 写成 `resume_pc` 并置 ready；active/live 掩码、重汇聚栈、调用栈和 shared 事件历史都不改。槽清空不是内存事件；因为槽里不保留任何跨屏障状态，同一个槽的两次屏障之间也没有需要区分的“代”。
 
-这些边只覆盖 shared 事件。屏障不排序 global、local、param、const，也不涉及 host。用屏障交换 global 数据仍需合法原子发布/获取；需要的顺序仍由 atomic order/scope 和 `MEMBAR` 建立。
+这些边只覆盖 shared 事件。屏障不排序 global、local、param、const，也不涉及 host。用屏障交换 global 数据仍需合法原子发布/获取；需要的顺序仍由 atomic order/scope 和 `FENCE` 建立。
 
-需要 arrive/wait 分离的软件用 shared memory 上的原子计数器加 `MEMBAR.CTA` 自行实现：release 侧用 RELEASE 原子递增，acquire 侧用 ACQUIRE 原子自旋读。这样得到的顺序由第 6 节的原子 `sw` 规则给出，不依赖任何屏障槽状态。
+需要 arrive/wait 分离的软件用 shared memory 上的原子计数器加 `FENCE.CTA` 自行实现：release 侧用 RELEASE 原子递增，acquire 侧用 ACQUIRE 原子自旋读。这样得到的顺序由第 6 节的原子 `sw` 规则给出，不依赖任何屏障槽状态。
 
 ## 9. 主机所有权
 
@@ -1831,7 +1831,7 @@ global allocation 的所有权为 `HOST`、`DEVICE` 或运行时明确创建的 
 4. kernel 全部设备事件结束后，运行时以 SYSTEM release/acquire 转回 HOST。
 5. 主机重新取得所有权后才能读取结果或释放 allocation。
 
-`MEMBAR.SYSTEM` 只排序事件，不改变所有者，不能让主机在 kernel 执行时轮询一个 DEVICE allocation。
+`FENCE.SYSTEM` 只排序事件，不改变所有者，不能让主机在 kernel 执行时轮询一个 DEVICE allocation。
 
 只有实现和运行时都声明支持时，allocation 才可进入 `SYSTEM_SHARED`。此时主机自然对齐、lock-free 的 U32/U64 原子映射到 SYSTEM scope 的同宽 `A_R/A_W/A_RMW`，并与设备共享 `mo`。主机只映射 RELAXED、ACQUIRE、RELEASE、ACQ_REL 四种 order。普通 payload 仍须通过 SYSTEM scope 的发布/获取形成 `hb`。
 
@@ -3060,7 +3060,7 @@ canonical 文本遵守以下规则：
 - 混合源操作数按实际寄存器文件显示为 `sN`/`sE:s(E+1)` 或 `vN`/`vE:v(E+1)`，反汇编不得把 SGPR 源印成 VGPR 号；
 - 不允许根据助记符拼写、寄存器前缀或字面量大小模糊选择多个候选形式。
 
-汇编器可以接受大小写、显式 `@PT`、零偏移省略等无损语法别名，但必须先归一化到唯一形式。`BARRIER`、`BARRIER_ARRIVE`、`BARRIER_WAIT`、`V_BCAST` 都不是任何指令的兼容名称或 canonical 别名，必须按未知助记符拒绝。需要多条机器指令的伪操作属于宏，不是编码别名；listing 和调试信息必须显示实际展开。
+汇编器可以接受大小写、显式 `@PT`、零偏移省略等无损语法别名，但必须先归一化到唯一形式。`BARRIER`、`BARRIER_ARRIVE`、`BARRIER_WAIT`、`V_BCAST`、`MEMBAR` 都不是任何指令的兼容名称或 canonical 别名，必须按未知助记符拒绝。内存排序指令的唯一助记符是 `FENCE.CTA/DEVICE/SYSTEM`。需要多条机器指令的伪操作属于宏，不是编码别名；listing 和调试信息必须显示实际展开。
 
 若源文本不能唯一确定 `(class, format, opcode)`、数据类型、寄存器类别或立即数解释，汇编器必须报错并列出冲突候选，不得按声明顺序或“最接近”原则选择。
 
@@ -3164,7 +3164,7 @@ form 里**不得**重复 `class`、`format` 或 `fields`：它们由 `encoding_f
 
 只有两类信息无法从 registry 推导，因此允许逐 form 覆盖：
 
-- `field_values`：把某个字段固定成一个常量。例如 `MEMBAR` 三个 form 用它把 `scope2/order2` 钉死成各自的组合。
+- `field_values`：把某个字段固定成一个常量。例如 `FENCE` 三个 form 用它把 `scope2/order2` 钉死成各自的组合。
 - `field_notes`：给某个字段一个 form 专属的描述，用于同一个物理槽在不同 form 中承载不同含义的情况，例如 `V_SHUFFLE.DOWN.B32` 的立即数 delta form。
 
 family ID 是语义化 slug（`^[a-z0-9]+(-[a-z0-9]+)*$`，如 `v-add`、`bar-sync`），不是不透明编号。
@@ -3747,7 +3747,7 @@ BAR.SYNC.CTA id
 
 因为槽在完成时被清空，同一个槽的两次屏障之间不留任何状态，也就没有需要区分的“代”，实现不需要防止计数器回绕。
 
-如果 CTA 内一部分 warp 到达某个槽，另一部分既不到达也不退出，`arrived_set` 永远追不上 `live_owner_set`，程序按第 3 章第 12 节报告 `DEADLOCK`。屏障的 release/acquire 只排序 shared；global、local、param、const 和 host 不因此有序，global 通信仍需原子和需要的 `MEMBAR`。完整状态转移伪代码见第 3 章第 10 节。
+如果 CTA 内一部分 warp 到达某个槽，另一部分既不到达也不退出，`arrived_set` 永远追不上 `live_owner_set`，程序按第 3 章第 12 节报告 `DEADLOCK`。屏障的 release/acquire 只排序 shared；global、local、param、const 和 host 不因此有序，global 通信仍需原子和需要的 `FENCE`。完整状态转移伪代码见第 3 章第 10 节。
 
 CTA 只有在全部 warp 完成且 8 个槽都 idle 时完成。idle 固定表示 `arrived_set` 和 `waiters` 都为空。
 
@@ -4537,7 +4537,7 @@ family/form 总数必须保持 YAML 的运行时去重结果不变。汇编/反�
 | EXIT 无 release | 退出线程先写 shared 再 EXIT，唤醒的 waiter 读同一地址 | `EXIT` 不建立 release/acquire 边，该读属于数据竞争，不得断言看到新值 |
 | blocked record | 阻塞、恢复、尝试第二条 record | 每 warp 至多一条；阻塞/恢复保持 active/live/reconv/call，挂起路径不能切入；恢复只写 resume PC、清记录、置 ready |
 | DEADLOCK | 一部分 warp 到达槽 N，其余 warp 既不到达也不退出 | `arrived_set` 追不上 `live_owner_set`，按第 3 章第 12 节报告 `DEADLOCK` |
-| 内存 | shared release/acquire litmus；同程序换 global/local/param/const/host | shared 禁止旧值结果；其他空间不得因屏障额外有序，global 需原子/MEMBAR |
+| 内存 | shared release/acquire litmus；同程序换 global/local/param/const/host | shared 禁止旧值结果；其他空间不得因屏障额外有序，global 需原子/FENCE |
 | CTA 完成 | 所有 warp 完成，分别注入非空 arrived_set 或非空 waiters | 仅 8 槽全 idle 才完成；任一非 idle 状态拒绝完成 |
 
 阻塞/恢复专项必须证明：`BarrierWaitRecord` 只有 `warp_id/owner_snapshot/resume_pc` 三个字段，`owner_snapshot=A` 且 `resume_pc=old_PC+8`；arrival 只提交一次；挂起期间不重复 release；恢复只写记录指定 PC 和 ready，不改 active/live/reconv/call。没有 `expected`、成员 mask 或子集参数的正例；任何测试工具自行缩小 `live_owner_set` 都是 FAIL。

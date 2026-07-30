@@ -176,7 +176,7 @@ EA[lane] = SGPR64_base + zero_extend(VGPR32_index[lane])
 ### CTA 屏障
 
 - `execution_domain=cta_sync` 只有一条屏障指令 `BAR.SYNC.CTA id`。架构不提供 split 屏障、屏障 token、generation 计数或子集屏障；`(5,0,4)` 和 `(5,0,5)` 未分配并必须拒绝。
-- 需要“先到达、后等待”的软件用 shared memory 上的原子操作和 `MEMBAR` 自行构造，这些结构完全落在既有内存模型内。
+- 需要“先到达、后等待”的软件用 shared memory 上的原子操作和 `FENCE` 自行构造，这些结构完全落在既有内存模型内。
 - 每 CTA 固定 8 个槽 `0..7`；owner 唯一身份是 `linear_tid=warp_id*32+lane_id`，所有集合以 `linear_tid` 为元素。
 - 槽状态只有 `arrived_set` 和 waiter 映射；两者都空即为 idle，启动时 8 个槽全部 idle。
 - CTA 另有 8 槽共用的 `live_owner_set`：初值是全部真实线程的 `linear_tid`，不含不存在的尾 lane；`EXIT` 从中移除退出线程，这是它唯一会变小的方式。没有 `expected` 字段。
@@ -215,7 +215,7 @@ MMA.M16N8K16.F16.F16.F32
 ### 清单结构与真值源
 
 - `isa.yaml` 中物理布局与操作数绑定分离：`format_registry` 独占字段表，form 只声明 `encoding_format`、`opcode` 和操作数绑定，不重复 `class`、`format`、`fields`。未绑定的 payload 字段自动成为 must-zero 洞。
-- 仅两类无法派生的信息允许逐 form 覆盖：`field_values`（固定常量，用于 `MEMBAR` 的 `scope2/order2`）和 `field_notes`（form 专属字段描述，用于 `V_SHUFFLE.DOWN.B32` 的立即数 delta form）。
+- 仅两类无法派生的信息允许逐 form 覆盖：`field_values`（固定常量，用于 `FENCE` 的 `scope2/order2`）和 `field_notes`（form 专属字段描述，用于 `V_SHUFFLE.DOWN.B32` 的立即数 delta form）。
 - family ID 是语义 slug，例如 `v-add`、`bar-sync`；它不参与译码，也不承载编号顺序。
 - `tools/isa_model.py` 是加载与展开的唯一实现，验证器、构建器、向量生成器和测试共用它。`tools/gen_vectors.py` 生成 `encoding_vectors.json`，其中包含每个 selector 码的向量。
 

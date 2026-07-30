@@ -207,7 +207,7 @@ BAR.SYNC.CTA id
 
 看起来少了一样东西：把“到达”和“等待”分开的 split 屏障。这是刻意不要的。要让 `BAR.ARRIVE`/`BAR.WAIT` 这类接口在分歧下也说得清，规范必须同时定义每 lane 的 VGPR token、token 上不可伪造的隐藏标签、标签绑定的 `{CTA identity, linear_tid, slot, logical generation}`、永不回绕的 generation 计数、`EMPTY/SYNC/SPLIT` 模式隔离、`consumed_set`，以及一条覆盖全 ISA 每个 VGPR 写目标的标签清除闭包。这些机制没有一条能省：只要 token 可以被复制、跨代复活或由非 owner 消费，split 语义就不成立。
 
-而它换来的能力，软件用 shared memory 上的原子加 `MEMBAR` 就能自己搭出来，那种写法完全落在第 4 章的内存模型里，不需要任何新的架构状态。用一整套隐藏状态换一个库函数能实现的接口，不划算。
+而它换来的能力，软件用 shared memory 上的原子加 `FENCE` 就能自己搭出来，那种写法完全落在第 4 章的内存模型里，不需要任何新的架构状态。用一整套隐藏状态换一个库函数能实现的接口，不划算。
 
 不要 split 之后，屏障状态机小到可以整段读完：
 
@@ -216,7 +216,7 @@ BAR.SYNC.CTA id
 - CTA 另有一个 8 槽共用的 `live_owner_set`，初值是全部真实线程，只在 `EXIT` 时缩小；
 - 完成条件是 `arrived_set == live_owner_set`，随后所有 waiter 一起 acquire 并恢复，槽立即清空回 idle；
 - waiter 固定为 `BarrierWaitRecord {warp_id, owner_snapshot, resume_pc}`，每 warp 至多一条 blocked record，阻塞整个 warp，恢复只改 PC 和 ready，不改掩码或控制栈；
-- arrival 是 shared CTA release，恢复是 shared CTA acquire，不替代 global 原子或 `MEMBAR`。
+- arrival 是 shared CTA release，恢复是 shared CTA acquire，不替代 global 原子或 `FENCE`。
 
 `BAR.SYNC.CTA` 要求 scalar-ready，这是让上面这张表能这么小的关键。warp 只能整体到达，于是模式隔离、重复到达检查和 wrong-owner 检查全部没有对象；分歧 warp 在记录任何 arrival 之前就报 `DIVERGENCE_FAULT`，也就不存在“部分 arrival 需要回滚”的情况。屏障因此不需要专属故障码。
 
@@ -254,7 +254,7 @@ barrier token 的用途随 split 屏障一起消失（第 8.6 节）。provenanc
 
 ### 8.9 为什么清单把布局和绑定分开
 
-`isa.yaml` 里，物理布局归 `format_registry` 独占：form 只声明 `encoding_format`、`opcode` 和操作数绑定，未绑定的 payload 字段自动成为 must-zero 洞。只有两类信息确实无法派生，允许逐 form 覆盖：`field_values` 用于固定常量（`MEMBAR` 的 `scope2/order2`），`field_notes` 用于 form 专属的字段描述（`V_SHUFFLE.DOWN.B32` 的立即数 delta form）。
+`isa.yaml` 里，物理布局归 `format_registry` 独占：form 只声明 `encoding_format`、`opcode` 和操作数绑定，未绑定的 payload 字段自动成为 must-zero 洞。只有两类信息确实无法派生，允许逐 form 覆盖：`field_values` 用于固定常量（`FENCE` 的 `scope2/order2`），`field_notes` 用于 form 专属的字段描述（`V_SHUFFLE.DOWN.B32` 的立即数 delta form）。
 
 换成“每个 form 自带完整字段表”看起来更直白，实际是把同一份 `V2` 布局在几十个 form 里逐字复制，包括头部四个字段和全部 must-zero 洞。任何布局改动都要同步几十处，而布局改动恰恰是这类清单最常见的改动——`V1/V2/V3/VCMP` 切出 selector 位就是一例，注册表模型下只动四处。
 

@@ -195,7 +195,7 @@ space, allocation, byte-range, value, scope, order
 - `I`：allocation 或所有权纪元开始时的概念初始写；
 - `R`、`W`：普通读写；
 - `A_R`、`A_W`、`A_RMW`：原子读、写、读改写；
-- `F(scope)`：`MEMBAR`；
+- `F(scope)`：`FENCE`；
 - `B(slot,phase)`：`BAR.SYNC.CTA` 的到达和恢复；
 - `H`：allocation、启动、完成和所有权转移。
 
@@ -234,7 +234,7 @@ space, allocation, byte-range, value, scope, order
 1. 同一代理且字节区间重叠的 `po-loc`；
 2. SGPR 或 VGPR 的真数据依赖、地址依赖和控制依赖；
 3. 混合源 `V_MOV.B32/B64` 和 `S_READFIRST.B32/B64` 建立的寄存器值依赖；
-4. 任意事件到其后 `MEMBAR`，以及 `MEMBAR` 到其后任意事件；
+4. 任意事件到其后 `FENCE`，以及 `FENCE` 到其后任意事件；
 5. 任意事件到其后 RELEASE/ACQ_REL 原子，以及 ACQUIRE/ACQ_REL 原子到其后任意事件；
 6. `BAR.SYNC.CTA` 到达前的 shared 事件到该 owner 的 release 到达事件，以及屏障恢复的 acquire 到之后的 shared 事件；
 7. 同一 RMW 的读部到写部；
@@ -408,9 +408,9 @@ param、const 和 local 不支持原子。没有 SC order，也没有跨所有�
 
 原子操作只搬运和计算位模式。U32 和 U64 原子都不携带任何影子状态，也不需要区分“保留 tag”和“清除 tag”的情况；一次 U64 原子读写的就是那 8 个字节。
 
-## 8. MEMBAR 和 CTA 屏障
+## 8. FENCE 和 CTA 屏障
 
-`MEMBAR.CTA/DEVICE/SYSTEM` 是执行代理的 acquire-release fence。它对 warp 的 scalar 事件和相关 vector 事件建立第 6 节规定的 `ppo`；它不是会合点，也不等待其他 warp。只有配合同址原子通信并满足 scope 相容时，它才建立跨代理 `sw`。
+`FENCE.CTA/DEVICE/SYSTEM` 对执行代理做 acquire-release 排序。它对 warp 的 scalar 事件和相关 vector 事件建立第 6 节规定的 `ppo`；它不是会合点，也不等待其他 warp。只有配合同址原子通信并满足 scope 相容时，它才建立跨代理 `sw`。
 
 `BAR.SYNC.CTA id` 是唯一的屏障指令，只有全 CTA 语义。每 CTA 有 8 个槽 `0..7`；owner 唯一身份为 CTA 内 `linear_tid=warp_id*32+lane_id`。完成条件是槽的 `arrived_set` 等于 CTA 当前的 `live_owner_set`；不存在的尾 lane 从不计入，`EXIT` 会把退出线程移出 `live_owner_set`，也没有 `expected` 或子集参数。
 
@@ -420,9 +420,9 @@ param、const 和 local 不支持原子。没有 SC order，也没有跨所有�
 
 屏障阻塞记录保存 `{warp_id, owner_snapshot, resume_pc}`。恢复只把该 warp 的 PC 写成 `resume_pc` 并置 ready；active/live 掩码、重汇聚栈、调用栈和 shared 事件历史都不改。槽清空不是内存事件；因为槽里不保留任何跨屏障状态，同一个槽的两次屏障之间也没有需要区分的“代”。
 
-这些边只覆盖 shared 事件。屏障不排序 global、local、param、const，也不涉及 host。用屏障交换 global 数据仍需合法原子发布/获取；需要的顺序仍由 atomic order/scope 和 `MEMBAR` 建立。
+这些边只覆盖 shared 事件。屏障不排序 global、local、param、const，也不涉及 host。用屏障交换 global 数据仍需合法原子发布/获取；需要的顺序仍由 atomic order/scope 和 `FENCE` 建立。
 
-需要 arrive/wait 分离的软件用 shared memory 上的原子计数器加 `MEMBAR.CTA` 自行实现：release 侧用 RELEASE 原子递增，acquire 侧用 ACQUIRE 原子自旋读。这样得到的顺序由第 6 节的原子 `sw` 规则给出，不依赖任何屏障槽状态。
+需要 arrive/wait 分离的软件用 shared memory 上的原子计数器加 `FENCE.CTA` 自行实现：release 侧用 RELEASE 原子递增，acquire 侧用 ACQUIRE 原子自旋读。这样得到的顺序由第 6 节的原子 `sw` 规则给出，不依赖任何屏障槽状态。
 
 ## 9. 主机所有权
 
@@ -436,7 +436,7 @@ global allocation 的所有权为 `HOST`、`DEVICE` 或运行时明确创建的 
 4. kernel 全部设备事件结束后，运行时以 SYSTEM release/acquire 转回 HOST。
 5. 主机重新取得所有权后才能读取结果或释放 allocation。
 
-`MEMBAR.SYSTEM` 只排序事件，不改变所有者，不能让主机在 kernel 执行时轮询一个 DEVICE allocation。
+`FENCE.SYSTEM` 只排序事件，不改变所有者，不能让主机在 kernel 执行时轮询一个 DEVICE allocation。
 
 只有实现和运行时都声明支持时，allocation 才可进入 `SYSTEM_SHARED`。此时主机自然对齐、lock-free 的 U32/U64 原子映射到 SYSTEM scope 的同宽 `A_R/A_W/A_RMW`，并与设备共享 `mo`。主机只映射 RELAXED、ACQUIRE、RELEASE、ACQ_REL 四种 order。普通 payload 仍须通过 SYSTEM scope 的发布/获取形成 `hb`。
 

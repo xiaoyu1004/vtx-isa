@@ -381,6 +381,22 @@ class IsaConformanceTests(unittest.TestCase):
             if "generation" in line or "consumed_set" in line or "SPLIT" in line:
                 self.assertIn("不存在", line)
 
+    def test_prose_names_the_memory_ordering_family_as_the_manifest_does(self) -> None:
+        """Prose drifted to MEMBAR once while the manifest said FENCE."""
+        mnemonics = {form["mnemonic"] for form in self.forms()}
+        self.assertTrue(
+            {"FENCE.CTA", "FENCE.DEVICE", "FENCE.SYSTEM"}.issubset(mnemonics)
+        )
+
+        sources = sorted((ROOT / "docs").glob("*.md"))
+        sources += [ROOT / "README.md", ROOT / "REVIEW.md", ROOT / "CHANGELOG.md"]
+        for source in sources:
+            for number, line in enumerate(
+                source.read_text(encoding="utf-8").splitlines(), start=1
+            ):
+                if "MEMBAR" in line:
+                    self.assertIn("拒绝", line, f"{source.name}:{number}")
+
     def test_x_broadcast_register_and_immediate_lane_forms(self) -> None:
         forms = [
             form for form in self.forms() if form["mnemonic"] == "X_BROADCAST.B32"

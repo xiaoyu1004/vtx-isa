@@ -745,7 +745,7 @@ canonical 文本遵守以下规则：
 - 混合源操作数按实际寄存器文件显示为 `sN`/`sE:s(E+1)` 或 `vN`/`vE:v(E+1)`，反汇编不得把 SGPR 源印成 VGPR 号；
 - 不允许根据助记符拼写、寄存器前缀或字面量大小模糊选择多个候选形式。
 
-汇编器可以接受大小写、显式 `@PT`、零偏移省略等无损语法别名，但必须先归一化到唯一形式。`BARRIER`、`BARRIER_ARRIVE`、`BARRIER_WAIT`、`V_BCAST` 都不是任何指令的兼容名称或 canonical 别名，必须按未知助记符拒绝。需要多条机器指令的伪操作属于宏，不是编码别名；listing 和调试信息必须显示实际展开。
+汇编器可以接受大小写、显式 `@PT`、零偏移省略等无损语法别名，但必须先归一化到唯一形式。`BARRIER`、`BARRIER_ARRIVE`、`BARRIER_WAIT`、`V_BCAST`、`MEMBAR` 都不是任何指令的兼容名称或 canonical 别名，必须按未知助记符拒绝。内存排序指令的唯一助记符是 `FENCE.CTA/DEVICE/SYSTEM`。需要多条机器指令的伪操作属于宏，不是编码别名；listing 和调试信息必须显示实际展开。
 
 若源文本不能唯一确定 `(class, format, opcode)`、数据类型、寄存器类别或立即数解释，汇编器必须报错并列出冲突候选，不得按声明顺序或“最接近”原则选择。
 
@@ -849,7 +849,7 @@ form 里**不得**重复 `class`、`format` 或 `fields`：它们由 `encoding_f
 
 只有两类信息无法从 registry 推导，因此允许逐 form 覆盖：
 
-- `field_values`：把某个字段固定成一个常量。例如 `MEMBAR` 三个 form 用它把 `scope2/order2` 钉死成各自的组合。
+- `field_values`：把某个字段固定成一个常量。例如 `FENCE` 三个 form 用它把 `scope2/order2` 钉死成各自的组合。
 - `field_notes`：给某个字段一个 form 专属的描述，用于同一个物理槽在不同 form 中承载不同含义的情况，例如 `V_SHUFFLE.DOWN.B32` 的立即数 delta form。
 
 family ID 是语义化 slug（`^[a-z0-9]+(-[a-z0-9]+)*$`，如 `v-add`、`bar-sync`），不是不透明编号。

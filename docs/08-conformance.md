@@ -679,7 +679,7 @@ family/form 总数必须保持 YAML 的运行时去重结果不变。汇编/反�
 | EXIT 无 release | 退出线程先写 shared 再 EXIT，唤醒的 waiter 读同一地址 | `EXIT` 不建立 release/acquire 边，该读属于数据竞争，不得断言看到新值 |
 | blocked record | 阻塞、恢复、尝试第二条 record | 每 warp 至多一条；阻塞/恢复保持 active/live/reconv/call，挂起路径不能切入；恢复只写 resume PC、清记录、置 ready |
 | DEADLOCK | 一部分 warp 到达槽 N，其余 warp 既不到达也不退出 | `arrived_set` 追不上 `live_owner_set`，按第 3 章第 12 节报告 `DEADLOCK` |
-| 内存 | shared release/acquire litmus；同程序换 global/local/param/const/host | shared 禁止旧值结果；其他空间不得因屏障额外有序，global 需原子/MEMBAR |
+| 内存 | shared release/acquire litmus；同程序换 global/local/param/const/host | shared 禁止旧值结果；其他空间不得因屏障额外有序，global 需原子/FENCE |
 | CTA 完成 | 所有 warp 完成，分别注入非空 arrived_set 或非空 waiters | 仅 8 槽全 idle 才完成；任一非 idle 状态拒绝完成 |
 
 阻塞/恢复专项必须证明：`BarrierWaitRecord` 只有 `warp_id/owner_snapshot/resume_pc` 三个字段，`owner_snapshot=A` 且 `resume_pc=old_PC+8`；arrival 只提交一次；挂起期间不重复 release；恢复只写记录指定 PC 和 ready，不改 active/live/reconv/call。没有 `expected`、成员 mask 或子集参数的正例；任何测试工具自行缩小 `live_owner_set` 都是 FAIL。

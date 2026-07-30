@@ -562,7 +562,7 @@ receivers = E
 BAR.SYNC.CTA id
 ```
 
-架构不提供把到达和等待分开的 split 屏障，也不提供屏障 token、generation 计数或子集屏障。需要“先到达、后等待”的软件必须自己用 shared memory 上的原子操作和 `MEMBAR` 构造，那些结构完全落在第 4 章的内存模型里，不需要额外的屏障状态。
+架构不提供把到达和等待分开的 split 屏障，也不提供屏障 token、generation 计数或子集屏障。需要“先到达、后等待”的软件必须自己用 shared memory 上的原子操作和 `FENCE` 构造，那些结构完全落在第 4 章的内存模型里，不需要额外的屏障状态。
 
 每个 CTA 固定有 8 个槽 `id=0..7`，另有一个 CTA 级的 `live_owner_set`：
 
@@ -661,7 +661,7 @@ after live_owner_set shrinks:
 
 ### 10.4 内存边
 
-每个成功 `BAR.SYNC.CTA` arrival 都是 shared、CTA scope 的 release，恢复是 shared、CTA scope 的 acquire。它们不自动排序 global、local、param、const 或 host；global 通信仍要使用合法原子和需要的 `MEMBAR`。
+每个成功 `BAR.SYNC.CTA` arrival 都是 shared、CTA scope 的 release，恢复是 shared、CTA scope 的 acquire。它们不自动排序 global、local、param、const 或 host；global 通信仍要使用合法原子和需要的 `FENCE`。
 
 ## 11. 调度、前进和 occupancy
 
@@ -730,7 +730,7 @@ kernel 尚未完成时，若同时满足：
 | `vector` | 每个参与 lane 做一次，可读 VGPR、`vpN`，并可由 selector 把其中一个源改成 SGPR | 不检查 |
 | `warp_control` | 改 PC、路径、重汇聚栈或调用栈 | 普通控制不检查；`CALL/CALL.IND/JUMP.IND/RET` 必须检查 |
 | `warp_collective` | 一个 warp 的多个 lane 合作投票或交换数据 | 不检查，但要满足集合会合合同 |
-| `cta_sync` | CTA 线程做屏障或内存同步 | `BAR.SYNC.CTA` 必须检查；`MEMBAR` 不检查 |
+| `cta_sync` | CTA 线程做屏障或内存同步 | `BAR.SYNC.CTA` 必须检查；`FENCE` 不检查 |
 | `warp_matrix` | 一个 warp 合作完成矩阵运算 | 不检查，但要满足矩阵参与合同 |
 
 机器 class 不出现在这张表里，因为它只决定编码。`MEMORY` class 内部仍要看 form 的执行域，不能把所有访存一概当成 vector 或 scalar。
